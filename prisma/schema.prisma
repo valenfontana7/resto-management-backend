@@ -1,0 +1,394 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// MULTI-TENANT: RESTAURANTS
+// ============================================
+
+model Restaurant {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  status    RestaurantStatus @default(ACTIVE)
+  
+  // Business Info
+  name          String
+  type          String
+  cuisineTypes  String[]
+  description   String?
+  logo          String?
+  coverImage    String?
+  
+  // Contact
+  email         String
+  phone         String
+  address       String
+  city          String
+  country       String
+  postalCode    String?
+  website       String?
+  
+  // Branding
+  primaryColor      String   @default("#4f46e5")
+  secondaryColor    String   @default("#9333ea")
+  accentColor       String   @default("#ec4899")
+  backgroundColor   String   @default("#ffffff")
+  
+  // Layout preferences
+  showHeroSection   Boolean  @default(true)
+  menuStyle         String   @default("grid")
+  categoryDisplay   String   @default("tabs")
+  
+  // Business Rules
+  minOrderAmount    Int      @default(1000)
+  orderLeadTime     Int      @default(30)
+  
+  // Features
+  deliveryEnabled   Boolean  @default(false)
+  reservationsEnabled Boolean @default(true)
+  loyaltyEnabled    Boolean  @default(false)
+  
+  // Relations
+  hours         BusinessHour[]
+  categories    Category[]
+  dishes        Dish[]
+  orders        Order[]
+  reservations  Reservation[]
+  zones         DeliveryZone[]
+  tables        Table[]
+  users         User[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([slug])
+  @@index([status])
+}
+
+enum RestaurantStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+  SUSPENDED
+}
+
+// ============================================
+// BUSINESS HOURS
+// ============================================
+
+model BusinessHour {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  dayOfWeek    Int        // 0 = Sunday, 6 = Saturday
+  isOpen       Boolean    @default(true)
+  openTime     String     // "09:00"
+  closeTime    String     // "22:00"
+  
+  @@unique([restaurantId, dayOfWeek])
+}
+
+// ============================================
+// MENU: CATEGORIES & DISHES
+// ============================================
+
+model Category {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  name         String
+  description  String?
+  image        String?
+  order        Int        @default(0)
+  isActive     Boolean    @default(true)
+  
+  dishes       Dish[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([restaurantId])
+  @@index([restaurantId, isActive])
+}
+
+model Dish {
+  id             String     @id @default(cuid())
+  restaurantId   String
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  categoryId     String
+  category       Category   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  
+  name           String
+  description    String?
+  price          Int        // En centavos
+  image          String?
+  
+  isAvailable    Boolean    @default(true)
+  isFeatured     Boolean    @default(false)
+  preparationTime Int?      // Minutos
+  
+  // Nutritional info (opcional)
+  calories       Int?
+  allergens      String[]   @default([])
+  
+  orderItems     OrderItem[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([restaurantId])
+  @@index([categoryId])
+  @@index([restaurantId, isAvailable])
+}
+
+// ============================================
+// ORDERS
+// ============================================
+
+model Order {
+  id              String       @id @default(cuid())
+  restaurantId    String
+  restaurant      Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  // Customer info
+  customerName    String
+  customerEmail   String?
+  customerPhone   String
+  
+  // Order details
+  type            OrderType
+  status          OrderStatus  @default(PENDING)
+  paymentMethod   String
+  paymentStatus   PaymentStatus @default(PENDING)
+  
+  // Amounts
+  subtotal        Int          // En centavos
+  deliveryFee     Int          @default(0)
+  discount        Int          @default(0)
+  tip             Int          @default(0)
+  total           Int
+  
+  // Delivery info (if applicable)
+  deliveryAddress String?
+  deliveryZoneId  String?
+  deliveryZone    DeliveryZone? @relation(fields: [deliveryZoneId], references: [id])
+  estimatedTime   String?
+  
+  // Table info (if dine-in)
+  tableId         String?
+  table           Table?       @relation(fields: [tableId], references: [id])
+  
+  // Order items
+  items           OrderItem[]
+  
+  // Timestamps
+  scheduledFor    DateTime?
+  preparedAt      DateTime?
+  deliveredAt     DateTime?
+  cancelledAt     DateTime?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([restaurantId])
+  @@index([restaurantId, status])
+  @@index([restaurantId, createdAt])
+}
+
+model OrderItem {
+  id          String @id @default(cuid())
+  orderId     String
+  order       Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  dishId      String
+  dish        Dish   @relation(fields: [dishId], references: [id])
+  
+  quantity    Int
+  unitPrice   Int    // En centavos (precio al momento del pedido)
+  subtotal    Int    // quantity * unitPrice
+  notes       String?
+  
+  @@index([orderId])
+}
+
+enum OrderType {
+  DINE_IN
+  PICKUP
+  DELIVERY
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+// ============================================
+// RESERVATIONS
+// ============================================
+
+model Reservation {
+  id              String          @id @default(cuid())
+  restaurantId    String
+  restaurant      Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  // Customer info
+  customerName    String
+  customerEmail   String
+  customerPhone   String
+  
+  // Reservation details
+  date            DateTime
+  time            String          // "19:00"
+  partySize       Int
+  status          ReservationStatus @default(PENDING)
+  
+  // Optional
+  tableId         String?
+  table           Table?          @relation(fields: [tableId], references: [id])
+  specialRequests String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([restaurantId])
+  @@index([restaurantId, date])
+  @@index([restaurantId, status])
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  SEATED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+// ============================================
+// TABLES
+// ============================================
+
+model Table {
+  id           String       @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  number       String
+  capacity     Int
+  status       TableStatus  @default(AVAILABLE)
+  section      String?      // "Interior", "Terraza", etc.
+  
+  orders       Order[]
+  reservations Reservation[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([restaurantId, number])
+  @@index([restaurantId])
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  RESERVED
+  CLEANING
+}
+
+// ============================================
+// DELIVERY
+// ============================================
+
+model DeliveryZone {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  name         String
+  fee          Int        // En centavos
+  minOrder     Int        // Monto mínimo en centavos
+  estimatedTime String    // "30-45 min"
+  
+  // Coordinates (opcional, para futuro geofencing)
+  coordinates  Json?
+  
+  isActive     Boolean    @default(true)
+  
+  orders       Order[]
+  
+  @@index([restaurantId])
+}
+
+// ============================================
+// USERS & ROLES
+// ============================================
+
+model User {
+  id           String     @id @default(cuid())
+  restaurantId String?
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  email        String     @unique
+  password     String     // Hashed
+  
+  firstName    String
+  lastName     String
+  role         UserRole
+  
+  isActive     Boolean    @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([email])
+  @@index([restaurantId])
+}
+
+enum UserRole {
+  SUPER_ADMIN   // Platform admin
+  OWNER         // Restaurant owner
+  MANAGER       // Restaurant manager
+  WAITER        // Mesero
+  CHEF          // Cocinero
+  DELIVERY      // Repartidor
+}
+
+// ============================================
+// ANALYTICS (opcional, para tracking)
+// ============================================
+
+model Analytics {
+  id           String     @id @default(cuid())
+  restaurantId String
+  
+  date         DateTime   @default(now())
+  metric       String     // "page_view", "order_created", etc.
+  value        Int
+  metadata     Json?
+  
+  @@index([restaurantId, date])
+  @@index([restaurantId, metric])
+}
