@@ -10,7 +10,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // ============================================
@@ -67,6 +66,7 @@ model Restaurant {
   reservations  Reservation[]
   zones         DeliveryZone[]
   tables        Table[]
+  tableAreas    TableArea[]
   users         User[]
   
   createdAt DateTime @default(now())
@@ -119,7 +119,9 @@ model Category {
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
   
+  @@unique([restaurantId, name])
   @@index([restaurantId])
   @@index([restaurantId, isActive])
 }
@@ -143,11 +145,13 @@ model Dish {
   // Nutritional info (opcional)
   calories       Int?
   allergens      String[]   @default([])
+  tags           String[]   @default([])
   
   orderItems     OrderItem[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  deletedAt DateTime?
   
   @@index([restaurantId])
   @@index([categoryId])
@@ -189,16 +193,24 @@ model Order {
   
   // Table info (if dine-in)
   tableId         String?
-  table           Table?       @relation(fields: [tableId], references: [id])
+  table           Table?       @relation("TableOrders", fields: [tableId], references: [id])
+  currentTable    Table?       @relation("CurrentTableOrder")
   
   // Order items
   items           OrderItem[]
+  statusHistory   OrderStatusHistory[]
+  
+  // Payment info (MercadoPago)
+  paymentId       String?      // MercadoPago payment ID
+  preferenceId    String?      // MercadoPago preference ID
   
   // Timestamps
   scheduledFor    DateTime?
   preparedAt      DateTime?
   deliveredAt     DateTime?
   cancelledAt     DateTime?
+  
+  notes           String?
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -221,6 +233,22 @@ model OrderItem {
   notes       String?
   
   @@index([orderId])
+}
+
+model OrderStatusHistory {
+  id          String      @id @default(cuid())
+  orderId     String
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  
+  fromStatus  OrderStatus?
+  toStatus    OrderStatus
+  changedBy   String?     // userId or "system"
+  notes       String?
+  
+  createdAt   DateTime    @default(now())
+  
+  @@index([orderId])
+  @@index([orderId, createdAt])
 }
 
 enum OrderType {
@@ -267,8 +295,10 @@ model Reservation {
   
   // Optional
   tableId         String?
-  table           Table?          @relation(fields: [tableId], references: [id])
+  table           Table?          @relation("TableReservations", fields: [tableId], references: [id])
+  currentTable    Table?          @relation("CurrentTableReservation")
   specialRequests String?
+  notes           String?
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -288,27 +318,63 @@ enum ReservationStatus {
 }
 
 // ============================================
-// TABLES
+// TABLES & AREAS
 // ============================================
+
+model TableArea {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  name         String     // "Salón Principal", "Terraza", "VIP"
+  tables       Table[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([restaurantId])
+}
 
 model Table {
   id           String       @id @default(cuid())
   restaurantId String
   restaurant   Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   
+  // Configuración
   number       String
   capacity     Int
-  status       TableStatus  @default(AVAILABLE)
-  section      String?      // "Interior", "Terraza", etc.
+  shape        TableShape   @default(SQUARE)
   
-  orders       Order[]
-  reservations Reservation[]
+  // Ubicación
+  areaId       String?
+  area         TableArea?   @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  positionX    Float        @default(0)
+  positionY    Float        @default(0)
+  
+  // Estado
+  status       TableStatus  @default(AVAILABLE)
+  
+  // Asignaciones actuales
+  currentOrderId       String? @unique
+  currentOrder         Order?  @relation("CurrentTableOrder", fields: [currentOrderId], references: [id], onDelete: SetNull)
+  currentReservationId String? @unique
+  currentReservation   Reservation? @relation("CurrentTableReservation", fields: [currentReservationId], references: [id], onDelete: SetNull)
+  
+  // Info temporal (cuando está ocupada)
+  waiter        String?
+  customerName  String?
+  occupiedSince DateTime?
+  
+  // Relations (historial)
+  orders       Order[]       @relation("TableOrders")
+  reservations Reservation[] @relation("TableReservations")
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
   @@unique([restaurantId, number])
-  @@index([restaurantId])
+  @@index([restaurantId, status])
+  @@index([areaId])
 }
 
 enum TableStatus {
@@ -316,6 +382,12 @@ enum TableStatus {
   OCCUPIED
   RESERVED
   CLEANING
+}
+
+enum TableShape {
+  SQUARE
+  ROUND
+  RECTANGLE
 }
 
 // ============================================
@@ -352,13 +424,15 @@ model User {
   restaurant   Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   
   email        String     @unique
-  password     String     // Hashed
+  password     String     // Hashed with bcrypt
   
-  firstName    String
-  lastName     String
-  role         UserRole
+  name         String
+  role         UserRole   @default(OWNER)
   
   isActive     Boolean    @default(true)
+  
+  // For JWT refresh tokens (optional)
+  refreshToken String?
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

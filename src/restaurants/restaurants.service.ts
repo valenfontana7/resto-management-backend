@@ -3,14 +3,14 @@ import {
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class RestaurantsService {
+  constructor(private prisma: PrismaService) {}
+
   async findBySlug(slug: string) {
-    return prisma.restaurant.findUnique({
+    return this.prisma.restaurant.findUnique({
       where: { slug },
       include: {
         hours: true,
@@ -19,7 +19,7 @@ export class RestaurantsService {
   }
 
   async findById(id: string) {
-    const restaurant = await prisma.restaurant.findUnique({
+    const restaurant = await this.prisma.restaurant.findUnique({
       where: { id },
       include: {
         hours: true,
@@ -69,7 +69,7 @@ export class RestaurantsService {
 
     const slug = data.slug || this.generateSlug(businessInfo.name);
 
-    const existingRestaurant = await prisma.restaurant.findUnique({
+    const existingRestaurant = await this.prisma.restaurant.findUnique({
       where: { slug },
     });
 
@@ -79,7 +79,7 @@ export class RestaurantsService {
       );
     }
 
-    return prisma.restaurant.create({
+    return this.prisma.restaurant.create({
       data: {
         slug,
         name: businessInfo.name,
@@ -114,6 +114,13 @@ export class RestaurantsService {
           create: hoursData,
         },
       },
+    });
+  }
+
+  async associateUserWithRestaurant(userId: string, restaurantId: string) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { restaurantId },
     });
   }
 
@@ -179,7 +186,7 @@ export class RestaurantsService {
     }
 
     try {
-      return await prisma.restaurant.update({
+      return await this.prisma.restaurant.update({
         where: { id },
         data: updateData,
       });
@@ -193,7 +200,7 @@ export class RestaurantsService {
 
   async updateHours(id: string, hours: any[]) {
     // Transaction: Delete old hours, insert new ones
-    return prisma.$transaction(async (tx) => {
+    return this.prisma.$transaction(async (tx) => {
       await tx.businessHour.deleteMany({
         where: { restaurantId: id },
       });
