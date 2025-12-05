@@ -77,7 +77,73 @@ export class CategoriesController {
     return { menu: categories };
   }
 
+  @Public()
+  @Get('api/restaurants/:restaurantId/menu')
+  @ApiOperation({ summary: 'Get menu by restaurant ID (public)' })
+  @ApiParam({ name: 'restaurantId', description: 'The ID of the restaurant' })
+  @ApiResponse({
+    status: 200,
+    description: 'Return the menu categories with dishes.',
+  })
+  @ApiResponse({ status: 404, description: 'Restaurant not found.' })
+  async getMenuById(@Param('restaurantId') restaurantId: string) {
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException('Restaurant not found');
+    }
+
+    const categories = await this.prisma.category.findMany({
+      where: {
+        restaurantId: restaurantId,
+        isActive: true,
+        deletedAt: null,
+      },
+      include: {
+        dishes: {
+          where: {
+            isAvailable: true,
+            deletedAt: null,
+          },
+          orderBy: { name: 'asc' },
+        },
+      },
+      orderBy: { order: 'asc' },
+    });
+
+    return { categories };
+  }
+
   // ========== ENDPOINTS ADMIN ==========
+
+  @Public()
+  @Get('api/restaurants/:restaurantId/categories/public')
+  @ApiOperation({ summary: 'Get all categories (public)' })
+  @ApiParam({ name: 'restaurantId' })
+  @ApiResponse({ status: 200, description: 'Categories retrieved' })
+  async getCategoriesPublic(@Param('restaurantId') restaurantId: string) {
+    const categories = await this.prisma.category.findMany({
+      where: {
+        restaurantId,
+        isActive: true,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        image: true,
+        order: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { order: 'asc' },
+    });
+
+    return { categories };
+  }
 
   @Get('api/restaurants/:restaurantId/categories')
   @ApiBearerAuth()
@@ -104,12 +170,14 @@ export class CategoriesController {
     return this.categoriesService.create(restaurantId, user.userId, dto);
   }
 
-  @Patch('api/categories/:id')
+  @Patch('api/restaurants/:restaurantId/categories/:id')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update category (admin)' })
+  @ApiParam({ name: 'restaurantId' })
   @ApiParam({ name: 'id' })
   @ApiResponse({ status: 200, description: 'Category updated' })
   async updateCategory(
+    @Param('restaurantId') restaurantId: string,
     @Param('id') id: string,
     @Body() dto: UpdateCategoryDto,
     @CurrentUser() user: RequestUser,
@@ -117,29 +185,33 @@ export class CategoriesController {
     return this.categoriesService.update(id, user.userId, dto);
   }
 
-  @Delete('api/categories/:id')
+  @Delete('api/restaurants/:restaurantId/categories/:id')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete category (admin)' })
+  @ApiParam({ name: 'restaurantId' })
   @ApiParam({ name: 'id' })
   @ApiResponse({ status: 204, description: 'Category deleted' })
   async deleteCategory(
+    @Param('restaurantId') restaurantId: string,
     @Param('id') id: string,
     @CurrentUser() user: RequestUser,
   ) {
     await this.categoriesService.delete(id, user.userId);
   }
 
-  @Patch('api/categories/reorder')
+  @Patch('api/restaurants/:restaurantId/categories/reorder')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Reorder categories (admin)' })
+  @ApiParam({ name: 'restaurantId' })
   @ApiResponse({ status: 200, description: 'Categories reordered' })
   async reorderCategories(
+    @Param('restaurantId') restaurantId: string,
     @Body() dto: ReorderCategoriesDto,
     @CurrentUser() user: RequestUser,
   ) {
     return this.categoriesService.reorder(
-      dto.restaurantId,
+      restaurantId,
       user.userId,
       dto.categoryOrders,
     );

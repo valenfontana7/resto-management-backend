@@ -42,6 +42,9 @@ lerna-debug.log*
 .env.production.local
 .env.local
 
+# Keep template for deployment (no secrets)
+!.env.production
+
 # temp directory
 .temp
 .tmp

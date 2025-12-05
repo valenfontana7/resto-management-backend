@@ -80,6 +80,47 @@ npm run start:prod
 
 The API will be available at `http://localhost:3000`
 
+## 🚀 Production Deployment
+
+### Quick Deploy to Oracle Cloud (FREE)
+
+This backend is optimized for deployment on **Oracle Cloud Always Free Tier** (1GB RAM).
+
+**Quick Start (30 minutes):**
+```bash
+# On your VPS
+git clone <your-repo>
+cd resto-management-backend
+chmod +x *.sh
+./quickdeploy.sh
+```
+
+**📖 Complete Guides:**
+- [QUICKSTART-ORACLE.md](./QUICKSTART-ORACLE.md) - Express guide for Oracle Cloud
+- [DEPLOYMENT.md](./DEPLOYMENT.md) - Complete deployment guide (Docker + PM2)
+- [USEFUL-COMMANDS.md](./USEFUL-COMMANDS.md) - All useful commands
+
+**📦 Deployment Options:**
+1. **Docker** (Recommended) - Easiest setup
+2. **PM2** - More control, less memory
+3. **Quick Deploy Script** - Automated everything
+
+**Files Included:**
+- ✅ `Dockerfile` + `docker-compose.yml` - Complete Docker setup
+- ✅ `ecosystem.config.js` - PM2 configuration
+- ✅ `nginx.conf` - Reverse proxy configuration
+- ✅ `setup-vps.sh` - VPS initial setup
+- ✅ `optimize-oracle.sh` - Oracle Cloud optimizations
+- ✅ `backup.sh` - Automated database backups
+
+**Supported VPS Providers:**
+- Oracle Cloud (Free Forever - Recommended)
+- DigitalOcean ($6/month)
+- Vultr ($6/month)
+- Hetzner (€4.51/month)
+
+See [DEPLOYMENT-STATUS.md](./DEPLOYMENT-STATUS.md) for complete status.
+
 ## 📚 API Documentation
 
 See [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) for complete endpoint documentation.

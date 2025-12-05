@@ -54,6 +54,11 @@ export class CreateDishDto {
   @IsArray()
   @IsString({ each: true })
   allergens?: string[];
+
+  @ApiProperty({ example: 'data:image/jpeg;base64,...', required: false })
+  @IsOptional()
+  @IsString()
+  image?: string;
 }
 
 export class UpdateDishDto {
@@ -108,6 +113,11 @@ export class UpdateDishDto {
   @IsArray()
   @IsString({ each: true })
   allergens?: string[];
+
+  @ApiProperty({ example: 'data:image/jpeg;base64,...', required: false })
+  @IsOptional()
+  @IsString()
+  image?: string;
 }
 
 export class ToggleAvailabilityDto {

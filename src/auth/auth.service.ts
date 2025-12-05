@@ -8,13 +8,13 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
-import { User, UserRole } from '@prisma/client';
+import { User } from '@prisma/client';
 
 export interface JwtPayload {
   sub: string; // userId
   email: string;
-  role: UserRole;
-  restaurantId?: string;
+  roleId: string;
+  restaurantId: string;
 }
 
 export interface AuthResponse {
@@ -22,8 +22,8 @@ export interface AuthResponse {
     id: string;
     email: string;
     name: string;
-    role: UserRole;
-    restaurantId?: string;
+    roleId: string;
+    restaurantId: string;
   };
   token: string;
   expiresAt: string;
@@ -37,35 +37,30 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResponse> {
-    // Verificar si el email ya existe
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+    // El registro SIEMPRE requiere un nombre de restaurante
+    if (!dto.restaurantName) {
+      throw new BadRequestException('Restaurant name is required');
+    }
+
+    // Verificar si el slug ya existe
+    const slug = this.generateSlug(dto.restaurantName);
+    const existingRestaurant = await this.prisma.restaurant.findUnique({
+      where: { slug },
     });
 
-    if (existingUser) {
-      throw new ConflictException('Email already registered');
+    if (existingRestaurant) {
+      throw new ConflictException('Restaurant name already taken');
     }
 
     // Hash de la contraseña
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
-    // Crear usuario
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email,
-        password: hashedPassword,
-        name: dto.name,
-        role: UserRole.OWNER,
-      },
-    });
-
-    // Si se proporciona nombre de restaurante, crear restaurante
-    if (dto.restaurantName) {
-      const slug = this.generateSlug(dto.restaurantName);
-
-      const restaurant = await this.prisma.restaurant.create({
+    // Crear restaurante con roles del sistema y usuario admin en una transacción
+    const result = await this.prisma.$transaction(async (tx) => {
+      // 1. Crear restaurante
+      const restaurant = await tx.restaurant.create({
         data: {
-          name: dto.restaurantName,
+          name: dto.restaurantName as string,
           slug,
           type: 'restaurant',
           cuisineTypes: [],
@@ -77,25 +72,82 @@ export class AuthService {
         },
       });
 
-      // Asociar usuario con restaurante
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { restaurantId: restaurant.id },
+      // 2. Crear roles del sistema
+      const adminRole = await tx.role.create({
+        data: {
+          restaurantId: restaurant.id,
+          name: 'Admin',
+          permissions: ['all'],
+          color: '#ef4444',
+          isSystemRole: true,
+        },
       });
 
-      return this.generateAuthResponse({
-        ...user,
-        restaurantId: restaurant.id,
+      await tx.role.createMany({
+        data: [
+          {
+            restaurantId: restaurant.id,
+            name: 'Manager',
+            permissions: [
+              'manage_menu',
+              'manage_orders',
+              'view_reports',
+              'manage_tables',
+              'manage_reservations',
+            ],
+            color: '#f59e0b',
+            isSystemRole: true,
+          },
+          {
+            restaurantId: restaurant.id,
+            name: 'Waiter',
+            permissions: ['take_orders', 'manage_orders', 'view_tables'],
+            color: '#3b82f6',
+            isSystemRole: true,
+          },
+          {
+            restaurantId: restaurant.id,
+            name: 'Kitchen',
+            permissions: ['view_orders', 'update_order_status'],
+            color: '#8b5cf6',
+            isSystemRole: true,
+          },
+          {
+            restaurantId: restaurant.id,
+            name: 'Delivery',
+            permissions: ['view_delivery_orders', 'update_delivery_status'],
+            color: '#10b981',
+            isSystemRole: true,
+          },
+        ],
       });
-    }
 
-    return this.generateAuthResponse(user);
+      // 3. Crear usuario con rol Admin
+      const user = await tx.user.create({
+        data: {
+          email: dto.email,
+          password: hashedPassword,
+          name: dto.name,
+          restaurantId: restaurant.id,
+          roleId: adminRole.id,
+        },
+      });
+
+      return { user, restaurant };
+    });
+
+    return this.generateAuthResponse(result.user);
   }
 
   async login(dto: LoginDto): Promise<AuthResponse> {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-      include: { restaurant: true },
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: dto.email,
+      },
+      include: {
+        restaurant: true,
+        role: true,
+      },
     });
 
     if (!user) {
@@ -117,7 +169,10 @@ export class AuthService {
   async validateUser(userId: string): Promise<User> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { restaurant: true },
+      include: {
+        restaurant: true,
+        role: true,
+      },
     });
 
     if (!user || !user.isActive) {
@@ -134,7 +189,15 @@ export class AuthService {
         id: true,
         email: true,
         name: true,
-        role: true,
+        roleId: true,
+        role: {
+          select: {
+            id: true,
+            name: true,
+            permissions: true,
+            color: true,
+          },
+        },
         restaurantId: true,
         restaurant: {
           select: {
@@ -155,14 +218,12 @@ export class AuthService {
     return { user };
   }
 
-  private async generateAuthResponse(
-    user: User & { restaurantId?: string | null },
-  ): Promise<AuthResponse> {
+  private generateAuthResponse(user: User): AuthResponse {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
-      role: user.role,
-      restaurantId: user.restaurantId || undefined,
+      roleId: user.roleId,
+      restaurantId: user.restaurantId,
     };
 
     const token = this.jwtService.sign(payload);
@@ -176,8 +237,8 @@ export class AuthService {
         id: user.id,
         email: user.email,
         name: user.name,
-        role: user.role,
-        restaurantId: user.restaurantId || undefined,
+        roleId: user.roleId,
+        restaurantId: user.restaurantId,
       },
       token,
       expiresAt: expiresAt.toISOString(),

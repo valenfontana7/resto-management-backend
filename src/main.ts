@@ -2,9 +2,24 @@ import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import * as bodyParser from 'body-parser';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Increase body size limit for image uploads (10MB)
+  app.use(bodyParser.json({ limit: '10mb' }));
+  app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
+
+  // Servir archivos estáticos desde la carpeta uploads
+  const uploadsPath = join(process.cwd(), 'uploads');
+  console.log('📁 Serving static files from:', uploadsPath);
+  app.useStaticAssets(uploadsPath, {
+    prefix: '/uploads/',
+  });
+
   app.enableCors();
 
   const config = new DocumentBuilder()
@@ -17,4 +32,4 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT ?? 4000);
 }
-bootstrap();
+bootstrap().catch((err) => console.error('Error starting server:', err));

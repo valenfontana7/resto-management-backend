@@ -45,9 +45,35 @@ async function main() {
       address: 'Av. Corrientes 1234',
       city: 'Buenos Aires',
       country: 'Argentina',
-      primaryColor: '#4f46e5',
-      secondaryColor: '#9333ea',
-      accentColor: '#ec4899',
+      branding: {
+        colors: {
+          primary: '#4f46e5',
+          secondary: '#9333ea',
+          accent: '#ec4899',
+          text: '#1f2937',
+          background: '#ffffff',
+        },
+        layout: {
+          menuStyle: 'grid',
+          categoryDisplay: 'tabs',
+          showHeroSection: true,
+          showStats: true,
+          compactMode: false,
+        },
+        typography: {
+          fontFamily: 'Inter',
+          fontSize: 'md',
+        },
+      } as any,
+      features: {
+        onlineOrdering: true,
+        reservations: true,
+        delivery: false,
+        takeaway: true,
+        reviews: true,
+        socialMedia: true,
+      } as any,
+      socialMedia: {} as any,
     },
   });
 

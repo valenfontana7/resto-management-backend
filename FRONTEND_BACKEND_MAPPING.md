@@ -109,6 +109,21 @@
 | GET `/api/analytics/restaurant/:restaurantId/top-dishes`        | GET `/api/analytics/restaurant/:restaurantId/top-dishes`        | ✅ Listo | Platos más vendidos          |
 | GET `/api/analytics/restaurant/:restaurantId/revenue-breakdown` | GET `/api/analytics/restaurant/:restaurantId/revenue-breakdown` | ✅ Listo | Ingresos por tipo orden      |
 
+### Settings & Configuration
+
+| Frontend Endpoint                           | Backend Endpoint                            | Status     | Notas                        |
+| ------------------------------------------- | ------------------------------------------- | ---------- | ---------------------------- |
+| PATCH `/api/restaurants/:id`                | PATCH `/api/restaurants/:id`                | ✅ Listo   | Información general          |
+| PUT `/api/restaurants/:id/hours`            | PUT `/api/restaurants/:id/hours`            | ✅ Listo   | Horarios de atención         |
+| PUT `/api/restaurants/:id/branding`         | PUT `/api/restaurants/:id/branding`         | ✅ Listo   | Colores, logo, layout        |
+| PUT `/api/restaurants/:id/payment-methods`  | PUT `/api/restaurants/:id/payment-methods`  | ⏳ Parcial | Requiere migración de schema |
+| PUT `/api/restaurants/:id/delivery-zones`   | PUT `/api/restaurants/:id/delivery-zones`   | ✅ Listo   | Zonas de delivery            |
+| GET `/api/restaurants/:id/users`            | GET `/api/restaurants/:id/users`            | ✅ Listo   | Listar usuarios del local    |
+| POST `/api/restaurants/:id/users`           | POST `/api/restaurants/:id/users`           | ✅ Listo   | Invitar usuario              |
+| PUT `/api/restaurants/:id/users/:userId`    | PUT `/api/restaurants/:id/users/:userId`    | ✅ Listo   | Actualizar rol/estado        |
+| DELETE `/api/restaurants/:id/users/:userId` | DELETE `/api/restaurants/:id/users/:userId` | ✅ Listo   | Remover usuario (solo owner) |
+| GET `/api/restaurants/:id/roles`            | GET `/api/restaurants/:id/roles`            | ✅ Listo   | Roles y permisos disponibles |
+
 ---
 
 ## 📊 Detalles de Respuestas
@@ -337,7 +352,7 @@ curl -X PATCH http://localhost:3000/api/restaurants/$RESTAURANT_ID/orders/$ORDER
 
 ## ✅ Status Final
 
-**Total de Endpoints Implementados:** 65+
+**Total de Endpoints Implementados:** 75+
 
 **Endpoints Críticos para Dashboard:**
 
@@ -349,6 +364,7 @@ curl -X PATCH http://localhost:3000/api/restaurants/$RESTAURANT_ID/orders/$ORDER
 - ✅ Reservations CRUD completo (con filtros por fecha y estado)
 - ✅ Tables con áreas, posiciones y estados (integrado con Orders/Reservations)
 - ✅ Analytics completo (8 endpoints: ventas, categorías, horarios, clientes, performance, comparación, top dishes, revenue breakdown)
+- ✅ Settings completo (10 endpoints: info general, horarios, branding, métodos de pago, zonas de delivery, gestión de usuarios con roles)
 
 **Backend Status:** 🟢 100% READY para conectar con Frontend
 
@@ -365,3 +381,4 @@ curl -X PATCH http://localhost:3000/api/restaurants/$RESTAURANT_ID/orders/$ORDER
 - WebSocket/SSE para notificaciones en tiempo real
 - Upload de imágenes con Cloudinary
 - Exportación de reportes a PDF/CSV
+- Migración para campo paymentMethods en Restaurant

@@ -3,9 +3,12 @@ import {
   NotFoundException,
   ConflictException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class CategoriesService {
@@ -81,11 +84,17 @@ export class CategoriesService {
       order = (maxOrder?.order ?? -1) + 1;
     }
 
+    let imagePath: string | undefined;
+    if (dto.image) {
+      imagePath = await this.saveBase64Image(dto.image, 'category');
+    }
+
     const category = await this.prisma.category.create({
       data: {
         restaurantId,
         name: dto.name,
         description: dto.description,
+        image: imagePath,
         order,
         isActive: dto.isActive ?? true,
       },
@@ -125,11 +134,21 @@ export class CategoriesService {
       }
     }
 
+    let imagePath: string | undefined;
+    if (dto.image) {
+      // Eliminar imagen anterior si existe
+      if (category.image) {
+        this.deleteImage(category.image);
+      }
+      imagePath = await this.saveBase64Image(dto.image, 'category');
+    }
+
     const updated = await this.prisma.category.update({
       where: { id: categoryId },
       data: {
         name: dto.name,
         description: dto.description,
+        image: imagePath !== undefined ? imagePath : undefined,
         order: dto.order,
         isActive: dto.isActive,
       },
@@ -164,6 +183,11 @@ export class CategoriesService {
       throw new ConflictException(
         'Cannot delete category with active dishes. Please delete or move the dishes first.',
       );
+    }
+
+    // Eliminar imagen si existe
+    if (category.image) {
+      this.deleteImage(category.image);
     }
 
     // Soft delete
@@ -214,6 +238,53 @@ export class CategoriesService {
       throw new ForbiddenException(
         'You do not have permission to manage this restaurant',
       );
+    }
+  }
+
+  private async saveBase64Image(
+    base64String: string,
+    type: 'dish' | 'category',
+  ): Promise<string> {
+    try {
+      // Extraer el tipo de imagen y los datos
+      const matches = base64String.match(/^data:image\/(\w+);base64,(.+)$/);
+      if (!matches) {
+        throw new BadRequestException('Invalid base64 image format');
+      }
+
+      const extension = matches[1];
+      const data = matches[2];
+      const buffer = Buffer.from(data, 'base64');
+
+      // Crear directorio si no existe
+      const folderName = type === 'dish' ? 'dishes' : 'categories';
+      const uploadDir = path.join(process.cwd(), 'uploads', folderName);
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+
+      // Generar nombre único para el archivo
+      const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`;
+      const filepath = path.join(uploadDir, filename);
+
+      // Guardar archivo
+      fs.writeFileSync(filepath, buffer);
+
+      // Retornar ruta relativa para guardar en DB
+      return `/uploads/${folderName}/${filename}`;
+    } catch (error) {
+      throw new BadRequestException('Error saving image: ' + error.message);
+    }
+  }
+
+  private deleteImage(imagePath: string): void {
+    try {
+      const fullPath = path.join(process.cwd(), imagePath);
+      if (fs.existsSync(fullPath)) {
+        fs.unlinkSync(fullPath);
+      }
+    } catch (error) {
+      console.error('Error deleting image:', error);
     }
   }
 }

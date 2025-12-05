@@ -32,6 +32,11 @@ export class CreateCategoryDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiProperty({ example: 'data:image/jpeg;base64,...', required: false })
+  @IsOptional()
+  @IsString()
+  image?: string;
 }
 
 export class UpdateCategoryDto {
@@ -58,13 +63,14 @@ export class UpdateCategoryDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiProperty({ example: 'data:image/jpeg;base64,...', required: false })
+  @IsOptional()
+  @IsString()
+  image?: string;
 }
 
 export class ReorderCategoriesDto {
-  @ApiProperty({ example: 'clxxxx' })
-  @IsString()
-  restaurantId: string;
-
   @ApiProperty({
     example: [
       { id: 'cat1', order: 0 },

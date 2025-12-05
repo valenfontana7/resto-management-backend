@@ -13,6 +13,7 @@ import { TablesModule } from './tables/tables.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ReservationsModule } from './reservations/reservations.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { DeliveryModule } from './delivery/delivery.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
     PaymentsModule,
     ReservationsModule,
     AnalyticsModule,
+    DeliveryModule,
   ],
   controllers: [AppController],
   providers: [

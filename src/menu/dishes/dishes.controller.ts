@@ -21,6 +21,7 @@ import {
 import { DishesService, DishFilters } from './dishes.service';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../../auth/decorators/current-user.decorator';
+import { Public } from '../../auth/decorators/public.decorator';
 import {
   CreateDishDto,
   UpdateDishDto,
@@ -31,6 +32,24 @@ import {
 @Controller()
 export class DishesController {
   constructor(private dishesService: DishesService) {}
+
+  @Public()
+  @Get('api/restaurants/:restaurantId/dishes/public')
+  @ApiOperation({ summary: 'Get all dishes (public)' })
+  @ApiParam({ name: 'restaurantId' })
+  @ApiQuery({ name: 'categoryId', required: false })
+  @ApiResponse({ status: 200, description: 'Dishes retrieved' })
+  async getDishesPublic(
+    @Param('restaurantId') restaurantId: string,
+    @Query('categoryId') categoryId?: string,
+  ) {
+    const filters: DishFilters = {
+      categoryId,
+      available: true, // Solo platos disponibles para público
+    };
+
+    return this.dishesService.findAllPublic(restaurantId, filters);
+  }
 
   @Get('api/restaurants/:restaurantId/dishes')
   @ApiBearerAuth()
@@ -74,12 +93,14 @@ export class DishesController {
     return this.dishesService.create(restaurantId, user.userId, dto);
   }
 
-  @Patch('api/dishes/:id')
+  @Patch('api/restaurants/:restaurantId/dishes/:id')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update dish (admin)' })
+  @ApiParam({ name: 'restaurantId' })
   @ApiParam({ name: 'id' })
   @ApiResponse({ status: 200, description: 'Dish updated' })
   async updateDish(
+    @Param('restaurantId') restaurantId: string,
     @Param('id') id: string,
     @Body() dto: UpdateDishDto,
     @CurrentUser() user: RequestUser,
@@ -87,22 +108,29 @@ export class DishesController {
     return this.dishesService.update(id, user.userId, dto);
   }
 
-  @Delete('api/dishes/:id')
+  @Delete('api/restaurants/:restaurantId/dishes/:id')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Delete dish (admin)' })
+  @ApiParam({ name: 'restaurantId' })
   @ApiParam({ name: 'id' })
   @ApiResponse({ status: 204, description: 'Dish deleted' })
-  async deleteDish(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+  async deleteDish(
+    @Param('restaurantId') restaurantId: string,
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+  ) {
     await this.dishesService.delete(id, user.userId);
   }
 
-  @Patch('api/dishes/:id/availability')
+  @Patch('api/restaurants/:restaurantId/dishes/:id/availability')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Toggle dish availability (admin)' })
+  @ApiParam({ name: 'restaurantId' })
   @ApiParam({ name: 'id' })
   @ApiResponse({ status: 200, description: 'Availability updated' })
   async toggleAvailability(
+    @Param('restaurantId') restaurantId: string,
     @Param('id') id: string,
     @Body() dto: ToggleAvailabilityDto,
     @CurrentUser() user: RequestUser,
