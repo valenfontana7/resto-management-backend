@@ -9,8 +9,8 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Install dependencies
-RUN npm ci
+# Install dependencies with reduced concurrency
+RUN npm ci --maxsockets=1 --prefer-offline
 
 # Copy source code
 COPY . .
@@ -33,8 +33,8 @@ RUN apk add --no-cache dumb-init
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Install only production dependencies
-RUN npm ci --only=production && npm cache clean --force
+# Install only production dependencies with reduced memory usage
+RUN npm ci --only=production --maxsockets=1 --prefer-offline && npm cache clean --force
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
