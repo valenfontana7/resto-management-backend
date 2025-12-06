@@ -23,7 +23,7 @@ COPY . .
 RUN npx prisma generate
 
 # Build the application
-RUN npm run build
+RUN npm run build && ls -la dist/
 
 # Stage 2: Production
 FROM node:20-alpine AS production
