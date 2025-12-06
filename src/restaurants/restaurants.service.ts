@@ -137,21 +137,24 @@ export class RestaurantsService {
     // Handle new JSON fields - ensure they are properly serialized
     if (payload.branding !== undefined) {
       // If branding is a string, parse it; otherwise use as-is
-      updateData.branding = typeof payload.branding === 'string' 
-        ? JSON.parse(payload.branding) 
-        : payload.branding;
+      updateData.branding =
+        typeof payload.branding === 'string'
+          ? JSON.parse(payload.branding)
+          : payload.branding;
     }
 
     if (payload.features !== undefined) {
-      updateData.features = typeof payload.features === 'string'
-        ? JSON.parse(payload.features)
-        : payload.features;
+      updateData.features =
+        typeof payload.features === 'string'
+          ? JSON.parse(payload.features)
+          : payload.features;
     }
 
     if (payload.socialMedia !== undefined) {
-      updateData.socialMedia = typeof payload.socialMedia === 'string'
-        ? JSON.parse(payload.socialMedia)
-        : payload.socialMedia;
+      updateData.socialMedia =
+        typeof payload.socialMedia === 'string'
+          ? JSON.parse(payload.socialMedia)
+          : payload.socialMedia;
     }
 
     // Handle legacy fields for backwards compatibility
@@ -184,7 +187,10 @@ export class RestaurantsService {
       updateData.taxId = taxId;
     }
 
-    console.log('📝 Updating restaurant with data:', JSON.stringify(updateData, null, 2));
+    console.log(
+      '📝 Updating restaurant with data:',
+      JSON.stringify(updateData, null, 2),
+    );
 
     const updated = await this.prisma.restaurant.update({
       where: { id },
@@ -197,7 +203,9 @@ export class RestaurantsService {
     console.log('✅ Restaurant updated:', {
       id: updated.id,
       hasBranding: !!updated.branding,
-      brandingKeys: updated.branding ? Object.keys(updated.branding as object) : [],
+      brandingKeys: updated.branding
+        ? Object.keys(updated.branding as object)
+        : [],
       branding: updated.branding,
     });
 
@@ -267,22 +275,22 @@ export class RestaurantsService {
   async updateBranding(id: string, branding: UpdateBrandingDto) {
     // Convert to new format
     const brandingData: any = {};
-    
+
     if (branding.colors || branding.layout || branding.logo !== undefined) {
       brandingData.branding = {};
-      
+
       if (branding.colors) {
         brandingData.branding.colors = branding.colors;
       }
-      
+
       if (branding.layout) {
         brandingData.branding.layout = branding.layout;
       }
-      
+
       if (branding.logo !== undefined) {
         brandingData.branding.logo = branding.logo;
       }
-      
+
       if (branding.coverImage !== undefined) {
         brandingData.branding.bannerImage = branding.coverImage;
       }

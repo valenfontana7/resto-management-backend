@@ -3,6 +3,7 @@
 ## 📋 Requisitos
 
 ### VPS Recomendadas (Gratis o Económicas)
+
 - **Oracle Cloud Always Free Tier** ⭐ Recomendado
   - VM.Standard.E2.1.Micro: 1 OCPU, 1GB RAM
   - 2 VMs gratis permanentemente
@@ -17,6 +18,7 @@
   - Hetzner Cloud (€3.79/mes)
 
 ### Especificaciones Mínimas
+
 - CPU: 1 core
 - RAM: 1GB (2GB recomendado)
 - Storage: 20GB
@@ -27,6 +29,7 @@
 ## 🎯 Opción 1: Despliegue con Docker (Recomendado)
 
 ### 1. Preparar VPS
+
 ```bash
 # Conectarse a la VPS
 ssh usuario@tu-vps-ip
@@ -50,23 +53,26 @@ newgrp docker
 ```
 
 ### 2. Clonar Repositorio
+
 ```bash
 # Crear directorio
 sudo mkdir -p /var/www
 cd /var/www
 
 # Clonar repositorio
-git clone https://github.com/tu-usuario/resto-management-backend.git
+git clone https://github.com/valenfontana7/resto-management-backend.git
 cd resto-management-backend
 ```
 
 ### 3. Configurar Variables de Entorno
+
 ```bash
 # Crear archivo .env
 nano .env
 ```
 
 Agregar:
+
 ```env
 # PostgreSQL
 POSTGRES_PASSWORD=tu_password_super_seguro_aqui
@@ -79,6 +85,7 @@ FRONTEND_URL=https://tu-dominio.com
 ```
 
 ### 4. Desplegar
+
 ```bash
 # Levantar servicios
 docker-compose up -d
@@ -94,6 +101,7 @@ docker-compose exec app npx prisma db seed
 ```
 
 ### 5. Verificar
+
 ```bash
 # Ver estado de contenedores
 docker-compose ps
@@ -107,17 +115,19 @@ curl http://localhost:4000/api/health
 ## 🎯 Opción 2: Despliegue con PM2 (Sin Docker)
 
 ### 1. Setup Inicial de VPS
+
 ```bash
 # Conectarse a la VPS
 ssh usuario@tu-vps-ip
 
 # Ejecutar script de setup
-curl -o setup-vps.sh https://raw.githubusercontent.com/tu-usuario/resto-management-backend/master/setup-vps.sh
+curl -o setup-vps.sh https://raw.githubusercontent.com/valenfontana7/resto-management-backend/master/setup-vps.sh
 chmod +x setup-vps.sh
 ./setup-vps.sh
 ```
 
 ### 2. Configurar Base de Datos
+
 ```bash
 # Cambiar contraseña de PostgreSQL
 sudo -u postgres psql
@@ -126,12 +136,13 @@ ALTER USER resto_user WITH PASSWORD 'tu_password_seguro';
 ```
 
 ### 3. Desplegar Aplicación
+
 ```bash
 # Ir al directorio de la app
 cd /var/www/resto-backend
 
 # Clonar repositorio
-git clone https://github.com/tu-usuario/resto-management-backend.git .
+git clone https://github.com/valenfontana7/resto-management-backend.git .
 
 # Configurar .env
 cp .env.production .env
@@ -159,6 +170,7 @@ pm2 startup
 ```
 
 ### 4. Configurar Nginx
+
 ```bash
 # Copiar configuración
 sudo cp nginx.conf /etc/nginx/sites-available/resto-backend
@@ -178,6 +190,7 @@ sudo systemctl restart nginx
 ```
 
 ### 5. SSL con Let's Encrypt
+
 ```bash
 # Instalar Certbot
 sudo apt install -y certbot python3-certbot-nginx
@@ -193,6 +206,7 @@ sudo certbot --nginx -d tu-dominio.com -d www.tu-dominio.com
 ## 🔄 Actualizaciones
 
 ### Con Docker
+
 ```bash
 cd /var/www/resto-management-backend
 git pull origin master
@@ -202,6 +216,7 @@ docker-compose exec app npx prisma migrate deploy
 ```
 
 ### Con PM2
+
 ```bash
 cd /var/www/resto-backend
 ./deploy.sh
@@ -212,6 +227,7 @@ cd /var/www/resto-backend
 ## 📊 Monitoreo
 
 ### Ver Logs
+
 ```bash
 # Docker
 docker-compose logs -f app
@@ -222,6 +238,7 @@ pm2 monit
 ```
 
 ### Estado de Servicios
+
 ```bash
 # Docker
 docker-compose ps
@@ -241,6 +258,7 @@ sudo systemctl status postgresql
 ## 🔒 Seguridad
 
 ### 1. Firewall
+
 ```bash
 # Permitir solo puertos necesarios
 sudo ufw allow 22/tcp    # SSH
@@ -250,6 +268,7 @@ sudo ufw enable
 ```
 
 ### 2. SSH Seguro
+
 ```bash
 # Desactivar login con contraseña (usar solo SSH keys)
 sudo nano /etc/ssh/sshd_config
@@ -258,6 +277,7 @@ sudo systemctl restart sshd
 ```
 
 ### 3. Fail2Ban
+
 ```bash
 sudo apt install -y fail2ban
 sudo systemctl enable fail2ban
@@ -269,6 +289,7 @@ sudo systemctl start fail2ban
 ## 🐛 Troubleshooting
 
 ### Error de conexión a base de datos
+
 ```bash
 # Verificar PostgreSQL
 sudo systemctl status postgresql
@@ -278,6 +299,7 @@ sudo tail -f /var/log/postgresql/postgresql-15-main.log
 ```
 
 ### Aplicación no inicia
+
 ```bash
 # Docker
 docker-compose logs app
@@ -287,6 +309,7 @@ pm2 logs resto-backend --lines 100
 ```
 
 ### Problemas de memoria
+
 ```bash
 # Ver uso de memoria
 free -h
@@ -296,6 +319,7 @@ docker stats  # Si usas Docker
 ```
 
 ### Uploads no funcionan
+
 ```bash
 # Verificar permisos
 ls -la uploads/
@@ -309,19 +333,20 @@ chown -R 1001:1001 uploads/    # Docker
 
 ## 💰 Costos Estimados
 
-| Proveedor | Plan | CPU | RAM | Storage | Costo/Mes |
-|-----------|------|-----|-----|---------|-----------|
-| Oracle Cloud | Always Free | 1 OCPU | 1GB | 50GB | **$0** |
-| DigitalOcean | Basic | 1 CPU | 1GB | 25GB | $6 |
-| Vultr | Cloud Compute | 1 CPU | 1GB | 25GB | $6 |
-| Hetzner | CX11 | 1 CPU | 2GB | 20GB | €4.51 |
-| AWS Lightsail | Nano | 0.5 CPU | 512MB | 20GB | $3.50 |
+| Proveedor     | Plan          | CPU     | RAM   | Storage | Costo/Mes |
+| ------------- | ------------- | ------- | ----- | ------- | --------- |
+| Oracle Cloud  | Always Free   | 1 OCPU  | 1GB   | 50GB    | **$0**    |
+| DigitalOcean  | Basic         | 1 CPU   | 1GB   | 25GB    | $6        |
+| Vultr         | Cloud Compute | 1 CPU   | 1GB   | 25GB    | $6        |
+| Hetzner       | CX11          | 1 CPU   | 2GB   | 20GB    | €4.51     |
+| AWS Lightsail | Nano          | 0.5 CPU | 512MB | 20GB    | $3.50     |
 
 ---
 
 ## 📞 Soporte
 
 Si tienes problemas:
+
 1. Revisa los logs: `docker-compose logs` o `pm2 logs`
 2. Verifica la configuración de .env
 3. Asegúrate de que las migraciones se aplicaron correctamente

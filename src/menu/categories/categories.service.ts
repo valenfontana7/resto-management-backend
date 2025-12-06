@@ -84,7 +84,7 @@ export class CategoriesService {
       order = (maxOrder?.order ?? -1) + 1;
     }
 
-    let imagePath: string | undefined;
+    let imagePath: string | null | undefined;
     if (dto.image) {
       imagePath = await this.saveBase64Image(dto.image, 'category');
     }
@@ -134,7 +134,7 @@ export class CategoriesService {
       }
     }
 
-    let imagePath: string | undefined;
+    let imagePath: string | null | undefined;
     if (dto.image) {
       // Eliminar imagen anterior si existe
       if (category.image) {
@@ -244,17 +244,55 @@ export class CategoriesService {
   private async saveBase64Image(
     base64String: string,
     type: 'dish' | 'category',
-  ): Promise<string> {
+  ): Promise<string | null> {
     try {
-      // Extraer el tipo de imagen y los datos
-      const matches = base64String.match(/^data:image\/(\w+);base64,(.+)$/);
-      if (!matches) {
-        throw new BadRequestException('Invalid base64 image format');
+      // Si ya es una URL válida (/uploads/...), retornarla directamente
+      if (base64String.startsWith('/uploads/')) {
+        return base64String;
       }
 
-      const extension = matches[1];
+      // Si es null o vacío, retornar null
+      if (
+        !base64String ||
+        base64String === 'null' ||
+        base64String === 'undefined'
+      ) {
+        return null;
+      }
+
+      // Validar formato base64
+      const matches = base64String.match(/^data:image\/([\w+]+);base64,(.+)$/);
+      if (!matches) {
+        console.error('❌ Invalid base64 format:', {
+          type,
+          stringLength: base64String?.length,
+          preview: base64String?.substring(0, 100),
+        });
+        throw new BadRequestException(
+          'Invalid base64 image format. Expected format: data:image/[type];base64,[data]',
+        );
+      }
+
+      const extension = matches[1].toLowerCase();
       const data = matches[2];
+
+      // Validar extensión
+      const validExtensions = ['jpeg', 'jpg', 'png', 'webp', 'gif'];
+      if (!validExtensions.includes(extension)) {
+        throw new BadRequestException(
+          `Invalid image type: ${extension}. Allowed: ${validExtensions.join(', ')}`,
+        );
+      }
+
       const buffer = Buffer.from(data, 'base64');
+
+      // Validar tamaño (máx 10MB)
+      const maxSize = 10 * 1024 * 1024;
+      if (buffer.length > maxSize) {
+        throw new BadRequestException(
+          `Image too large: ${(buffer.length / 1024 / 1024).toFixed(2)}MB. Maximum: 10MB`,
+        );
+      }
 
       // Crear directorio si no existe
       const folderName = type === 'dish' ? 'dishes' : 'categories';

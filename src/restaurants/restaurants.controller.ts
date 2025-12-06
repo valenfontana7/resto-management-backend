@@ -102,28 +102,41 @@ export class RestaurantsController {
     @Body() updateDto: UpdateRestaurantSettingsDto,
     @CurrentUser() user: RequestUser,
   ) {
-    // Verify ownership
-    if (user.restaurantId !== id) {
-      throw new ForbiddenException('You can only update your own restaurant');
+    try {
+      // Verify ownership
+      if (user.restaurantId !== id) {
+        throw new ForbiddenException('You can only update your own restaurant');
+      }
+
+      console.log('🔵 Controller received update request:', {
+        id,
+        payload: updateDto,
+        hasBranding: !!updateDto.branding,
+        brandingKeys: updateDto.branding ? Object.keys(updateDto.branding) : [],
+        colorsKeys: updateDto.branding?.colors
+          ? Object.keys(updateDto.branding.colors)
+          : [],
+      });
+
+      const restaurant = await this.restaurantsService.update(id, updateDto);
+
+      console.log('🟢 Controller returning restaurant:', {
+        id: restaurant.id,
+        hasBranding: !!restaurant.branding,
+        brandingType: typeof restaurant.branding,
+        branding: restaurant.branding,
+      });
+
+      return { restaurant };
+    } catch (error) {
+      console.error('❌ Error updating restaurant:', {
+        id,
+        error: error.message,
+        stack: error.stack,
+        payload: updateDto,
+      });
+      throw error;
     }
-
-    console.log('🔵 Controller received update request:', {
-      id,
-      hasBranding: !!updateDto.branding,
-      brandingKeys: updateDto.branding ? Object.keys(updateDto.branding) : [],
-      colorsKeys: updateDto.branding?.colors ? Object.keys(updateDto.branding.colors) : [],
-    });
-
-    const restaurant = await this.restaurantsService.update(id, updateDto);
-    
-    console.log('🟢 Controller returning restaurant:', {
-      id: restaurant.id,
-      hasBranding: !!restaurant.branding,
-      brandingType: typeof restaurant.branding,
-      branding: restaurant.branding,
-    });
-
-    return { restaurant };
   }
 
   @ApiOperation({ summary: 'Update restaurant hours' })

@@ -3,6 +3,7 @@
 ## 🚀 Despliegue Inicial
 
 ### Oracle Cloud (Quick Start)
+
 ```bash
 # 1. Conectar a VPS
 ssh ubuntu@YOUR_VPS_IP
@@ -24,6 +25,7 @@ nano .env
 ```
 
 ### Docker (Alternativa)
+
 ```bash
 docker-compose up -d
 docker-compose exec app npx prisma migrate deploy
@@ -52,6 +54,7 @@ docker-compose exec app npx prisma migrate deploy
 ## 📊 Monitoreo
 
 ### Estado General
+
 ```bash
 pm2 status                    # Estado de procesos
 pm2 logs resto-backend        # Ver logs en tiempo real
@@ -64,6 +67,7 @@ docker stats                  # Uso de recursos
 ```
 
 ### Sistema
+
 ```bash
 # Recursos
 htop                          # CPU y RAM interactivo
@@ -78,6 +82,7 @@ lsof -i :4000                # Qué usa el puerto 4000
 ```
 
 ### Base de Datos
+
 ```bash
 # Conectar
 sudo -u postgres psql resto_management
@@ -97,6 +102,7 @@ SELECT pg_size_pretty(pg_database_size('resto_management'));  # Tamaño DB
 ## 🔨 Gestión de PM2
 
 ### Básicos
+
 ```bash
 pm2 start ecosystem.config.js --env production
 pm2 stop resto-backend
@@ -107,6 +113,7 @@ pm2 save                      # Guardar configuración
 ```
 
 ### Avanzados
+
 ```bash
 pm2 logs resto-backend --err  # Solo errores
 pm2 flush                     # Limpiar logs
@@ -116,6 +123,7 @@ pm2 list                      # Todos los procesos
 ```
 
 ### Startup
+
 ```bash
 pm2 startup                   # Configurar auto-start
 pm2 save                      # Guardar lista actual
@@ -128,6 +136,7 @@ pm2 unstartup                 # Remover auto-start
 ## 🐳 Gestión de Docker
 
 ### Contenedores
+
 ```bash
 docker-compose up -d              # Iniciar
 docker-compose down               # Detener y remover
@@ -137,6 +146,7 @@ docker-compose start              # Iniciar (ya creados)
 ```
 
 ### Logs
+
 ```bash
 docker-compose logs -f app        # App logs (seguir)
 docker-compose logs -f postgres   # PostgreSQL logs
@@ -144,6 +154,7 @@ docker-compose logs --tail=100    # Últimas 100 líneas
 ```
 
 ### Mantenimiento
+
 ```bash
 docker-compose exec app bash      # Shell en contenedor app
 docker-compose exec postgres psql -U resto_user -d resto_management
@@ -152,6 +163,7 @@ docker volume ls                  # Ver volúmenes
 ```
 
 ### Rebuild
+
 ```bash
 docker-compose up -d --build      # Rebuild y restart
 docker-compose build --no-cache   # Build desde cero
@@ -162,6 +174,7 @@ docker-compose build --no-cache   # Build desde cero
 ## 🗄️ Gestión de Base de Datos
 
 ### Migraciones
+
 ```bash
 # PM2
 npx prisma migrate dev            # Desarrollo
@@ -174,6 +187,7 @@ docker-compose exec app npx prisma migrate status
 ```
 
 ### Prisma Studio
+
 ```bash
 npx prisma studio                 # Abrir GUI (localhost:5555)
 
@@ -183,6 +197,7 @@ docker-compose exec app npx prisma studio
 ```
 
 ### Seed
+
 ```bash
 npm run prisma:seed               # Cargar datos de prueba
 
@@ -191,6 +206,7 @@ docker-compose exec app npm run prisma:seed
 ```
 
 ### Backup Manual
+
 ```bash
 ./backup.sh                       # Script incluido
 
@@ -199,6 +215,7 @@ pg_dump -U resto_user -h localhost resto_management > backup_$(date +%Y%m%d).sql
 ```
 
 ### Restore
+
 ```bash
 # PM2
 psql -U resto_user -h localhost resto_management < backup_20241205.sql
@@ -212,6 +229,7 @@ docker-compose exec -T postgres psql -U resto_user resto_management < backup_202
 ## 🌐 Nginx
 
 ### Gestión
+
 ```bash
 sudo systemctl status nginx       # Estado
 sudo systemctl start nginx        # Iniciar
@@ -221,6 +239,7 @@ sudo systemctl reload nginx       # Recargar config (sin downtime)
 ```
 
 ### Configuración
+
 ```bash
 sudo nginx -t                     # Probar configuración
 sudo nano /etc/nginx/sites-available/resto-backend
@@ -235,12 +254,14 @@ sudo tail -f /var/log/nginx/resto-backend-error.log
 ## 🔒 SSL / Let's Encrypt
 
 ### Obtener Certificado
+
 ```bash
 sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
 sudo certbot certificates         # Ver certificados instalados
 ```
 
 ### Renovación
+
 ```bash
 sudo certbot renew                # Renovar manualmente
 sudo certbot renew --dry-run      # Probar renovación
@@ -252,6 +273,7 @@ systemctl status certbot.timer    # Auto-renovación activa?
 ## 🔥 Firewall
 
 ### UFW (Ubuntu)
+
 ```bash
 sudo ufw status                   # Ver estado
 sudo ufw enable                   # Activar
@@ -273,6 +295,7 @@ sudo ufw delete 3                 # Eliminar regla #3
 ## 📁 Gestión de Uploads
 
 ### Limpiar uploads viejos
+
 ```bash
 # Archivos > 30 días
 find uploads/ -type f -mtime +30 -delete
@@ -282,6 +305,7 @@ find uploads/ -type f -size +100M -delete
 ```
 
 ### Ver tamaño
+
 ```bash
 du -sh uploads/                   # Total
 du -sh uploads/dishes/            # Por categoría
@@ -293,6 +317,7 @@ find uploads/ -type f | wc -l     # Cantidad de archivos
 ## 🔍 Debugging
 
 ### Ver errores recientes
+
 ```bash
 # PM2
 pm2 logs resto-backend --err --lines 50
@@ -305,6 +330,7 @@ sudo tail -50 /var/log/nginx/resto-backend-error.log
 ```
 
 ### Health Check
+
 ```bash
 # Local
 curl http://localhost:4000/api/health
@@ -314,6 +340,7 @@ curl https://yourdomain.com/api/health
 ```
 
 ### Test Database
+
 ```bash
 # PM2
 npx prisma db pull                # Verificar schema
@@ -323,6 +350,7 @@ docker-compose exec app npx prisma db pull
 ```
 
 ### Port Scanning
+
 ```bash
 sudo lsof -i :4000                # Qué usa puerto 4000
 netstat -tulpn | grep LISTEN      # Todos los puertos abiertos
@@ -334,6 +362,7 @@ ss -tulpn                         # Alternativa moderna
 ## 🧹 Mantenimiento
 
 ### Limpiar logs
+
 ```bash
 # PM2
 pm2 flush
@@ -347,12 +376,14 @@ sudo truncate -s 0 /var/log/nginx/resto-backend-*.log
 ```
 
 ### Limpiar node_modules
+
 ```bash
 rm -rf node_modules package-lock.json
 npm install
 ```
 
 ### Rebuild completo
+
 ```bash
 # PM2
 npm ci
@@ -370,6 +401,7 @@ docker-compose up -d --build
 ## 💾 Backup Automatizado
 
 ### Configurar cron
+
 ```bash
 crontab -e
 
@@ -384,6 +416,7 @@ crontab -l
 ```
 
 ### Ver backups
+
 ```bash
 ls -lh /var/backups/resto-management/
 ```
@@ -393,6 +426,7 @@ ls -lh /var/backups/resto-management/
 ## 📊 Performance
 
 ### Ver uso de recursos
+
 ```bash
 # Top procesos
 top
@@ -407,6 +441,7 @@ nethogs
 ```
 
 ### Optimizar PostgreSQL
+
 ```bash
 # Vacuumear DB
 sudo -u postgres vacuumdb --all --analyze
@@ -421,6 +456,7 @@ SELECT * FROM pg_stat_activity WHERE state != 'idle';
 ## 🆘 Emergencias
 
 ### Servicio caído
+
 ```bash
 # Verificar qué falló
 pm2 status
@@ -434,6 +470,7 @@ sudo systemctl restart postgresql
 ```
 
 ### Sin espacio en disco
+
 ```bash
 df -h                             # Ver uso
 du -sh /* | sort -rh | head -10   # Top 10 directorios
@@ -445,6 +482,7 @@ docker system prune -a
 ```
 
 ### Memoria agotada
+
 ```bash
 free -h                           # Ver memoria
 pm2 restart resto-backend         # Restart app

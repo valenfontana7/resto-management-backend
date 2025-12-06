@@ -3,6 +3,7 @@
 ## ⚡ Setup Express (30 minutos)
 
 ### 1️⃣ Crear instancia Oracle Cloud
+
 1. Ir a https://www.oracle.com/cloud/free/
 2. Crear cuenta gratuita
 3. Crear VM:
@@ -12,6 +13,7 @@
    - Storage: 50GB
 
 ### 2️⃣ Configurar SSH
+
 ```bash
 # En tu computadora local
 ssh-keygen -t rsa -b 4096 -C "tu@email.com"
@@ -21,6 +23,7 @@ cat ~/.ssh/id_rsa.pub
 ```
 
 ### 3️⃣ Conectarse y configurar
+
 ```bash
 # Conectarse a la VPS
 ssh ubuntu@TU_IP_PUBLICA
@@ -29,7 +32,7 @@ ssh ubuntu@TU_IP_PUBLICA
 sudo apt update && sudo apt upgrade -y
 
 # Clonar repositorio
-git clone https://github.com/tu-usuario/resto-management-backend.git
+git clone https://github.com/valenfontana7/resto-management-backend.git
 cd resto-management-backend
 
 # Hacer ejecutables los scripts
@@ -43,6 +46,7 @@ chmod +x *.sh
 ```
 
 ### 4️⃣ Configurar aplicación
+
 ```bash
 # Copiar y editar .env
 cp .env.production .env
@@ -50,6 +54,7 @@ nano .env
 ```
 
 **Editar estos valores:**
+
 ```env
 DATABASE_URL="postgresql://resto_user:TU_PASSWORD_SEGURO@localhost:5432/resto_management?schema=public"
 JWT_SECRET="GENERAR_STRING_ALEATORIO_32_CARACTERES"
@@ -57,6 +62,7 @@ FRONTEND_URL="https://tu-dominio.com"
 ```
 
 ### 5️⃣ Desplegar
+
 ```bash
 # Deployment automático
 ./quickdeploy.sh
@@ -71,6 +77,7 @@ pm2 save
 ```
 
 ### 6️⃣ Configurar Nginx
+
 ```bash
 # Copiar configuración
 sudo cp nginx.conf /etc/nginx/sites-available/resto-backend
@@ -86,6 +93,7 @@ sudo systemctl restart nginx
 ```
 
 ### 7️⃣ SSL con Let's Encrypt
+
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d tu-dominio.com
@@ -94,6 +102,7 @@ sudo certbot --nginx -d tu-dominio.com
 ### 8️⃣ Configurar Firewall Oracle Cloud
 
 **En Oracle Cloud Console:**
+
 1. Ir a Networking → Virtual Cloud Networks
 2. Click en tu VCN → Security Lists
 3. Agregar Ingress Rules:
@@ -102,6 +111,7 @@ sudo certbot --nginx -d tu-dominio.com
    - Port 22 (SSH)
 
 **En la VPS:**
+
 ```bash
 sudo ufw allow 22/tcp
 sudo ufw allow 80/tcp
@@ -172,6 +182,7 @@ crontab -e
 ## 🆘 Troubleshooting
 
 ### Error de memoria
+
 ```bash
 # Ver uso
 free -h
@@ -184,12 +195,14 @@ pm2 logs resto-backend --lines 100
 ```
 
 ### Base de datos no conecta
+
 ```bash
 sudo systemctl status postgresql
 sudo -u postgres psql -c "SELECT version();"
 ```
 
 ### 502 Bad Gateway
+
 ```bash
 # Verificar que la app esté corriendo
 pm2 status
@@ -207,12 +220,14 @@ sudo systemctl restart nginx
 ## 💰 Costos
 
 **Oracle Cloud Always Free:**
+
 - ✅ 2 VMs gratis permanentemente
 - ✅ 200GB storage total
 - ✅ 10TB bandwidth/mes
 - ✅ **COSTO: $0/mes**
 
 **Alternativa DigitalOcean:**
+
 - 1GB RAM, 1 CPU, 25GB SSD
 - **COSTO: $6/mes** (primer mes gratis con código)
 

@@ -26,7 +26,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-resto_management}?schema=public
+        DATABASE_URL: postgresql://${POSTGRES_USER:-resto_user}:${POSTGRES_PASSWORD:-255655}@postgres:5432/${POSTGRES_DB:-resto_management}?schema=public
     container_name: resto-backend
     restart: unless-stopped
     depends_on:

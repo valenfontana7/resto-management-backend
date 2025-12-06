@@ -48,6 +48,9 @@ export class DishesService {
       deletedAt: null,
     };
 
+    // Limpiar imágenes rotas (404)
+    await this.cleanBrokenImages(restaurantId);
+
     if (filters?.categoryId) where.categoryId = filters.categoryId;
     if (filters?.available !== undefined) where.isAvailable = filters.available;
     if (filters?.featured !== undefined) where.isFeatured = filters.featured;
@@ -82,7 +85,7 @@ export class DishesService {
       );
     }
 
-    let imagePath: string | undefined;
+    let imagePath: string | null | undefined;
     if (dto.image) {
       imagePath = await this.saveBase64Image(dto.image, 'dish');
     }
@@ -107,57 +110,77 @@ export class DishesService {
   }
 
   async update(dishId: string, userId: string, dto: UpdateDishDto) {
-    const dish = await this.prisma.dish.findUnique({ where: { id: dishId } });
+    try {
+      const dish = await this.prisma.dish.findUnique({ where: { id: dishId } });
 
-    if (!dish || dish.deletedAt) {
-      throw new NotFoundException('Dish not found');
-    }
+      if (!dish || dish.deletedAt) {
+        throw new NotFoundException('Dish not found');
+      }
 
-    await this.verifyRestaurantOwnership(dish.restaurantId, userId);
+      await this.verifyRestaurantOwnership(dish.restaurantId, userId);
 
-    if (dto.categoryId && dto.categoryId !== dish.categoryId) {
-      const category = await this.prisma.category.findFirst({
-        where: {
-          id: dto.categoryId,
-          restaurantId: dish.restaurantId,
-          deletedAt: null,
+      if (dto.categoryId && dto.categoryId !== dish.categoryId) {
+        const category = await this.prisma.category.findFirst({
+          where: {
+            id: dto.categoryId,
+            restaurantId: dish.restaurantId,
+            deletedAt: null,
+          },
+        });
+
+        if (!category) {
+          throw new BadRequestException(
+            'Category not found or does not belong to this restaurant',
+          );
+        }
+      }
+
+      let imagePath: string | null | undefined;
+      if (dto.image !== undefined) {
+        if (dto.image === null || dto.image === '') {
+          // Eliminar imagen
+          if (dish.image) {
+            this.deleteImage(dish.image);
+          }
+          imagePath = null;
+        } else if (dto.image) {
+          // Actualizar imagen
+          if (dish.image && !dto.image.startsWith('/uploads/')) {
+            this.deleteImage(dish.image);
+          }
+          imagePath = await this.saveBase64Image(dto.image, 'dish');
+        }
+      }
+
+      const updated = await this.prisma.dish.update({
+        where: { id: dishId },
+        data: {
+          name: dto.name,
+          description: dto.description,
+          price: dto.price,
+          categoryId: dto.categoryId,
+          image: imagePath !== undefined ? imagePath : undefined,
+          preparationTime: dto.preparationTime,
+          isAvailable: dto.isAvailable,
+          isFeatured: dto.isFeatured,
+          tags: dto.tags,
+          allergens: dto.allergens,
         },
+        include: { category: { select: { id: true, name: true } } },
       });
 
-      if (!category) {
-        throw new BadRequestException(
-          'Category not found or does not belong to this restaurant',
-        );
-      }
+      return { dish: updated };
+    } catch (error) {
+      console.error('❌ Error updating dish:', {
+        dishId,
+        error: error.message,
+        stack: error.stack,
+        imageProvided: !!dto.image,
+        imageType: typeof dto.image,
+        imagePreview: dto.image?.substring(0, 100),
+      });
+      throw error;
     }
-
-    let imagePath: string | undefined;
-    if (dto.image) {
-      // Eliminar imagen anterior si existe
-      if (dish.image) {
-        this.deleteImage(dish.image);
-      }
-      imagePath = await this.saveBase64Image(dto.image, 'dish');
-    }
-
-    const updated = await this.prisma.dish.update({
-      where: { id: dishId },
-      data: {
-        name: dto.name,
-        description: dto.description,
-        price: dto.price,
-        categoryId: dto.categoryId,
-        image: imagePath !== undefined ? imagePath : undefined,
-        preparationTime: dto.preparationTime,
-        isAvailable: dto.isAvailable,
-        isFeatured: dto.isFeatured,
-        tags: dto.tags,
-        allergens: dto.allergens,
-      },
-      include: { category: { select: { id: true, name: true } } },
-    });
-
-    return { dish: updated };
   }
 
   async delete(dishId: string, userId: string) {
@@ -221,17 +244,55 @@ export class DishesService {
   private async saveBase64Image(
     base64String: string,
     type: 'dish' | 'category',
-  ): Promise<string> {
+  ): Promise<string | null> {
     try {
-      // Extraer el tipo de imagen y los datos
-      const matches = base64String.match(/^data:image\/(\w+);base64,(.+)$/);
-      if (!matches) {
-        throw new BadRequestException('Invalid base64 image format');
+      // Si ya es una URL válida (/uploads/...), retornarla directamente
+      if (base64String.startsWith('/uploads/')) {
+        return base64String;
       }
 
-      const extension = matches[1];
+      // Si es null o vacío, retornar null
+      if (
+        !base64String ||
+        base64String === 'null' ||
+        base64String === 'undefined'
+      ) {
+        return null;
+      }
+
+      // Validar formato base64
+      const matches = base64String.match(/^data:image\/([\w+]+);base64,(.+)$/);
+      if (!matches) {
+        console.error('❌ Invalid base64 format:', {
+          type,
+          stringLength: base64String?.length,
+          preview: base64String?.substring(0, 100),
+        });
+        throw new BadRequestException(
+          'Invalid base64 image format. Expected format: data:image/[type];base64,[data]',
+        );
+      }
+
+      const extension = matches[1].toLowerCase();
       const data = matches[2];
+
+      // Validar extensión
+      const validExtensions = ['jpeg', 'jpg', 'png', 'webp', 'gif'];
+      if (!validExtensions.includes(extension)) {
+        throw new BadRequestException(
+          `Invalid image type: ${extension}. Allowed: ${validExtensions.join(', ')}`,
+        );
+      }
+
       const buffer = Buffer.from(data, 'base64');
+
+      // Validar tamaño (máx 10MB)
+      const maxSize = 10 * 1024 * 1024;
+      if (buffer.length > maxSize) {
+        throw new BadRequestException(
+          `Image too large: ${(buffer.length / 1024 / 1024).toFixed(2)}MB. Maximum: 10MB`,
+        );
+      }
 
       // Crear directorio si no existe
       const folderName = type === 'dish' ? 'dishes' : 'categories';
@@ -262,6 +323,36 @@ export class DishesService {
       }
     } catch (error) {
       console.error('Error deleting image:', error);
+    }
+  }
+
+  /**
+   * Limpia imágenes rotas de la base de datos
+   * Si la imagen no existe en disco, la elimina de la BD
+   */
+  private async cleanBrokenImages(restaurantId: string): Promise<void> {
+    try {
+      const dishes = await this.prisma.dish.findMany({
+        where: { restaurantId, image: { not: null }, deletedAt: null },
+        select: { id: true, image: true },
+      });
+
+      for (const dish of dishes) {
+        if (!dish.image) continue;
+
+        const fullPath = path.join(process.cwd(), dish.image);
+        if (!fs.existsSync(fullPath)) {
+          console.log(
+            `🧹 Cleaning broken image for dish ${dish.id}: ${dish.image}`,
+          );
+          await this.prisma.dish.update({
+            where: { id: dish.id },
+            data: { image: null },
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error cleaning broken images:', error);
     }
   }
 }
