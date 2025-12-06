@@ -13,7 +13,7 @@ WORKDIR /app
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Install dependencies with reduced concurrency
+# Install ALL dependencies (including devDependencies for build)
 RUN npm ci --maxsockets=1 --prefer-offline
 
 # Copy source code
