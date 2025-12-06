@@ -3,6 +3,10 @@
 # Stage 1: Build
 FROM node:20-alpine AS builder
 
+# Build argument for DATABASE_URL
+ARG DATABASE_URL
+ENV DATABASE_URL=${DATABASE_URL}
+
 WORKDIR /app
 
 # Copy package files
