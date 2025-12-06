@@ -44,6 +44,9 @@ RUN npm ci --only=production --maxsockets=1 --prefer-offline && npm cache clean 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
+# Verify dist was copied
+RUN ls -la /app/ && ls -la /app/dist/
+
 # Create uploads directory
 RUN mkdir -p uploads/dishes uploads/categories
 
