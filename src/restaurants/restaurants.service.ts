@@ -86,48 +86,118 @@ export class RestaurantsService {
       );
     }
 
-    return this.prisma.restaurant.create({
-      data: {
-        slug,
-        name: businessInfo.name,
-        type: businessInfo.type,
-        cuisineTypes: businessInfo.cuisineTypes,
-        description: businessInfo.description,
+    // Create restaurant with system roles in a transaction
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Create restaurant
+      const restaurant = await tx.restaurant.create({
+        data: {
+          slug,
+          name: businessInfo.name,
+          type: businessInfo.type,
+          cuisineTypes: businessInfo.cuisineTypes,
+          description: businessInfo.description,
 
-        email: contact.email,
-        phone: contact.phone,
-        address: contact.address,
-        city: contact.city,
-        country: contact.country,
-        postalCode: contact.postalCode,
+          email: contact.email,
+          phone: contact.phone,
+          address: contact.address,
+          city: contact.city,
+          country: contact.country,
+          postalCode: contact.postalCode,
 
-        branding: {
-          colors: branding.colors,
-          layout: branding.layout,
-          typography: {
-            fontFamily: 'Inter',
-            fontSize: 'md',
+          branding: {
+            colors: branding.colors,
+            layout: branding.layout,
+            typography: {
+              fontFamily: 'Inter',
+              fontSize: 'md',
+            },
+          },
+
+          features: features,
+
+          socialMedia: {},
+
+          minOrderAmount: businessRules.orders.minOrderAmount,
+          orderLeadTime: businessRules.orders.orderLeadTime,
+
+          hours: {
+            create: hoursData,
           },
         },
+      });
 
-        features: features,
+      // 2. Create system roles
+      await tx.role.createMany({
+        data: [
+          {
+            restaurantId: restaurant.id,
+            name: 'Admin',
+            permissions: ['all'],
+            color: '#ef4444',
+            isSystemRole: true,
+          },
+          {
+            restaurantId: restaurant.id,
+            name: 'Manager',
+            permissions: [
+              'manage_menu',
+              'manage_orders',
+              'view_reports',
+              'manage_tables',
+              'manage_reservations',
+            ],
+            color: '#f59e0b',
+            isSystemRole: true,
+          },
+          {
+            restaurantId: restaurant.id,
+            name: 'Waiter',
+            permissions: ['take_orders', 'manage_orders', 'view_tables'],
+            color: '#3b82f6',
+            isSystemRole: true,
+          },
+          {
+            restaurantId: restaurant.id,
+            name: 'Kitchen',
+            permissions: ['view_orders', 'update_order_status'],
+            color: '#8b5cf6',
+            isSystemRole: true,
+          },
+          {
+            restaurantId: restaurant.id,
+            name: 'Delivery',
+            permissions: ['view_delivery_orders', 'update_delivery_status'],
+            color: '#10b981',
+            isSystemRole: true,
+          },
+        ],
+      });
 
-        socialMedia: {},
-
-        minOrderAmount: businessRules.orders.minOrderAmount,
-        orderLeadTime: businessRules.orders.orderLeadTime,
-
-        hours: {
-          create: hoursData,
-        },
-      },
+      return restaurant;
     });
   }
 
   async associateUserWithRestaurant(userId: string, restaurantId: string) {
+    // Find the Admin role for this restaurant
+    const adminRole = await this.prisma.role.findFirst({
+      where: {
+        restaurantId,
+        name: 'Admin',
+        isSystemRole: true,
+      },
+    });
+
+    if (!adminRole) {
+      throw new NotFoundException('Admin role not found for this restaurant');
+    }
+
+    // Update user to associate with restaurant and Admin role
     await this.prisma.user.update({
       where: { id: userId },
-      data: { restaurantId },
+      data: {
+        restaurantId,
+        roleId: adminRole.id,
+      },
     });
   }
 
@@ -214,8 +284,8 @@ export class RestaurantsService {
 
   async updateHours(id: string, hours: any[]) {
     // Transaction: Delete old hours, insert new ones
-    return this.prisma.$transaction(async (tx) => {
-      await tx.businessHour.deleteMany({
+    return this.prisma.$transaction(async () => {
+      await this.prisma.businessHour.deleteMany({
         where: { restaurantId: id },
       });
 
@@ -223,7 +293,7 @@ export class RestaurantsService {
       const openHours = hours.filter((h) => h.isOpen === true);
 
       if (openHours && openHours.length > 0) {
-        await tx.businessHour.createMany({
+        await this.prisma.businessHour.createMany({
           data: openHours.map((h) => ({
             restaurantId: id,
             dayOfWeek: h.dayOfWeek,
@@ -235,7 +305,7 @@ export class RestaurantsService {
       }
 
       // Return all days (0-6) with proper structure
-      const savedHours = await tx.businessHour.findMany({
+      const savedHours = await this.prisma.businessHour.findMany({
         where: { restaurantId: id },
       });
 
@@ -356,10 +426,10 @@ export class RestaurantsService {
         data: deliveryZones.map((zone) => ({
           restaurantId: id,
           name: zone.name,
-          deliveryFee: zone.deliveryFee,
-          minOrder: zone.minOrder,
-          estimatedTime: zone.estimatedTime || '30-45 min',
-          areas: zone.areas,
+          deliveryFee: zone.deliveryFee || 0,
+          minOrder: zone.minOrder || 0,
+          estimatedTime: zone.estimatedTime || '',
+          areas: zone.areas || [],
         })),
       });
     }
@@ -475,12 +545,10 @@ export class RestaurantsService {
     }
 
     // Check if user already exists with this email in this restaurant
-    const existingUser = await this.prisma.user.findUnique({
+    const existingUser = await this.prisma.user.findFirst({
       where: {
-        restaurantId_email: {
-          restaurantId,
-          email: inviteDto.email,
-        },
+        restaurantId,
+        email: inviteDto.email,
       },
     });
 
@@ -493,8 +561,8 @@ export class RestaurantsService {
 
     return this.prisma.user.create({
       data: {
+        name: inviteDto.email.split('@')[0], // Use email prefix as default name
         email: inviteDto.email,
-        name: inviteDto.name || inviteDto.email.split('@')[0],
         password: hashedPassword,
         restaurantId,
         roleId: role.id,
@@ -502,16 +570,8 @@ export class RestaurantsService {
       },
       select: {
         id: true,
-        email: true,
         name: true,
-        roleId: true,
-        role: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-          },
-        },
+        email: true,
         isActive: true,
         createdAt: true,
       },
@@ -577,24 +637,17 @@ export class RestaurantsService {
     // Verify user belongs to this restaurant
     const user = await this.prisma.user.findFirst({
       where: { id: userId, restaurantId },
-      include: { role: true },
     });
 
     if (!user) {
       throw new NotFoundException('User not found in this restaurant');
     }
 
-    // Don't allow removing Admin users
-    if (user.role.name === 'Admin') {
-      throw new ConflictException('Cannot remove an Admin user');
-    }
-
-    // Soft delete: set isActive to false and deletedAt timestamp
+    // Soft delete: set isActive to false
     await this.prisma.user.update({
       where: { id: userId },
       data: {
         isActive: false,
-        deletedAt: new Date(),
       },
     });
 

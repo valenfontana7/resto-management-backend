@@ -37,23 +37,70 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResponse> {
-    // El registro SIEMPRE requiere un nombre de restaurante
-    if (!dto.restaurantName) {
-      throw new BadRequestException('Restaurant name is required');
-    }
-
-    // Verificar si el slug ya existe
-    const slug = this.generateSlug(dto.restaurantName);
-    const existingRestaurant = await this.prisma.restaurant.findUnique({
-      where: { slug },
+    // Verificar si el email ya existe
+    const existingUser = await this.prisma.user.findFirst({
+      where: { email: dto.email },
     });
 
-    if (existingRestaurant) {
-      throw new ConflictException('Restaurant name already taken');
+    if (existingUser) {
+      throw new ConflictException('Email already registered');
+    }
+
+    // Si se proporciona nombre de restaurante, verificar que no exista
+    let slug: string | undefined;
+    if (dto.restaurantName) {
+      slug = this.generateSlug(dto.restaurantName);
+      const existingRestaurant = await this.prisma.restaurant.findUnique({
+        where: { slug },
+      });
+
+      if (existingRestaurant) {
+        throw new ConflictException('Restaurant name already taken');
+      }
     }
 
     // Hash de la contraseña
     const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+    // Si NO se proporciona restaurantName, crear solo el usuario
+    if (!dto.restaurantName) {
+      const user = await this.prisma.user.create({
+        data: {
+          email: dto.email,
+          password: hashedPassword,
+          name: dto.name,
+          isActive: true,
+          // No tiene restaurante ni rol por ahora
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+        },
+      });
+
+      const token = this.jwtService.sign({
+        sub: user.id,
+        email: user.email,
+        roleId: null,
+        restaurantId: null,
+      });
+
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 7);
+
+      return {
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          roleId: null as any,
+          restaurantId: null as any,
+        },
+        token,
+        expiresAt: expiresAt.toISOString(),
+      };
+    }
 
     // Crear restaurante con roles del sistema y usuario admin en una transacción
     const result = await this.prisma.$transaction(async (tx) => {
@@ -61,7 +108,7 @@ export class AuthService {
       const restaurant = await tx.restaurant.create({
         data: {
           name: dto.restaurantName as string,
-          slug,
+          slug: slug as string,
           type: 'restaurant',
           cuisineTypes: [],
           email: dto.email,
@@ -222,8 +269,8 @@ export class AuthService {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
-      roleId: user.roleId,
-      restaurantId: user.restaurantId,
+      roleId: user.roleId || '',
+      restaurantId: user.restaurantId || '',
     };
 
     const token = this.jwtService.sign(payload);
@@ -237,8 +284,8 @@ export class AuthService {
         id: user.id,
         email: user.email,
         name: user.name,
-        roleId: user.roleId,
-        restaurantId: user.restaurantId,
+        roleId: user.roleId || '',
+        restaurantId: user.restaurantId || '',
       },
       token,
       expiresAt: expiresAt.toISOString(),

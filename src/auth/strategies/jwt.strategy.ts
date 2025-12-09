@@ -6,8 +6,8 @@ import { AuthService, type JwtPayload } from '../auth.service';
 export interface RequestUser {
   userId: string;
   email: string;
-  roleId: string;
-  restaurantId: string;
+  roleId: string | null;
+  restaurantId: string | null;
 }
 
 @Injectable()
@@ -27,8 +27,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return {
       userId: user.id,
       email: user.email,
-      roleId: user.roleId,
-      restaurantId: user.restaurantId,
+      roleId: user.roleId || null,
+      restaurantId: user.restaurantId || null,
     };
   }
 }
