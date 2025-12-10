@@ -2,20 +2,20 @@ version: '3.8'
 
 services:
   # PostgreSQL Database
-  postgres:
+  db:
     image: postgres:15-alpine
     container_name: resto-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: resto_management
+      POSTGRES_DB: resto_db
       POSTGRES_USER: resto_user
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme123}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-255655}
     ports:
       - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U resto_user -d resto_management']
+      test: ['CMD-SHELL', 'pg_isready -U resto_user -d resto_db']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,16 +26,16 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        DATABASE_URL: postgresql://${POSTGRES_USER:-resto_user}:${POSTGRES_PASSWORD:-255655}@postgres:5432/${POSTGRES_DB:-resto_management}?schema=public
+        DATABASE_URL: postgresql://${POSTGRES_USER:-resto_user}:${POSTGRES_PASSWORD:-255655}@db:5432/${POSTGRES_DB:-resto_db}?schema=public
     container_name: resto-backend
     restart: unless-stopped
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 4000
-      DATABASE_URL: postgresql://resto_user:${POSTGRES_PASSWORD:-changeme123}@postgres:5432/resto_management?schema=public
+      DATABASE_URL: postgresql://resto_user:${POSTGRES_PASSWORD:-255655}@db:5432/resto_db?schema=public
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION: 7d
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
