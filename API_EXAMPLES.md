@@ -314,6 +314,40 @@ curl http://localhost:3000/api/orders/restaurant/$RESTAURANT_ID/stats \
 
 ## 5. Pagos con MercadoPago
 
+### (Recomendado) Multi-tenant: conectar token por restaurante
+
+```bash
+RESTAURANT_ID="restaurant_id"
+
+# Guardar token (protegido)
+curl -X POST http://localhost:3000/api/mercadopago/tenant-token \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"restaurantId":"'"$RESTAURANT_ID"'","accessToken":"<MP_ACCESS_TOKEN>"}'
+
+# Ver status (protegido)
+curl -X GET "http://localhost:3000/api/mercadopago/tenant-token?restaurantId=$RESTAURANT_ID" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+### (Recomendado) Crear preferencia (public)
+
+```bash
+ORDER_ID="order_id"
+RESTAURANT_ID="restaurant_id"
+
+curl -X POST http://localhost:3000/api/mercadopago/preference \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slug": "mi-resto",
+    "restaurantId": "'"$RESTAURANT_ID"'",
+    "orderId": "'"$ORDER_ID"'",
+    "items": [{"title":"Hamburguesa","quantity":1,"unit_price":12000}]
+  }'
+```
+
+### (Legacy/Compat) Crear preferencia de pago
+
 ### Crear preferencia de pago
 
 ```bash
@@ -418,3 +452,4 @@ curl -X PATCH http://localhost:3000/api/orders/$ORDER_ID/restaurant/$RESTAURANT_
 3. **IDs**: Usar los IDs reales obtenidos de las respuestas
 4. **CORS**: Configurado para permitir todos los orígenes en desarrollo
 5. **Webhook**: MercadoPago debe apuntar a `https://tudominio.com/api/payments/webhook`
+   (Recomendado: `https://tudominio.com/api/mercadopago/webhook`)

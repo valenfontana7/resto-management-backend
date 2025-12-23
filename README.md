@@ -184,10 +184,69 @@ curl -X POST http://localhost:3000/api/auth/login \
 
 1. Get your access token from [MercadoPago Developers](https://www.mercadopago.com.ar/developers)
 2. Add to `.env`: `MERCADOPAGO_ACCESS_TOKEN=your-token`
-3. Configure webhook in MP dashboard: `https://yourdomain.com/api/payments/webhook`
+3. Configure webhook in MP dashboard: `https://yourdomain.com/api/mercadopago/webhook` (legacy: `/api/payments/webhook`)
 4. Create preference after order: `POST /api/payments/create-preference/:orderId`
 5. Redirect customer to `initPoint` URL from response
 6. Webhook will update order status automatically
+
+### MercadoPago Multi-tenant (Access Token por restaurante)
+
+Este backend soporta **un Access Token distinto por restaurantId**, persistido en Postgres y **encriptado en reposo**.
+
+**Env vars**
+
+- `MP_TOKEN_ENCRYPTION_KEY` (**obligatoria**): clave de 32 bytes para AES-256-GCM. Formato: 64 hex chars o base64 de 32 bytes.
+- `BASE_URL` (recomendado): origen para construir `back_urls` y `notification_url` si no hay override.
+- `MERCADOPAGO_NOTIFICATION_URL` (opcional): URL absoluta para webhook.
+- `MERCADOPAGO_ACCESS_TOKEN` (opcional): fallback global si no se envía `restaurantId` o si el restaurante no tiene token.
+
+**Endpoints (NO cambiar rutas ni formatos)**
+
+- `GET /api/mercadopago/tenant-token?restaurantId=...` → `{ connected, createdAt }`
+- `POST /api/mercadopago/tenant-token` body `{ restaurantId, accessToken }` → `{ success: true }`
+- `DELETE /api/mercadopago/tenant-token` body `{ restaurantId }` → `{ success: true }`
+- `POST /api/mercadopago/preference` body `{ slug?, restaurantId?, orderId, items[] }` → `{ preference }`
+- `POST /api/mercadopago/webhook` (public)
+
+**Ejemplos (curl)**
+
+Guardar token del restaurante (protegido por JWT):
+
+```bash
+curl -X POST http://localhost:3000/api/mercadopago/tenant-token \
+  -H "Authorization: Bearer <JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"restaurantId":"<RESTAURANT_ID>","accessToken":"<MP_ACCESS_TOKEN>"}'
+```
+
+Ver estado:
+
+```bash
+curl -X GET "http://localhost:3000/api/mercadopago/tenant-token?restaurantId=<RESTAURANT_ID>" \
+  -H "Authorization: Bearer <JWT>"
+```
+
+Borrar token:
+
+```bash
+curl -X DELETE http://localhost:3000/api/mercadopago/tenant-token \
+  -H "Authorization: Bearer <JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"restaurantId":"<RESTAURANT_ID>"}'
+```
+
+Crear preferencia (public):
+
+```bash
+curl -X POST http://localhost:3000/api/mercadopago/preference \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slug": "mi-resto",
+    "restaurantId": "<RESTAURANT_ID>",
+    "orderId": "<ORDER_ID>",
+    "items": [{"title":"Hamburguesa","quantity":1,"unit_price":12000}]
+  }'
+```
 
 ## 🧪 Development
 

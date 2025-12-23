@@ -21,6 +21,7 @@ import {
   OrderFiltersDto,
 } from './dto/order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/strategies/jwt.strategy';
 
@@ -38,6 +39,24 @@ export class OrdersController {
     @Body() createDto: CreateOrderDto,
   ) {
     return this.ordersService.create(restaurantId, createDto);
+  }
+
+  // Public endpoint para tracking de orden (sin datos sensibles)
+  @Public()
+  @Get('orders/:id/public')
+  @ApiOperation({ summary: 'Get order status (public, token-based)' })
+  @ApiResponse({ status: 200, description: 'Order public data retrieved' })
+  async getPublicOrder(
+    @Param('restaurantId') restaurantId: string,
+    @Param('id') id: string,
+    @Query('token') token?: string,
+  ) {
+    const order = await this.ordersService.getPublicOrder(
+      restaurantId,
+      id,
+      token ?? '',
+    );
+    return { order };
   }
 
   // Admin endpoints (requieren autenticación)

@@ -5,6 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import * as crypto from 'crypto';
 import {
   CreateOrderDto,
   UpdateOrderStatusDto,
@@ -17,6 +18,32 @@ export class OrdersService {
   constructor(private prisma: PrismaService) {}
 
   async create(restaurantId: string, createDto: CreateOrderDto) {
+    if (!createDto) {
+      throw new BadRequestException('Request body is required');
+    }
+
+    const customerName = (createDto.customerName ?? '').trim();
+    const customerPhone = (createDto.customerPhone ?? '').trim();
+    const paymentMethod = (createDto.paymentMethod ?? '').trim();
+    const orderType = createDto.type;
+
+    if (!customerName) {
+      throw new BadRequestException('customerName is required');
+    }
+    if (!customerPhone) {
+      throw new BadRequestException('customerPhone is required');
+    }
+    if (!paymentMethod) {
+      throw new BadRequestException('paymentMethod is required');
+    }
+    if (!orderType) {
+      throw new BadRequestException('type is required');
+    }
+
+    if (!Array.isArray(createDto.items) || createDto.items.length === 0) {
+      throw new BadRequestException('items is required');
+    }
+
     // Validar que todos los dishes existan y pertenezcan al restaurante
     const dishIds = createDto.items.map((item) => item.dishId);
     const dishes = await this.prisma.dish.findMany({
@@ -48,20 +75,23 @@ export class OrdersService {
     });
 
     const subtotal = orderItems.reduce((sum, item) => sum + item.subtotal, 0);
-    const deliveryFee = createDto.type === 'DELIVERY' ? 500 : 0; // 500 centavos = $5
+    const deliveryFee = orderType === 'DELIVERY' ? 500 : 0; // 500 centavos = $5
     const tip = createDto.tip || 0;
     const total = subtotal + deliveryFee + tip;
+
+    const publicTrackingToken = crypto.randomBytes(32).toString('base64url');
 
     // Crear orden con items e historial inicial
     const order = await this.prisma.order.create({
       data: {
         restaurantId,
-        customerName: createDto.customerName,
+        publicTrackingToken,
+        customerName,
         customerEmail: createDto.customerEmail,
-        customerPhone: createDto.customerPhone,
-        type: createDto.type,
+        customerPhone,
+        type: orderType,
         status: OrderStatus.PENDING,
-        paymentMethod: createDto.paymentMethod,
+        paymentMethod,
         paymentStatus: 'PENDING',
         subtotal,
         deliveryFee,
@@ -91,6 +121,100 @@ export class OrdersService {
     });
 
     return order;
+  }
+
+  async getPublicOrder(
+    restaurantId: string,
+    orderId: string,
+    token: string,
+  ): Promise<{
+    id: string;
+    restaurantId: string;
+    status: string;
+    paymentStatus: string;
+    paymentMethod: string;
+    type: string;
+    subtotal: number;
+    deliveryFee: number;
+    discount: number;
+    tip: number;
+    total: number;
+    createdAt: Date;
+    items: Array<{
+      title: string;
+      quantity: number;
+      unitPrice: number;
+      subtotal: number;
+    }>;
+  }> {
+    const normalizedToken = (token ?? '').trim();
+    if (!normalizedToken) {
+      throw new BadRequestException('token es requerido');
+    }
+
+    const order = await this.prisma.order.findFirst({
+      where: {
+        id: orderId,
+        restaurantId,
+      },
+      select: {
+        id: true,
+        restaurantId: true,
+        publicTrackingToken: true,
+        status: true,
+        paymentStatus: true,
+        paymentMethod: true,
+        type: true,
+        subtotal: true,
+        deliveryFee: true,
+        discount: true,
+        tip: true,
+        total: true,
+        createdAt: true,
+        items: {
+          select: {
+            quantity: true,
+            unitPrice: true,
+            subtotal: true,
+            dish: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Responder como "no existe" para evitar enumeración.
+    if (!order || !order.publicTrackingToken) {
+      throw new NotFoundException('Order not found');
+    }
+
+    if (order.publicTrackingToken !== normalizedToken) {
+      throw new NotFoundException('Order not found');
+    }
+
+    return {
+      id: order.id,
+      restaurantId: order.restaurantId,
+      status: String(order.status),
+      paymentStatus: String(order.paymentStatus),
+      paymentMethod: String(order.paymentMethod),
+      type: String(order.type),
+      subtotal: order.subtotal,
+      deliveryFee: order.deliveryFee,
+      discount: order.discount,
+      tip: order.tip,
+      total: order.total,
+      createdAt: order.createdAt,
+      items: order.items.map((it) => ({
+        title: it.dish.name,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        subtotal: it.subtotal,
+      })),
+    };
   }
 
   async findAll(

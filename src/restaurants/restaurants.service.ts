@@ -11,6 +11,8 @@ import {
   UpdatePaymentMethodsDto,
   UpdateDeliveryZonesDto,
 } from './dto/restaurant-settings.dto';
+import * as fs from 'fs';
+import * as path from 'path';
 
 @Injectable()
 export class RestaurantsService {
@@ -652,5 +654,138 @@ export class RestaurantsService {
     });
 
     return { success: true, message: 'User removed successfully' };
+  }
+
+  /**
+   * Delete a restaurant asset by type (e.g., 'banner', 'logo')
+   */
+  async deleteAsset(id: string, type?: string) {
+    const restaurant: any = await this.prisma.restaurant.findUnique({
+      where: { id },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException(`Restaurant with ID ${id} not found`);
+    }
+
+    if (!type) {
+      throw new BadRequestException('Asset type is required');
+    }
+
+    const updateData: any = {};
+
+    const normalized = String(type).toLowerCase();
+
+    if (
+      normalized === 'banner' ||
+      normalized === 'cover' ||
+      normalized === 'coverimage'
+    ) {
+      updateData.coverImage = null;
+
+      // If branding JSON stores banner/cover, clear it as well
+      if (restaurant.branding && typeof restaurant.branding === 'object') {
+        const branding = { ...(restaurant.branding as object) } as any;
+        if (branding.bannerImage !== undefined) branding.bannerImage = null;
+        if (branding.coverImage !== undefined) branding.coverImage = null;
+        updateData.branding = branding;
+      }
+    } else if (normalized === 'logo') {
+      updateData.logo = null;
+
+      if (restaurant.branding && typeof restaurant.branding === 'object') {
+        const branding = { ...(restaurant.branding as object) } as any;
+        if (branding.logo !== undefined) branding.logo = null;
+        updateData.branding = branding;
+      }
+    } else {
+      throw new BadRequestException(`Unknown asset type: ${type}`);
+    }
+
+    const updated = await this.prisma.restaurant.update({
+      where: { id },
+      data: updateData,
+    });
+
+    return { restaurant: updated };
+  }
+
+  /**
+   * Save uploaded asset file to disk and update restaurant record
+   */
+  async saveUploadedAsset(id: string, file: Express.Multer.File, type: string) {
+    const restaurant: any = await this.prisma.restaurant.findUnique({
+      where: { id },
+    });
+
+    if (!restaurant) {
+      // remove file if saved by multer
+      try {
+        if (file && file.path && fs.existsSync(file.path))
+          fs.unlinkSync(file.path);
+      } catch (e) {}
+      throw new NotFoundException(`Restaurant with ID ${id} not found`);
+    }
+
+    const normalized = String(type).toLowerCase();
+
+    // Compute relative path to store in DB: /uploads/restaurants/:id/filename
+    const relativePath = `/uploads/restaurants/${id}/${path.basename(file.path)}`;
+
+    const updateData: any = {};
+
+    // Delete previous files if exist
+    const deleteIfExists = (p: string | null | undefined) => {
+      try {
+        if (!p) return;
+        const full = path.join(process.cwd(), p);
+        if (fs.existsSync(full)) fs.unlinkSync(full);
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    if (
+      normalized === 'banner' ||
+      normalized === 'cover' ||
+      normalized === 'coverimage'
+    ) {
+      // delete old coverImage
+      deleteIfExists(restaurant.coverImage);
+      updateData.coverImage = relativePath;
+
+      if (restaurant.branding && typeof restaurant.branding === 'object') {
+        const branding = { ...(restaurant.branding as object) } as any;
+        if (branding.bannerImage !== undefined)
+          deleteIfExists(branding.bannerImage);
+        branding.bannerImage = relativePath;
+        branding.coverImage = relativePath;
+        updateData.branding = branding;
+      }
+    } else if (normalized === 'logo') {
+      deleteIfExists(restaurant.logo);
+      updateData.logo = relativePath;
+
+      if (restaurant.branding && typeof restaurant.branding === 'object') {
+        const branding = { ...(restaurant.branding as object) } as any;
+        if (branding.logo !== undefined) deleteIfExists(branding.logo);
+        branding.logo = relativePath;
+        updateData.branding = branding;
+      }
+    } else {
+      // Unknown type: remove uploaded file and throw
+      try {
+        if (file && file.path && fs.existsSync(file.path))
+          fs.unlinkSync(file.path);
+      } catch (e) {}
+      throw new BadRequestException(`Unknown asset type: ${type}`);
+    }
+
+    const updated = await this.prisma.restaurant.update({
+      where: { id },
+      data: updateData,
+    });
+
+    return { restaurant: updated };
   }
 }

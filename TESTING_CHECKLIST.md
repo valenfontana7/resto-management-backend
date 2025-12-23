@@ -205,6 +205,15 @@ curl -X POST http://localhost:3000/api/restaurants/RESTAURANT_ID/orders \
 
 **Expected:** Status 201, retorna order completa
 **Save order ID!**
+**Save publicTrackingToken!**
+
+### [ ] GET `/api/restaurants/RESTAURANT_ID/orders/ORDER_ID/public?token=PUBLIC_TRACKING_TOKEN` (Público)
+
+```bash
+curl "http://localhost:3000/api/restaurants/RESTAURANT_ID/orders/ORDER_ID/public?token=PUBLIC_TRACKING_TOKEN"
+```
+
+**Expected:** Status 200, `{ order: {...} }` con datos limitados (sin customerName/customerPhone)
 
 ### [ ] GET `/api/restaurants/RESTAURANT_ID/orders`
 
@@ -394,6 +403,52 @@ curl -X PATCH http://localhost:3000/api/tables/TABLE_ID/restaurant/RESTAURANT_ID
 ---
 
 ## 💳 Payments (MercadoPago)
+
+### [ ] (Recomendado) Multi-tenant: POST `/api/mercadopago/tenant-token`
+
+```bash
+curl -X POST http://localhost:3000/api/mercadopago/tenant-token \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"restaurantId":"RESTAURANT_ID","accessToken":"MP_ACCESS_TOKEN"}'
+```
+
+**Expected:** Status 200, `{ "success": true }`
+
+### [ ] (Recomendado) Multi-tenant: GET `/api/mercadopago/tenant-token?restaurantId=RESTAURANT_ID`
+
+```bash
+curl "http://localhost:3000/api/mercadopago/tenant-token?restaurantId=RESTAURANT_ID" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+**Expected:** Status 200, `{ connected: true, createdAt: string }`
+
+### [ ] (Recomendado) Multi-tenant: DELETE `/api/mercadopago/tenant-token`
+
+```bash
+curl -X DELETE http://localhost:3000/api/mercadopago/tenant-token \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"restaurantId":"RESTAURANT_ID"}'
+```
+
+**Expected:** Status 200, `{ "success": true }`
+
+### [ ] (Recomendado) Public: POST `/api/mercadopago/preference`
+
+```bash
+curl -X POST http://localhost:3000/api/mercadopago/preference \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slug": "mi-resto",
+    "restaurantId": "RESTAURANT_ID",
+    "orderId": "ORDER_ID",
+    "items": [{"title":"Hamburguesa","quantity":1,"unit_price":12000}]
+  }'
+```
+
+**Expected:** Status 200, `{ preference: { id, init_point, sandbox_init_point } }`
 
 ### [ ] POST `/api/payments/create-preference/ORDER_ID`
 

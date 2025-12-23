@@ -42,12 +42,13 @@
 
 ### Orders (Dashboard Critical)
 
-| Frontend Endpoint                                        | Backend Endpoint                                         | Status   | Notas                      |
-| -------------------------------------------------------- | -------------------------------------------------------- | -------- | -------------------------- |
-| POST `/api/restaurants/:restaurantId/orders`             | POST `/api/restaurants/:restaurantId/orders`             | ✅ Listo | Público - crear orden      |
-| GET `/api/restaurants/:restaurantId/orders`              | GET `/api/restaurants/:restaurantId/orders`              | ✅ Listo | Admin - listar con filtros |
-| GET `/api/restaurants/:restaurantId/orders/:id`          | GET `/api/restaurants/:restaurantId/orders/:id`          | ✅ Listo | Detalle de orden           |
-| PATCH `/api/restaurants/:restaurantId/orders/:id/status` | PATCH `/api/restaurants/:restaurantId/orders/:id/status` | ✅ Listo | Cambiar estado             |
+| Frontend Endpoint                                        | Backend Endpoint                                         | Status   | Notas                        |
+| -------------------------------------------------------- | -------------------------------------------------------- | -------- | ---------------------------- |
+| POST `/api/restaurants/:restaurantId/orders`             | POST `/api/restaurants/:restaurantId/orders`             | ✅ Listo | Público - crear orden        |
+| GET `/api/restaurants/:restaurantId/orders`              | GET `/api/restaurants/:restaurantId/orders`              | ✅ Listo | Admin - listar con filtros   |
+| GET `/api/restaurants/:restaurantId/orders/:id`          | GET `/api/restaurants/:restaurantId/orders/:id`          | ✅ Listo | Detalle de orden             |
+| GET `/api/restaurants/:restaurantId/orders/:id/public`   | GET `/api/restaurants/:restaurantId/orders/:id/public`   | ✅ Listo | Público - tracking con token |
+| PATCH `/api/restaurants/:restaurantId/orders/:id/status` | PATCH `/api/restaurants/:restaurantId/orders/:id/status` | ✅ Listo | Cambiar estado               |
 
 ### Dashboard Stats
 
@@ -84,6 +85,14 @@
 | POST `/api/payments/create-preference/:orderId` | POST `/api/payments/create-preference/:orderId` | ✅ Listo | Crear preferencia MP |
 | POST `/api/payments/webhook`                    | POST `/api/payments/webhook`                    | ✅ Listo | Webhook MP (público) |
 | GET `/api/payments/status/:orderId`             | GET `/api/payments/status/:orderId`             | ✅ Listo | Estado de pago       |
+
+| Frontend Endpoint                                    | Backend Endpoint                                     | Status   | Notas                             |
+| ---------------------------------------------------- | ---------------------------------------------------- | -------- | --------------------------------- |
+| GET `/api/mercadopago/tenant-token?restaurantId=...` | GET `/api/mercadopago/tenant-token?restaurantId=...` | ✅ Listo | Multi-tenant token status         |
+| POST `/api/mercadopago/tenant-token`                 | POST `/api/mercadopago/tenant-token`                 | ✅ Listo | Multi-tenant upsert token (JWT)   |
+| DELETE `/api/mercadopago/tenant-token`               | DELETE `/api/mercadopago/tenant-token`               | ✅ Listo | Multi-tenant delete token (JWT)   |
+| POST `/api/mercadopago/preference`                   | POST `/api/mercadopago/preference`                   | ✅ Listo | Crear preferencia (public)        |
+| POST `/api/mercadopago/webhook`                      | POST `/api/mercadopago/webhook`                      | ✅ Listo | Webhook recomendado (idempotente) |
 
 ### Reservations
 

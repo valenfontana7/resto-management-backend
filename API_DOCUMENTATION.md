@@ -363,7 +363,92 @@
 
 ---
 
-## Payments (MercadoPago)
+## MercadoPago (Multi-tenant)
+
+Estos endpoints permiten conectar **un Access Token por restaurante** (persistido en Postgres y encriptado) y crear preferencias server-side.
+
+### GET `/api/mercadopago/tenant-token?restaurantId=...`
+
+**Protected** - Estado de conexión MercadoPago para un restaurante.
+
+**Response:**
+
+```json
+{
+  "connected": true,
+  "createdAt": "2025-12-14T00:00:00.000Z"
+}
+```
+
+### POST `/api/mercadopago/tenant-token`
+
+**Protected** - Guarda/actualiza el Access Token del restaurante (encriptado).
+
+**Body:**
+
+```json
+{
+  "restaurantId": "...",
+  "accessToken": "..."
+}
+```
+
+**Response:**
+
+```json
+{ "success": true }
+```
+
+### DELETE `/api/mercadopago/tenant-token`
+
+**Protected** - Borra el Access Token asociado al restaurante.
+
+**Body:**
+
+```json
+{ "restaurantId": "..." }
+```
+
+**Response:**
+
+```json
+{ "success": true }
+```
+
+### POST `/api/mercadopago/preference`
+
+**Public** - Crea preferencia de MercadoPago.
+
+**Body:**
+
+```json
+{
+  "slug": "mi-resto",
+  "restaurantId": "...",
+  "orderId": "...",
+  "items": [{ "title": "Hamburguesa", "quantity": 1, "unit_price": 12000 }]
+}
+```
+
+**Response:**
+
+```json
+{
+  "preference": {
+    "id": "...",
+    "init_point": "...",
+    "sandbox_init_point": "..."
+  }
+}
+```
+
+### POST `/api/mercadopago/webhook`
+
+**Public** - Webhook MercadoPago (recomendado). Guarda evento con idempotencia.
+
+---
+
+## Payments (MercadoPago) (Legacy/Compat)
 
 ### POST `/api/payments/create-preference/:orderId`
 
@@ -412,7 +497,10 @@ DATABASE_URL="postgresql://postgres:password@localhost:5432/resto_db?schema=publ
 JWT_SECRET="your-super-secret-jwt-key-change-in-production"
 
 # MercadoPago
-MERCADOPAGO_ACCESS_TOKEN="your-mercadopago-access-token"
+MERCADOPAGO_ACCESS_TOKEN="your-mercadopago-access-token" # opcional como fallback global
+MP_TOKEN_ENCRYPTION_KEY="" # requerida para multi-tenant (32 bytes: hex 64 chars o base64 32 bytes)
+BASE_URL="http://localhost:3000" # recomendado
+MERCADOPAGO_NOTIFICATION_URL="" # opcional
 
 # URLs
 FRONTEND_URL="http://localhost:5173"
@@ -449,4 +537,4 @@ Valid transitions:
 2. Prices are stored in **centavos** (multiply by 100 for AR pesos)
 3. The system uses **soft delete** for categories and dishes (deletedAt field)
 4. Restaurant ownership is automatically validated on all admin endpoints
-5. MercadoPago webhook must be configured in your MP dashboard pointing to `/api/payments/webhook`
+5. Recomendado: configurar MercadoPago webhook apuntando a `/api/mercadopago/webhook` (legacy: `/api/payments/webhook`)

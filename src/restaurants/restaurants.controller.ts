@@ -7,7 +7,11 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   ForbiddenException,
+  BadRequestException,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -16,7 +20,14 @@ import {
   ApiBody,
   ApiParam,
   ApiBearerAuth,
+  ApiQuery,
+  ApiConsumes,
 } from '@nestjs/swagger';
+
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import * as fs from 'fs';
+import { extname, join } from 'path';
 import { RestaurantsService } from './restaurants.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -325,5 +336,171 @@ export class RestaurantsController {
     }
 
     return this.restaurantsService.removeUser(id, userId);
+  }
+
+  @ApiOperation({ summary: 'Delete restaurant asset (logo, banner, ...)' })
+  @Delete(':id/assets')
+  @ApiBearerAuth()
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    description: 'Asset type (e.g., banner, logo) as query parameter',
+  })
+  async deleteAsset(
+    @Param('id') id: string,
+    @Body() body: { type?: string },
+    @CurrentUser() user: RequestUser,
+    @Query('type') queryType?: string,
+  ) {
+    if (user.restaurantId !== id) {
+      throw new ForbiddenException('You can only modify your own restaurant');
+    }
+
+    const type = body?.type ?? queryType;
+
+    if (!type) {
+      throw new BadRequestException('Asset type is required');
+    }
+
+    const result = await this.restaurantsService.deleteAsset(
+      id,
+      type as string,
+    );
+    return { success: true, result };
+  }
+
+  @ApiOperation({ summary: 'Upload restaurant asset (logo, banner, ...)' })
+  @Post(':id/assets')
+  @ApiBearerAuth()
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    description: 'Asset type (e.g., banner, logo) as query parameter',
+  })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (req, _file, cb) => {
+          try {
+            const restaurantId = req.params.id;
+            const dir = join(
+              process.cwd(),
+              'uploads',
+              'restaurants',
+              restaurantId,
+            );
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            cb(null, dir);
+          } catch (err) {
+            cb(err, join(process.cwd(), 'uploads'));
+          }
+        },
+        filename: (_req, file, cb) => {
+          const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          const extension = extname(file.originalname) || '';
+          cb(null, `${unique}${extension}`);
+        },
+      }),
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        type: { type: 'string' },
+      },
+    },
+  })
+  async uploadAsset(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: { type?: string },
+    @CurrentUser() user: RequestUser,
+    @Query('type') queryType?: string,
+  ) {
+    if (user.restaurantId !== id) {
+      throw new ForbiddenException('You can only modify your own restaurant');
+    }
+
+    const type = body?.type ?? queryType;
+    if (!type) {
+      throw new BadRequestException('Asset type is required');
+    }
+
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+
+    const result = await this.restaurantsService.saveUploadedAsset(
+      id,
+      file,
+      type as string,
+    );
+
+    return { success: true, result };
+  }
+
+  @ApiOperation({ summary: 'Upload restaurant logo (binary)' })
+  @Post(':id/logo')
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('logo', {
+      storage: diskStorage({
+        destination: (req, _file, cb) => {
+          try {
+            const restaurantId = req.params.id;
+            const dir = join(
+              process.cwd(),
+              'uploads',
+              'restaurants',
+              restaurantId,
+            );
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            cb(null, dir);
+          } catch (err) {
+            cb(err, join(process.cwd(), 'uploads'));
+          }
+        },
+        filename: (_req, file, cb) => {
+          const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          const extension = extname(file.originalname) || '';
+          cb(null, `${unique}${extension}`);
+        },
+      }),
+      limits: { fileSize: 10 * 1024 * 1024 },
+    }),
+  )
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        logo: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  async uploadLogo(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: RequestUser,
+  ) {
+    if (user.restaurantId !== id) {
+      throw new ForbiddenException('You can only modify your own restaurant');
+    }
+
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+
+    const result = await this.restaurantsService.saveUploadedAsset(
+      id,
+      file,
+      'logo',
+    );
+
+    return { success: true, result };
   }
 }

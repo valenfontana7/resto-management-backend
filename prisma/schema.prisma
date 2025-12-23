@@ -64,6 +64,7 @@ model Restaurant {
   roles           Role[]
   deliveryZones   DeliveryZone[]
   deliveryDrivers DeliveryDriver[]
+  mercadoPagoCredential MercadoPagoCredential?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -163,6 +164,9 @@ model Order {
   restaurantId String
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
+  // Public tracking (token secreto para consultar estado sin auth)
+  publicTrackingToken String? @unique
+
   // Customer info
   customerName  String
   customerEmail String?
@@ -246,6 +250,38 @@ model OrderStatusHistory {
 
   @@index([orderId])
   @@index([orderId, createdAt])
+}
+
+// ============================================
+// MERCADOPAGO (MULTI-TENANT TOKENS + WEBHOOKS)
+// ============================================
+
+model MercadoPagoCredential {
+  restaurantId String     @id
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  accessTokenCiphertext String
+  accessTokenLast4      String?
+  isSandbox             Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([restaurantId])
+}
+
+model WebhookEvent {
+  id        String @id @default(uuid())
+  provider  String @default("mercadopago")
+  eventKey  String @unique
+  payload   Json
+
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  error       String?
+
+  @@index([provider])
+  @@index([receivedAt])
 }
 
 enum OrderType {
