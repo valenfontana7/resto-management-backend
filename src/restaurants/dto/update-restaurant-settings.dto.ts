@@ -6,6 +6,9 @@ import {
   IsUrl,
   ValidateNested,
   Matches,
+  IsNumber,
+  Min,
+  Max,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -42,6 +45,24 @@ export class BrandingColorsDto {
   @IsString()
   @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
   background?: string;
+
+  @ApiPropertyOptional({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  primaryText?: string;
+
+  @ApiPropertyOptional({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  secondaryText?: string;
+
+  @ApiPropertyOptional({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  accentText?: string;
 }
 
 export class BrandingTypographyDto {
@@ -86,6 +107,93 @@ export class BrandingLayoutDto {
   compactMode?: boolean;
 }
 
+export class BrandingHeroDto {
+  @ApiPropertyOptional({ example: 60, minimum: 0, maximum: 100 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  overlayOpacity?: number;
+
+  @ApiPropertyOptional({ example: '#000000' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  overlayColor?: string;
+
+  @ApiPropertyOptional({ example: 'center', enum: ['left', 'center', 'right'] })
+  @IsOptional()
+  @IsEnum(['left', 'center', 'right'])
+  textAlign?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  textShadow?: boolean;
+
+  @ApiPropertyOptional({ example: 'md', enum: ['sm', 'md', 'lg', 'xl'] })
+  @IsOptional()
+  @IsEnum(['sm', 'md', 'lg', 'xl'])
+  minHeight?: string;
+}
+
+export class BrandingVisualDto {
+  @ApiPropertyOptional({
+    example: 'md',
+    enum: ['none', 'sm', 'md', 'lg', 'xl'],
+  })
+  @IsOptional()
+  @IsEnum(['none', 'sm', 'md', 'lg', 'xl'])
+  borderRadius?: string;
+
+  @ApiPropertyOptional({ example: 'md', enum: ['none', 'sm', 'md', 'lg'] })
+  @IsOptional()
+  @IsEnum(['none', 'sm', 'md', 'lg'])
+  cardShadow?: string;
+
+  @ApiPropertyOptional({
+    example: 'normal',
+    enum: ['compact', 'normal', 'relaxed'],
+  })
+  @IsOptional()
+  @IsEnum(['compact', 'normal', 'relaxed'])
+  spacing?: string;
+}
+
+export class BrandingSectionColorDto {
+  @ApiPropertyOptional({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  backgroundColor?: string;
+
+  @ApiPropertyOptional({ example: '#1f2937' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  textColor?: string;
+}
+
+export class BrandingSectionsDto {
+  @ApiPropertyOptional({ type: BrandingSectionColorDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingSectionColorDto)
+  hero?: BrandingSectionColorDto;
+
+  @ApiPropertyOptional({ type: BrandingSectionColorDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingSectionColorDto)
+  menu?: BrandingSectionColorDto;
+
+  @ApiPropertyOptional({ type: BrandingSectionColorDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingSectionColorDto)
+  footer?: BrandingSectionColorDto;
+}
+
 export class BrandingDto {
   @ApiPropertyOptional({ type: BrandingColorsDto })
   @IsOptional()
@@ -119,6 +227,24 @@ export class BrandingDto {
   @IsOptional()
   @IsString()
   favicon?: string;
+
+  @ApiPropertyOptional({ type: BrandingHeroDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingHeroDto)
+  hero?: BrandingHeroDto;
+
+  @ApiPropertyOptional({ type: BrandingVisualDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingVisualDto)
+  visual?: BrandingVisualDto;
+
+  @ApiPropertyOptional({ type: BrandingSectionsDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingSectionsDto)
+  sections?: BrandingSectionsDto;
 }
 
 // ==================== Features DTO ====================

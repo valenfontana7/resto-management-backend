@@ -206,13 +206,63 @@ export class RestaurantsService {
   async update(id: string, payload: any) {
     const updateData: any = {};
 
-    // Handle new JSON fields - ensure they are properly serialized
+    // Get current restaurant data for deep merge
+    const currentRestaurant = await this.prisma.restaurant.findUnique({
+      where: { id },
+    });
+
+    if (!currentRestaurant) {
+      throw new NotFoundException(`Restaurant with ID ${id} not found`);
+    }
+
+    // Handle branding with deep merge
     if (payload.branding !== undefined) {
-      // If branding is a string, parse it; otherwise use as-is
-      updateData.branding =
+      const newBranding =
         typeof payload.branding === 'string'
           ? JSON.parse(payload.branding)
           : payload.branding;
+
+      const currentBranding = (currentRestaurant.branding as any) || {};
+
+      // Deep merge branding preserving existing fields
+      updateData.branding = {
+        ...currentBranding,
+        ...newBranding,
+        colors: {
+          ...currentBranding.colors,
+          ...newBranding.colors,
+        },
+        layout: {
+          ...currentBranding.layout,
+          ...newBranding.layout,
+        },
+        typography: {
+          ...currentBranding.typography,
+          ...newBranding.typography,
+        },
+        hero: {
+          ...currentBranding.hero,
+          ...newBranding.hero,
+        },
+        visual: {
+          ...currentBranding.visual,
+          ...newBranding.visual,
+        },
+        sections: {
+          hero: {
+            ...currentBranding.sections?.hero,
+            ...newBranding.sections?.hero,
+          },
+          menu: {
+            ...currentBranding.sections?.menu,
+            ...newBranding.sections?.menu,
+          },
+          footer: {
+            ...currentBranding.sections?.footer,
+            ...newBranding.sections?.footer,
+          },
+        },
+      };
     }
 
     if (payload.features !== undefined) {
