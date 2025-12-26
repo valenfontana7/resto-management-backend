@@ -1,11 +1,7 @@
-// Simple config for Prisma runtime without depending on the `prisma` package
+require('dotenv').config();
+
 module.exports = {
   schema: 'prisma/schema.prisma',
-  migrations: {
-    path: 'prisma/migrations',
-  },
-  datasource: {
-    // Use process.env to avoid requiring the `prisma` package inside production images
-    url: process.env.DATABASE_URL,
-  },
+  migrations: { path: 'prisma/migrations' },
+  datasource: { url: process.env.DATABASE_URL },
 };
