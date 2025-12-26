@@ -1,6 +1,12 @@
 # Dockerfile
 FROM node:20-bullseye AS builder
 WORKDIR /app
+
+# Allow passing a DATABASE_URL at build time to satisfy prisma when generating the client.
+# It's safe to pass a placeholder via --build-arg if you don't want to embed production credentials.
+ARG DATABASE_URL
+ENV DATABASE_URL=${DATABASE_URL}
+
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
