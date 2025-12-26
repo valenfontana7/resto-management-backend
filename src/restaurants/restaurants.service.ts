@@ -19,19 +19,66 @@ export class RestaurantsService {
   constructor(private prisma: PrismaService) {}
 
   async findBySlug(slug: string) {
-    return this.prisma.restaurant.findUnique({
+    const r = await this.prisma.restaurant.findUnique({
       where: { slug },
-      include: {
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        email: true,
+        phone: true,
+        address: true,
+        city: true,
+        country: true,
+        postalCode: true,
+        logo: true,
+        coverImage: true,
+        minOrderAmount: true,
+        orderLeadTime: true,
+        branding: true,
+        features: true,
+        socialMedia: true,
         hours: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
+
+    if (!r) return null;
+    console.log(
+      '🔍 raw branding from prisma (findBySlug):',
+      JSON.stringify(r.branding, null, 2),
+    );
+    if (r.branding)
+      r.branding = this.normalizeBrandingForResponse(r.branding as any);
+    return r;
   }
 
   async findById(id: string) {
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        email: true,
+        phone: true,
+        address: true,
+        city: true,
+        country: true,
+        postalCode: true,
+        logo: true,
+        coverImage: true,
+        minOrderAmount: true,
+        orderLeadTime: true,
+        branding: true,
+        features: true,
+        socialMedia: true,
         hours: true,
+        createdAt: true,
+        updatedAt: true,
       },
     });
 
@@ -39,7 +86,29 @@ export class RestaurantsService {
       throw new NotFoundException(`Restaurant with ID ${id} not found`);
     }
 
+    if (restaurant.branding)
+      restaurant.branding = this.normalizeBrandingForResponse(
+        restaurant.branding as any,
+      );
     return restaurant;
+  }
+
+  private normalizeBrandingForResponse(branding: any) {
+    if (!branding || typeof branding !== 'object') return branding;
+    const out = { ...branding } as any;
+    try {
+      if ('hero' in out) {
+        out.hero = this.normalizeHero(out.hero);
+      }
+      if ('layout' in out) {
+        out.layout = this.normalizeLayout(out.layout);
+      }
+    } catch (e) {
+      // swallow - be permissive on read
+      out.hero = out.hero || null;
+      out.layout = out.layout || null;
+    }
+    return out;
   }
 
   async create(payload: any) {
@@ -217,52 +286,119 @@ export class RestaurantsService {
 
     // Handle branding with deep merge
     if (payload.branding !== undefined) {
-      const newBranding =
+      const incomingBranding =
         typeof payload.branding === 'string'
           ? JSON.parse(payload.branding)
           : payload.branding;
 
+      // Accept flat legacy keys and normalize into nested `branding` structure
+      const normalizeFlatToNested = (b: any) => {
+        if (!b || typeof b !== 'object') return b;
+        const out = { ...b } as any;
+
+        const map: Record<string, string[]> = {
+          hero_overlayOpacity: ['hero', 'overlayOpacity'],
+          hero_overlay_opacity: ['hero', 'overlayOpacity'],
+          hero_overlayColor: ['hero', 'overlayColor'],
+          hero_overlay_color: ['hero', 'overlayColor'],
+          hero_textShadow: ['hero', 'textShadow'],
+          hero_text_shadow: ['hero', 'textShadow'],
+          hero_textAlign: ['hero', 'textAlign'],
+          hero_text_align: ['hero', 'textAlign'],
+          hero_minHeight: ['hero', 'minHeight'],
+          hero_min_height: ['hero', 'minHeight'],
+          sections_hero_titleColor: ['sections', 'hero', 'titleColor'],
+          sections_hero_title_color: ['sections', 'hero', 'titleColor'],
+          sections_hero_descriptionColor: [
+            'sections',
+            'hero',
+            'descriptionColor',
+          ],
+          sections_hero_description_color: [
+            'sections',
+            'hero',
+            'descriptionColor',
+          ],
+          // single flag for meta text (rating, min delivery, location, hours)
+          hero_metaTextColor: ['hero', 'metaTextColor'],
+          hero_meta_text_color: ['hero', 'metaTextColor'],
+          sections_hero_metaTextColor: ['sections', 'hero', 'metaTextColor'],
+          sections_hero_meta_text_color: ['sections', 'hero', 'metaTextColor'],
+        };
+
+        for (const k of Object.keys(map)) {
+          if (k in out) {
+            const path = map[k];
+            let node = out;
+            // ensure root `sections` etc exist
+            if (path[0] === 'sections') {
+              out.sections = out.sections || {};
+            }
+            // build nested structure
+            let parent: any = out;
+            for (let i = 0; i < path.length - 1; i++) {
+              const p = path[i];
+              parent[p] = parent[p] || {};
+              parent = parent[p];
+            }
+            parent[path[path.length - 1]] = out[k];
+            delete out[k];
+          }
+        }
+
+        return out;
+      };
+
+      const normalizedFlat = normalizeFlatToNested(incomingBranding);
+
       const currentBranding = (currentRestaurant.branding as any) || {};
 
-      // Deep merge branding preserving existing fields
-      updateData.branding = {
+      // Sanitize incoming branding to convert {} placeholders to null for primitive fields
+      const sanitized = this.sanitizeBrandingInput(normalizedFlat);
+
+      // Merge nested objects safely, prioritizing incoming values when present
+      const mergedBranding: any = {
         ...currentBranding,
-        ...newBranding,
+        ...sanitized,
         colors: {
-          ...currentBranding.colors,
-          ...newBranding.colors,
+          ...(currentBranding.colors || {}),
+          ...(sanitized.colors || {}),
         },
         layout: {
-          ...currentBranding.layout,
-          ...newBranding.layout,
+          ...(currentBranding.layout || {}),
+          ...(sanitized.layout || {}),
         },
         typography: {
-          ...currentBranding.typography,
-          ...newBranding.typography,
+          ...(currentBranding.typography || {}),
+          ...(sanitized.typography || {}),
         },
         hero: {
-          ...currentBranding.hero,
-          ...newBranding.hero,
+          ...(currentBranding.hero || {}),
+          ...(sanitized.hero || {}),
         },
         visual: {
-          ...currentBranding.visual,
-          ...newBranding.visual,
+          ...(currentBranding.visual || {}),
+          ...(sanitized.visual || {}),
         },
         sections: {
           hero: {
-            ...currentBranding.sections?.hero,
-            ...newBranding.sections?.hero,
+            ...(currentBranding.sections?.hero || {}),
+            ...(sanitized.sections?.hero || {}),
           },
           menu: {
-            ...currentBranding.sections?.menu,
-            ...newBranding.sections?.menu,
+            ...(currentBranding.sections?.menu || {}),
+            ...(sanitized.sections?.menu || {}),
           },
           footer: {
-            ...currentBranding.sections?.footer,
-            ...newBranding.sections?.footer,
+            ...(currentBranding.sections?.footer || {}),
+            ...(sanitized.sections?.footer || {}),
           },
+          ...(currentBranding.sections || {}),
+          ...(sanitized.sections || {}),
         },
       };
+
+      updateData.branding = mergedBranding;
     }
 
     if (payload.features !== undefined) {
@@ -314,6 +450,54 @@ export class RestaurantsService {
       JSON.stringify(updateData, null, 2),
     );
 
+    // Process embedded base64 assets in branding (hero, sections, etc.)
+    // Normalize/validate hero and layout primitives before asset processing
+    if (updateData.branding) {
+      if (updateData.branding.hero !== undefined) {
+        updateData.branding.hero = this.normalizeHero(updateData.branding.hero);
+      }
+      if (updateData.branding.layout !== undefined) {
+        updateData.branding.layout = this.normalizeLayout(
+          updateData.branding.layout,
+        );
+      }
+
+      try {
+        updateData.branding = await this.processBrandingAssets(
+          id,
+          updateData.branding,
+          currentRestaurant.branding as any,
+        );
+      } catch (err) {
+        console.error('Error processing branding assets:', err.message || err);
+        throw err;
+      }
+    }
+
+    // Handle top-level logo/coverImage if provided as data URLs
+    if (
+      updateData.logo &&
+      typeof updateData.logo === 'string' &&
+      updateData.logo.startsWith('data:')
+    ) {
+      // delete previous logo
+      this.deleteFileIfExists(currentRestaurant.logo);
+      updateData.logo = await this.saveDataUrl(id, updateData.logo, 'logo');
+    }
+
+    if (
+      updateData.coverImage &&
+      typeof updateData.coverImage === 'string' &&
+      updateData.coverImage.startsWith('data:')
+    ) {
+      this.deleteFileIfExists(currentRestaurant.coverImage);
+      updateData.coverImage = await this.saveDataUrl(
+        id,
+        updateData.coverImage,
+        'cover',
+      );
+    }
+
     const updated = await this.prisma.restaurant.update({
       where: { id },
       data: updateData as any,
@@ -322,6 +506,10 @@ export class RestaurantsService {
       },
     });
 
+    console.log(
+      '🔁 raw updated from prisma (post-update):',
+      JSON.stringify(updated.branding, null, 2),
+    );
     console.log('✅ Restaurant updated:', {
       id: updated.id,
       hasBranding: !!updated.branding,
@@ -389,6 +577,290 @@ export class RestaurantsService {
       .replace(/^-+|-+$/g, '');
   }
 
+  private async saveDataUrl(
+    restaurantId: string,
+    dataUrl: string,
+    prefix = 'asset',
+  ): Promise<string> {
+    const match = /^data:(image\/[^;]+);base64,(.+)$/.exec(dataUrl);
+    if (!match) {
+      throw new BadRequestException('Invalid data URL for image');
+    }
+
+    const mime = match[1];
+    const b64 = match[2];
+    let ext = mime.split('/')[1] || 'png';
+    if (ext === 'jpeg') ext = 'jpg';
+
+    const filename = `${prefix}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}.${ext}`;
+
+    const dir = path.join(
+      process.cwd(),
+      'uploads',
+      'restaurants',
+      restaurantId,
+    );
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+    const full = path.join(dir, filename);
+    fs.writeFileSync(full, Buffer.from(b64, 'base64'));
+
+    return `/uploads/restaurants/${restaurantId}/${filename}`;
+  }
+
+  private deleteFileIfExists(p?: string | null) {
+    try {
+      if (!p) return;
+      const full = path.join(process.cwd(), p);
+      if (fs.existsSync(full)) fs.unlinkSync(full);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  private async processBrandingAssets(
+    restaurantId: string,
+    branding: any,
+    currentBranding: any,
+  ): Promise<any> {
+    if (!branding || typeof branding !== 'object') return branding;
+
+    const traverse = async (
+      node: any,
+      curNode: any,
+      pathKeys: string[] = [],
+    ) => {
+      if (node === null || node === undefined) return node;
+      // Preserve primitive values (boolean, number, etc.) as-is
+      if (typeof node !== 'object') return node;
+
+      if (typeof node === 'string') {
+        if (node.startsWith('data:')) {
+          // find previous value at same path
+          let prev = curNode;
+          for (const k of pathKeys) {
+            if (!prev) break;
+            prev = prev[k];
+          }
+          if (prev && typeof prev === 'string' && !prev.startsWith('data:')) {
+            this.deleteFileIfExists(prev);
+          }
+          const saved = await this.saveDataUrl(
+            restaurantId,
+            node,
+            pathKeys[pathKeys.length - 1] || 'asset',
+          );
+          return saved;
+        }
+        return node;
+      }
+
+      if (Array.isArray(node)) {
+        const out = [] as any[];
+        for (let i = 0; i < node.length; i++) {
+          out[i] = await traverse(node[i], curNode && curNode[i], [
+            ...pathKeys,
+            String(i),
+          ]);
+        }
+        return out;
+      }
+
+      // object
+      const result: any = {};
+      for (const key of Object.keys(node)) {
+        result[key] = await traverse(node[key], curNode && curNode[key], [
+          ...pathKeys,
+          key,
+        ]);
+      }
+      return result;
+    };
+
+    return traverse(branding, currentBranding, []);
+  }
+
+  private coerceBooleanField(value: any, fieldName: string) {
+    if (value === null || value === undefined) return value;
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const v = value.trim().toLowerCase();
+      if (v === 'true' || v === '1') return true;
+      if (v === 'false' || v === '0') return false;
+    }
+    // Coerce unexpected types (e.g. {}) to null for compatibility
+    return null;
+  }
+
+  private coerceOverlayOpacity(value: any) {
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'number') {
+      const n = Math.floor(value);
+      return Math.max(0, Math.min(100, n));
+    }
+    if (typeof value === 'string') {
+      const digits = value.trim();
+      if (/^-?\d+$/.test(digits)) {
+        const n = Math.floor(parseInt(digits, 10));
+        return Math.max(0, Math.min(100, n));
+      }
+    }
+    // Coerce unexpected types to null for compatibility
+    return null;
+  }
+
+  private validateHexColor(value: any) {
+    if (value === null || value === undefined) return null;
+    if (typeof value !== 'string') return null;
+    const v = value.trim();
+    if (/^#[0-9A-Fa-f]{6}$/.test(v)) return v;
+    return null;
+  }
+
+  private normalizeHero(hero: any) {
+    if (hero === null || hero === undefined) return null;
+    if (typeof hero !== 'object' || Array.isArray(hero)) {
+      // Coerce invalid hero shapes to null for compatibility
+      return null;
+    }
+
+    const out: any = {};
+
+    // overlayOpacity
+    if ('overlayOpacity' in hero) {
+      out.overlayOpacity = this.coerceOverlayOpacity(hero.overlayOpacity);
+    }
+
+    // overlayColor
+    if ('overlayColor' in hero) {
+      out.overlayColor = this.validateHexColor(hero.overlayColor);
+    }
+
+    // metaTextColor (single flag for rating/min delivery/location/horarios)
+    if ('metaTextColor' in hero) {
+      out.metaTextColor = this.validateHexColor(hero.metaTextColor);
+    }
+
+    // textShadow
+    if ('textShadow' in hero) {
+      out.textShadow = this.coerceBooleanField(
+        hero.textShadow,
+        'branding.hero.textShadow',
+      );
+    }
+
+    // textAlign
+    if ('textAlign' in hero) {
+      const val = hero.textAlign;
+      if (val === null) {
+        out.textAlign = null;
+      } else if (
+        typeof val === 'string' &&
+        ['left', 'center', 'right'].includes(val)
+      ) {
+        out.textAlign = val;
+      } else {
+        out.textAlign = null;
+      }
+    }
+
+    // minHeight
+    if ('minHeight' in hero) {
+      const val = hero.minHeight;
+      if (val === null) {
+        out.minHeight = null;
+      } else if (
+        typeof val === 'string' &&
+        ['sm', 'md', 'lg', 'xl'].includes(val)
+      ) {
+        out.minHeight = val;
+      } else {
+        out.minHeight = null;
+      }
+    }
+
+    // Keep other hero fields as-is if they exist but ensure primitives aren't objects
+    for (const k of Object.keys(hero)) {
+      if (
+        ![
+          'overlayOpacity',
+          'overlayColor',
+          'textShadow',
+          'textAlign',
+          'minHeight',
+        ].includes(k)
+      ) {
+        const v = hero[k];
+        if (v !== null && typeof v === 'object') {
+          out[k] = null;
+        } else {
+          out[k] = v;
+        }
+      }
+    }
+
+    return out;
+  }
+
+  private normalizeLayout(layout: any) {
+    if (layout === null || layout === undefined) return null;
+    if (typeof layout !== 'object' || Array.isArray(layout)) {
+      throw new BadRequestException(
+        'branding.layout must be an object or null',
+      );
+    }
+
+    const out: any = { ...layout };
+    const boolFields = ['showHeroSection', 'showStats', 'compactMode'];
+    for (const f of boolFields) {
+      if (f in layout) {
+        out[f] = this.coerceBooleanField(layout[f], `branding.layout.${f}`);
+      }
+    }
+    return out;
+  }
+
+  private sanitizeBrandingInput(branding: any) {
+    if (!branding || typeof branding !== 'object') return branding;
+    const out = { ...branding } as any;
+
+    // sanitize hero
+    if (out.hero && typeof out.hero === 'object') {
+      const h = { ...out.hero } as any;
+      if (
+        'overlayOpacity' in h &&
+        (h.overlayOpacity === null || typeof h.overlayOpacity === 'object')
+      ) {
+        h.overlayOpacity = null;
+      }
+      if (
+        'textShadow' in h &&
+        (h.textShadow === null || typeof h.textShadow === 'object')
+      ) {
+        h.textShadow = null;
+      }
+      if ('textAlign' in h && typeof h.textAlign === 'object') {
+        h.textAlign = null;
+      }
+      if ('minHeight' in h && typeof h.minHeight === 'object') {
+        h.minHeight = null;
+      }
+      out.hero = h;
+    }
+
+    // sanitize layout booleans
+    if (out.layout && typeof out.layout === 'object') {
+      const l = { ...out.layout } as any;
+      for (const f of ['showHeroSection', 'showStats', 'compactMode']) {
+        if (f in l && typeof l[f] === 'object') l[f] = null;
+      }
+      out.layout = l;
+    }
+
+    return out;
+  }
   // LEGACY METHOD - Use update() instead with branding JSON field
   /**
    * Update restaurant branding settings
@@ -518,6 +990,7 @@ export class RestaurantsService {
         id: true,
         email: true,
         name: true,
+        lastLogin: true,
         roleId: true,
         role: {
           select: {

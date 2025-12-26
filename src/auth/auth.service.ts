@@ -210,7 +210,14 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return this.generateAuthResponse(user);
+    // Update lastLogin timestamp
+    const updatedUser = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLogin: new Date() },
+      include: { restaurant: true, role: true },
+    });
+
+    return this.generateAuthResponse(updatedUser as User);
   }
 
   async validateUser(userId: string): Promise<User> {

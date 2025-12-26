@@ -59,11 +59,22 @@ export class TablesService {
       }
     }
 
+    const allowedShapes = ['SQUARE', 'ROUND', 'RECTANGLE'];
+    let shapeValue = 'SQUARE';
+    if (createDto.shape) {
+      shapeValue = String(createDto.shape).toUpperCase();
+      if (!allowedShapes.includes(shapeValue)) {
+        throw new BadRequestException(
+          `Invalid table shape: ${createDto.shape}`,
+        );
+      }
+    }
+
     const tableData: any = {
       restaurantId,
       number: createDto.number,
       capacity: createDto.capacity,
-      shape: createDto.shape || 'SQUARE',
+      shape: shapeValue,
     };
 
     if (createDto.areaId) {
@@ -240,7 +251,16 @@ export class TablesService {
 
     if (updateDto.number) updateData.number = updateDto.number;
     if (updateDto.capacity) updateData.capacity = updateDto.capacity;
-    if (updateDto.shape) updateData.shape = updateDto.shape;
+    if (updateDto.shape) {
+      const allowedShapes = ['SQUARE', 'ROUND', 'RECTANGLE'];
+      const shapeValue = String(updateDto.shape).toUpperCase();
+      if (!allowedShapes.includes(shapeValue)) {
+        throw new BadRequestException(
+          `Invalid table shape: ${updateDto.shape}`,
+        );
+      }
+      updateData.shape = shapeValue;
+    }
     if (updateDto.areaId !== undefined) updateData.areaId = updateDto.areaId;
     if (updateDto.position) {
       updateData.positionX = updateDto.position.x;
