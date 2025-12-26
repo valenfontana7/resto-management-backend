@@ -11,7 +11,12 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-const { PrismaClient } = require('@prisma/client');
+let PrismaClient;
+try {
+  ({ PrismaClient } = require('@prisma/client'));
+} catch (e) {
+  PrismaClient = null;
+}
 
 const uploadsDir = path.join(process.cwd(), 'uploads');
 const bucket = process.env.S3_BUCKET;
@@ -35,7 +40,33 @@ const s3 = new S3Client({
   forcePathStyle: process.env.S3_FORCE_PATH_STYLE === 'true' || false,
 });
 
-const prisma = new PrismaClient({});
+let prisma = null;
+let usePgFallback = false;
+if (PrismaClient) {
+  try {
+    prisma = new PrismaClient({});
+  } catch (err) {
+    console.warn('PrismaClient init failed, will fallback to pg if available:', err.message);
+    prisma = null;
+    usePgFallback = true;
+  }
+} else {
+  usePgFallback = true;
+}
+
+let pgClient = null;
+async function ensurePg() {
+  if (pgClient) return pgClient;
+  try {
+    const { Client } = require('pg');
+    pgClient = new Client({ connectionString: process.env.DATABASE_URL });
+    await pgClient.connect();
+    return pgClient;
+  } catch (e) {
+    console.error('pg client error:', e.message);
+    throw e;
+  }
+}
 
 function contentTypeFromFilename(filename) {
   const ext = path.extname(filename).toLowerCase();
@@ -140,7 +171,16 @@ async function main() {
   } catch (e) {
     console.error('Migration failed', e);
   } finally {
-    await prisma.$disconnect();
+    try {
+      if (prisma) await prisma.$disconnect();
+    } catch (e) {
+      console.warn('Error disconnecting prisma:', e.message);
+    }
+    try {
+      if (pgClient) await pgClient.end();
+    } catch (e) {
+      console.warn('Error disconnecting pg client:', e.message);
+    }
   }
 }
 
