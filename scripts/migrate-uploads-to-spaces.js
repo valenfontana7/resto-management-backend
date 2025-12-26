@@ -19,18 +19,23 @@ const region = process.env.S3_REGION;
 const endpoint = process.env.S3_ENDPOINT; // optional
 
 if (!bucket || !process.env.S3_KEY || !process.env.S3_SECRET) {
-  console.error('Missing S3 env vars. Set S3_BUCKET, S3_KEY, S3_SECRET (and S3_REGION).');
+  console.error(
+    'Missing S3 env vars. Set S3_BUCKET, S3_KEY, S3_SECRET (and S3_REGION).',
+  );
   process.exit(1);
 }
 
 const s3 = new S3Client({
   region: region || 'us-east-1',
   endpoint: endpoint || undefined,
-  credentials: { accessKeyId: process.env.S3_KEY, secretAccessKey: process.env.S3_SECRET },
+  credentials: {
+    accessKeyId: process.env.S3_KEY,
+    secretAccessKey: process.env.S3_SECRET,
+  },
   forcePathStyle: process.env.S3_FORCE_PATH_STYLE === 'true' || false,
 });
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({});
 
 function contentTypeFromFilename(filename) {
   const ext = path.extname(filename).toLowerCase();
@@ -95,14 +100,26 @@ async function walk(dir) {
         const localPath = `/uploads/${rel}`;
 
         // Restaurants: logo, coverImage
-        await prisma.restaurant.updateMany({ where: { logo: localPath }, data: { logo: publicUrl } });
-        await prisma.restaurant.updateMany({ where: { coverImage: localPath }, data: { coverImage: publicUrl } });
+        await prisma.restaurant.updateMany({
+          where: { logo: localPath },
+          data: { logo: publicUrl },
+        });
+        await prisma.restaurant.updateMany({
+          where: { coverImage: localPath },
+          data: { coverImage: publicUrl },
+        });
 
         // Categories: image
-        await prisma.category.updateMany({ where: { image: localPath }, data: { image: publicUrl } });
+        await prisma.category.updateMany({
+          where: { image: localPath },
+          data: { image: publicUrl },
+        });
 
         // Dishes: image
-        await prisma.dish.updateMany({ where: { image: localPath }, data: { image: publicUrl } });
+        await prisma.dish.updateMany({
+          where: { image: localPath },
+          data: { image: publicUrl },
+        });
 
         console.log('Uploaded and DB updated for', localPath);
       } catch (err) {
