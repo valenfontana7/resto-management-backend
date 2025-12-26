@@ -1,11 +1,11 @@
-const { defineConfig, env } = require('prisma/config');
-
-module.exports = defineConfig({
+// Simple config for Prisma runtime without depending on the `prisma` package
+module.exports = {
   schema: 'prisma/schema.prisma',
   migrations: {
     path: 'prisma/migrations',
   },
   datasource: {
-    url: env('DATABASE_URL'),
+    // Use process.env to avoid requiring the `prisma` package inside production images
+    url: process.env.DATABASE_URL,
   },
-});
+};
