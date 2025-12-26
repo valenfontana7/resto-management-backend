@@ -27,4 +27,4 @@ jobs:
           file: Dockerfile
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/resto-management-backend:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/restoo:latest
