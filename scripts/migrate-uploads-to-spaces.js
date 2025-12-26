@@ -46,7 +46,10 @@ if (PrismaClient) {
   try {
     prisma = new PrismaClient({});
   } catch (err) {
-    console.warn('PrismaClient init failed, will fallback to pg if available:', err.message);
+    console.warn(
+      'PrismaClient init failed, will fallback to pg if available:',
+      err.message,
+    );
     prisma = null;
     usePgFallback = true;
   }
@@ -130,27 +133,56 @@ async function walk(dir) {
         // Update DB: replace any field value equal to `/uploads/...` with public URL
         const localPath = `/uploads/${rel}`;
 
-        // Restaurants: logo, coverImage
-        await prisma.restaurant.updateMany({
-          where: { logo: localPath },
-          data: { logo: publicUrl },
-        });
-        await prisma.restaurant.updateMany({
-          where: { coverImage: localPath },
-          data: { coverImage: publicUrl },
-        });
-
-        // Categories: image
-        await prisma.category.updateMany({
-          where: { image: localPath },
-          data: { image: publicUrl },
-        });
-
-        // Dishes: image
-        await prisma.dish.updateMany({
-          where: { image: localPath },
-          data: { image: publicUrl },
-        });
+        // Update DB: use Prisma if available, otherwise pg fallback
+        if (prisma) {
+          await prisma.restaurant.updateMany({
+            where: { logo: localPath },
+            data: { logo: publicUrl },
+          });
+          await prisma.restaurant.updateMany({
+            where: { coverImage: localPath },
+            data: { coverImage: publicUrl },
+          });
+          await prisma.category.updateMany({
+            where: { image: localPath },
+            data: { image: publicUrl },
+          });
+          await prisma.dish.updateMany({
+            where: { image: localPath },
+            data: { image: publicUrl },
+          });
+        } else if (usePgFallback) {
+          const client = await ensurePg();
+          try {
+            await client.query(
+              'UPDATE "Restaurant" SET "logo" = $1 WHERE "logo" = $2',
+              [publicUrl, localPath],
+            );
+            await client.query(
+              'UPDATE "Restaurant" SET "coverImage" = $1 WHERE "coverImage" = $2',
+              [publicUrl, localPath],
+            );
+            await client.query(
+              'UPDATE "Category" SET "image" = $1 WHERE "image" = $2',
+              [publicUrl, localPath],
+            );
+            await client.query(
+              'UPDATE "Dish" SET "image" = $1 WHERE "image" = $2',
+              [publicUrl, localPath],
+            );
+          } catch (e) {
+            console.error(
+              'pg query error updating records for',
+              localPath,
+              e.message,
+            );
+          }
+        } else {
+          console.error(
+            'No DB client available to update records for',
+            localPath,
+          );
+        }
 
         console.log('Uploaded and DB updated for', localPath);
       } catch (err) {
