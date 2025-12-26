@@ -25,6 +25,8 @@ jobs:
         with:
           context: .
           file: Dockerfile
+          build-args: |
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
           push: true
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/restoo:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/resto-management-backend:latest
