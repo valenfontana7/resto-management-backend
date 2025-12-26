@@ -27,6 +27,18 @@ async function bootstrap() {
     prefix: '/uploads/',
   });
 
+  // Reescribe peticiones que NO empiecen por /api hacia /api/...
+  // Excluye recursos estáticos, documentación y rutas internas.
+  app.use((req: any, _res: any, next: any) => {
+    const url = req.url || '';
+    const excludes = ['/api', '/uploads', '/api/docs', '/swagger', '/favicon.ico', '/robots.txt'];
+    if (excludes.some((p) => url === p || url.startsWith(p + '/'))) return next();
+    if (url.startsWith('/api')) return next();
+
+    req.url = '/api' + (url.startsWith('/') ? url : '/' + url);
+    next();
+  });
+
   // CORS: permitir solicitudes desde el frontend y permitir cookies/credenciales
   const frontendRaw = (process.env.FRONTEND_URL ?? '').trim();
   const allowedOrigins = frontendRaw
