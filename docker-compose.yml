@@ -39,6 +39,13 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION: 7d
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      MP_TOKEN_ENCRYPTION_KEY: ${MP_TOKEN_ENCRYPTION_KEY:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_KEY: ${S3_KEY:-}
+      S3_SECRET: ${S3_SECRET:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
     ports:
       - '4000:4000'
     volumes:
