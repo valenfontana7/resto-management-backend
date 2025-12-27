@@ -19,6 +19,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 # Copiar artefactos desde builder (incluye node_modules con .prisma)
 COPY --from=builder /app/package.json /app/package-lock.json ./
+COPY --from=builder /app/prisma.config.ts ./
+COPY --from=builder /app/prisma.config.js ./
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
