@@ -5,6 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UploadsService } from '../../uploads/uploads.service';
 import { CreateDishDto, UpdateDishDto } from './dto/dish.dto';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -18,7 +19,10 @@ export interface DishFilters {
 
 @Injectable()
 export class DishesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private uploadsService: UploadsService,
+  ) {}
 
   async findAllPublic(restaurantId: string, filters?: DishFilters) {
     const where: any = {
@@ -37,7 +41,12 @@ export class DishesService {
       orderBy: [{ category: { order: 'asc' } }, { name: 'asc' }],
     });
 
-    return { dishes, total: dishes.length };
+    const normalized = dishes.map((d) => ({
+      ...d,
+      image: d.image ? this.uploadsService.resolvePublicUrl(d.image) : d.image,
+    }));
+
+    return { dishes: normalized, total: normalized.length };
   }
 
   async findAll(restaurantId: string, userId: string, filters?: DishFilters) {
@@ -48,8 +57,10 @@ export class DishesService {
       deletedAt: null,
     };
 
-    // Limpiar imágenes rotas (404)
-    await this.cleanBrokenImages(restaurantId);
+    // Limpiar imágenes rotas (solo cuando se usa FS local)
+    if (!this.uploadsService.isS3Enabled()) {
+      await this.cleanBrokenImages(restaurantId);
+    }
 
     if (filters?.categoryId) where.categoryId = filters.categoryId;
     if (filters?.available !== undefined) where.isAvailable = filters.available;
@@ -69,7 +80,12 @@ export class DishesService {
       orderBy: [{ category: { order: 'asc' } }, { name: 'asc' }],
     });
 
-    return { dishes, total: dishes.length };
+    const normalized = dishes.map((d) => ({
+      ...d,
+      image: d.image ? this.uploadsService.resolvePublicUrl(d.image) : d.image,
+    }));
+
+    return { dishes: normalized, total: normalized.length };
   }
 
   async create(restaurantId: string, userId: string, dto: CreateDishDto) {
@@ -246,9 +262,14 @@ export class DishesService {
     type: 'dish' | 'category',
   ): Promise<string | null> {
     try {
-      // Si ya es una URL válida (/uploads/...), retornarla directamente
-      if (base64String.startsWith('/uploads/')) {
+      // Si ya es una URL http(s), retornarla directamente
+      if (/^https?:\/\//i.test(base64String)) {
         return base64String;
+      }
+
+      // Si ya es una ruta local (/uploads/...), normalizar según backend (Spaces/CDN)
+      if (base64String.startsWith('/uploads/')) {
+        return this.uploadsService.resolvePublicUrl(base64String);
       }
 
       // Si es null o vacío, retornar null
@@ -296,20 +317,29 @@ export class DishesService {
 
       // Crear directorio si no existe
       const folderName = type === 'dish' ? 'dishes' : 'categories';
+      // Generar nombre único para el archivo
+      const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`;
+
+      const relativePath = `/uploads/${folderName}/${filename}`;
+
+      // Si está habilitado Spaces/S3, subimos y devolvemos URL pública
+      if (this.uploadsService.isS3Enabled()) {
+        const key = relativePath.replace(/^\//, '');
+        return await this.uploadsService.putPublicObject({
+          key,
+          body: buffer,
+          contentType: `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+        });
+      }
+
       const uploadDir = path.join(process.cwd(), 'uploads', folderName);
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
       }
 
-      // Generar nombre único para el archivo
-      const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`;
       const filepath = path.join(uploadDir, filename);
-
-      // Guardar archivo
       fs.writeFileSync(filepath, buffer);
-
-      // Retornar ruta relativa para guardar en DB
-      return `/uploads/${folderName}/${filename}`;
+      return relativePath;
     } catch (error) {
       throw new BadRequestException('Error saving image: ' + error.message);
     }
@@ -317,6 +347,8 @@ export class DishesService {
 
   private deleteImage(imagePath: string): void {
     try {
+      if (/^https?:\/\//i.test(imagePath)) return;
+      if (this.uploadsService.isS3Enabled()) return;
       const fullPath = path.join(process.cwd(), imagePath);
       if (fs.existsSync(fullPath)) {
         fs.unlinkSync(fullPath);

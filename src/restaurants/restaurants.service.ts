@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
+import { UploadsService } from '../uploads/uploads.service';
 import {
   UpdateBrandingDto,
   UpdatePaymentMethodsDto,
@@ -16,7 +17,10 @@ import * as path from 'path';
 
 @Injectable()
 export class RestaurantsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private uploadsService: UploadsService,
+  ) {}
 
   async findBySlug(slug: string) {
     const r = await this.prisma.restaurant.findUnique({
@@ -50,6 +54,9 @@ export class RestaurantsService {
       '🔍 raw branding from prisma (findBySlug):',
       JSON.stringify(r.branding, null, 2),
     );
+    if (r.logo) r.logo = this.uploadsService.resolvePublicUrl(r.logo);
+    if (r.coverImage)
+      r.coverImage = this.uploadsService.resolvePublicUrl(r.coverImage);
     if (r.branding)
       r.branding = this.normalizeBrandingForResponse(r.branding as any);
     return r;
@@ -86,6 +93,12 @@ export class RestaurantsService {
       throw new NotFoundException(`Restaurant with ID ${id} not found`);
     }
 
+    if (restaurant.logo)
+      restaurant.logo = this.uploadsService.resolvePublicUrl(restaurant.logo);
+    if (restaurant.coverImage)
+      restaurant.coverImage = this.uploadsService.resolvePublicUrl(
+        restaurant.coverImage,
+      );
     if (restaurant.branding)
       restaurant.branding = this.normalizeBrandingForResponse(
         restaurant.branding as any,
@@ -108,7 +121,23 @@ export class RestaurantsService {
       out.hero = out.hero || null;
       out.layout = out.layout || null;
     }
-    return out;
+
+    // Convert any legacy local paths (/uploads/...) into public URLs (Spaces/CDN)
+    const traverse = (node: any): any => {
+      if (node === null || node === undefined) return node;
+      if (typeof node === 'string') {
+        return this.uploadsService.resolvePublicUrl(node);
+      }
+      if (Array.isArray(node)) return node.map(traverse);
+      if (typeof node === 'object') {
+        const o: any = {};
+        for (const k of Object.keys(node)) o[k] = traverse(node[k]);
+        return o;
+      }
+      return node;
+    };
+
+    return traverse(out);
   }
 
   async create(payload: any) {
@@ -596,6 +625,18 @@ export class RestaurantsService {
       .toString(36)
       .slice(2, 8)}.${ext}`;
 
+    const buffer = Buffer.from(b64, 'base64');
+    const relativePath = `/uploads/restaurants/${restaurantId}/${filename}`;
+
+    if (this.uploadsService.isS3Enabled()) {
+      const key = relativePath.replace(/^\//, '');
+      return this.uploadsService.putPublicObject({
+        key,
+        body: buffer,
+        contentType: mime,
+      });
+    }
+
     const dir = path.join(
       process.cwd(),
       'uploads',
@@ -605,14 +646,17 @@ export class RestaurantsService {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
     const full = path.join(dir, filename);
-    fs.writeFileSync(full, Buffer.from(b64, 'base64'));
+    fs.writeFileSync(full, buffer);
 
-    return `/uploads/restaurants/${restaurantId}/${filename}`;
+    return relativePath;
   }
 
   private deleteFileIfExists(p?: string | null) {
     try {
       if (!p) return;
+      // If it's a remote URL, or if we are in Spaces mode, don't attempt local FS delete
+      if (/^https?:\/\//i.test(p)) return;
+      if (this.uploadsService.isS3Enabled()) return;
       const full = path.join(process.cwd(), p);
       if (fs.existsSync(full)) fs.unlinkSync(full);
     } catch (e) {
@@ -1254,6 +1298,24 @@ export class RestaurantsService {
 
     // Compute relative path to store in DB: /uploads/restaurants/:id/filename
     const relativePath = `/uploads/restaurants/${id}/${path.basename(file.path)}`;
+    const shouldUseS3 = this.uploadsService.isS3Enabled();
+    const storedValue = shouldUseS3
+      ? await this.uploadsService.putPublicObject({
+          key: relativePath.replace(/^\//, ''),
+          body: fs.readFileSync(file.path),
+          contentType: file.mimetype || 'application/octet-stream',
+        })
+      : relativePath;
+
+    // If using S3, remove the local temp file saved by multer
+    if (shouldUseS3) {
+      try {
+        if (file && file.path && fs.existsSync(file.path))
+          fs.unlinkSync(file.path);
+      } catch (e) {
+        // ignore
+      }
+    }
 
     const updateData: any = {};
 
@@ -1261,6 +1323,8 @@ export class RestaurantsService {
     const deleteIfExists = (p: string | null | undefined) => {
       try {
         if (!p) return;
+        if (/^https?:\/\//i.test(p)) return;
+        if (this.uploadsService.isS3Enabled()) return;
         const full = path.join(process.cwd(), p);
         if (fs.existsSync(full)) fs.unlinkSync(full);
       } catch (e) {
@@ -1275,24 +1339,24 @@ export class RestaurantsService {
     ) {
       // delete old coverImage
       deleteIfExists(restaurant.coverImage);
-      updateData.coverImage = relativePath;
+      updateData.coverImage = storedValue;
 
       if (restaurant.branding && typeof restaurant.branding === 'object') {
         const branding = { ...(restaurant.branding as object) } as any;
         if (branding.bannerImage !== undefined)
           deleteIfExists(branding.bannerImage);
-        branding.bannerImage = relativePath;
-        branding.coverImage = relativePath;
+        branding.bannerImage = storedValue;
+        branding.coverImage = storedValue;
         updateData.branding = branding;
       }
     } else if (normalized === 'logo') {
       deleteIfExists(restaurant.logo);
-      updateData.logo = relativePath;
+      updateData.logo = storedValue;
 
       if (restaurant.branding && typeof restaurant.branding === 'object') {
         const branding = { ...(restaurant.branding as object) } as any;
         if (branding.logo !== undefined) deleteIfExists(branding.logo);
-        branding.logo = relativePath;
+        branding.logo = storedValue;
         updateData.branding = branding;
       }
     } else {

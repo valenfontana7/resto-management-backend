@@ -6,13 +6,17 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UploadsService } from '../../uploads/uploads.service';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto';
 import * as fs from 'fs';
 import * as path from 'path';
 
 @Injectable()
 export class CategoriesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private uploadsService: UploadsService,
+  ) {}
 
   async findAll(restaurantId: string, userId: string) {
     // Verificar ownership
@@ -48,6 +52,9 @@ export class CategoriesService {
     return {
       categories: categories.map((cat) => ({
         ...cat,
+        image: cat.image
+          ? this.uploadsService.resolvePublicUrl(cat.image)
+          : cat.image,
         dishCount: cat._count.dishes,
         _count: undefined,
       })),
@@ -246,9 +253,14 @@ export class CategoriesService {
     type: 'dish' | 'category',
   ): Promise<string | null> {
     try {
-      // Si ya es una URL válida (/uploads/...), retornarla directamente
-      if (base64String.startsWith('/uploads/')) {
+      // Si ya es una URL http(s), retornarla directamente
+      if (/^https?:\/\//i.test(base64String)) {
         return base64String;
+      }
+
+      // Si ya es una ruta local (/uploads/...), normalizar según backend (Spaces/CDN)
+      if (base64String.startsWith('/uploads/')) {
+        return this.uploadsService.resolvePublicUrl(base64String);
       }
 
       // Si es null o vacío, retornar null
@@ -296,20 +308,29 @@ export class CategoriesService {
 
       // Crear directorio si no existe
       const folderName = type === 'dish' ? 'dishes' : 'categories';
+      // Generar nombre único para el archivo
+      const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`;
+
+      const relativePath = `/uploads/${folderName}/${filename}`;
+
+      // Si está habilitado Spaces/S3, subimos y devolvemos URL pública
+      if (this.uploadsService.isS3Enabled()) {
+        const key = relativePath.replace(/^\//, '');
+        return await this.uploadsService.putPublicObject({
+          key,
+          body: buffer,
+          contentType: `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+        });
+      }
+
       const uploadDir = path.join(process.cwd(), 'uploads', folderName);
       if (!fs.existsSync(uploadDir)) {
         fs.mkdirSync(uploadDir, { recursive: true });
       }
 
-      // Generar nombre único para el archivo
-      const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`;
       const filepath = path.join(uploadDir, filename);
-
-      // Guardar archivo
       fs.writeFileSync(filepath, buffer);
-
-      // Retornar ruta relativa para guardar en DB
-      return `/uploads/${folderName}/${filename}`;
+      return relativePath;
     } catch (error) {
       throw new BadRequestException('Error saving image: ' + error.message);
     }
@@ -317,6 +338,8 @@ export class CategoriesService {
 
   private deleteImage(imagePath: string): void {
     try {
+      if (/^https?:\/\//i.test(imagePath)) return;
+      if (this.uploadsService.isS3Enabled()) return;
       const fullPath = path.join(process.cwd(), imagePath);
       if (fs.existsSync(fullPath)) {
         fs.unlinkSync(fullPath);
