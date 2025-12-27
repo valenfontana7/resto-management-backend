@@ -5,6 +5,7 @@ import { AppModule } from './app.module';
 import * as bodyParser from 'body-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
+import type { Request, Response, NextFunction } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -13,7 +14,7 @@ async function bootstrap() {
   app.use(
     bodyParser.json({
       limit: '10mb',
-      verify: (req: any, _res, buf) => {
+      verify: (req: Request & { rawBody?: Buffer }, _res, buf) => {
         req.rawBody = buf;
       },
     }),
@@ -29,20 +30,39 @@ async function bootstrap() {
 
   // Reescribe peticiones que NO empiecen por /api hacia /api/...
   // Excluye recursos estáticos, documentación y rutas internas.
-  app.use((req: any, _res: any, next: any) => {
+  app.use((req: Request, _res: Response, next: NextFunction) => {
     const url = req.url || '';
-    const excludes = ['/api', '/uploads', '/api/docs', '/swagger', '/favicon.ico', '/robots.txt'];
-    if (excludes.some((p) => url === p || url.startsWith(p + '/'))) return next();
-    if (url.startsWith('/api')) return next();
+    const excludes = [
+      '/api',
+      '/uploads',
+      '/api/docs',
+      '/swagger',
+      '/favicon.ico',
+      '/robots.txt',
+    ];
+    if (excludes.some((p) => url === p || url.startsWith(p + '/'))) {
+      return next();
+    }
+    if (url.startsWith('/api')) {
+      return next();
+    }
 
     req.url = '/api' + (url.startsWith('/') ? url : '/' + url);
     next();
   });
 
   // CORS: permitir solicitudes desde el frontend y permitir cookies/credenciales
+  const normalizeOrigin = (value: string) => {
+    const trimmed = value.trim().replace(/^['"]|['"]$/g, '');
+    return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+  };
+
   const frontendRaw = (process.env.FRONTEND_URL ?? '').trim();
   const allowedOrigins = frontendRaw
-    ? frontendRaw.split(',').map((s) => s.trim())
+    ? frontendRaw
+        .split(',')
+        .map((s) => normalizeOrigin(s))
+        .filter(Boolean)
     : [];
 
   app.enableCors({
@@ -50,15 +70,23 @@ async function bootstrap() {
       // Allow non-browser requests (e.g., server-to-server, curl)
       if (!origin) return callback(null, true);
 
+      const normalized = normalizeOrigin(origin);
+
       // If no FRONTEND_URL configured, reflect origin (safe for local dev)
       if (allowedOrigins.length === 0) return callback(null, true);
 
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+      if (allowedOrigins.includes(normalized)) return callback(null, true);
       return callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Origin',
+      'X-Requested-With',
+    ],
   });
 
   const config = new DocumentBuilder()
