@@ -106,6 +106,37 @@ export class RestaurantsService {
     return restaurant;
   }
 
+  async logVisit(
+    restaurantId: string,
+    meta?: {
+      ip?: string | null;
+      userAgent?: string | null;
+      referrer?: string | null;
+    },
+  ) {
+    try {
+      await this.prisma.analytics.create({
+        data: {
+          restaurantId,
+          metric: 'page_view',
+          value: 1,
+          metadata: meta || {},
+        },
+      });
+    } catch (e) {
+      console.warn('Failed to log analytics:', e?.message || e);
+    }
+  }
+
+  async getVisitsCount(restaurantId: string, from?: Date, to?: Date) {
+    const wherePrisma: any = { restaurantId, metric: 'page_view' };
+    if (from || to) wherePrisma.date = {};
+    if (from) wherePrisma.date.gte = from;
+    if (to) wherePrisma.date.lte = to;
+
+    return this.prisma.analytics.count({ where: wherePrisma });
+  }
+
   private normalizeBrandingForResponse(branding: any) {
     if (!branding || typeof branding !== 'object') return branding;
     const out = { ...branding } as any;
@@ -1221,6 +1252,86 @@ export class RestaurantsService {
     });
 
     return { success: true, message: 'User removed successfully' };
+  }
+
+  /**
+   * Soft-delete a restaurant. Checks for active orders/reservations and
+   * then marks the restaurant as INACTIVE, renames the slug to avoid
+   * unique constraint collisions and deactivates/disassociates users.
+   */
+  async deleteRestaurant(id: string, performedByUserId: string) {
+    const restaurant: any = await this.prisma.restaurant.findUnique({
+      where: { id },
+      include: { users: true },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException(`Restaurant with ID ${id} not found`);
+    }
+
+    // Check for active orders
+    const activeOrder = await this.prisma.order.findFirst({
+      where: {
+        restaurantId: id,
+        status: { in: ['PENDING', 'CONFIRMED', 'PREPARING', 'READY'] },
+      },
+      select: { id: true, status: true },
+    });
+
+    if (activeOrder) {
+      throw new BadRequestException(
+        'Cannot delete restaurant with active orders. Please complete or cancel them first.',
+      );
+    }
+
+    // Check for active reservations
+    const activeReservation = await this.prisma.reservation.findFirst({
+      where: {
+        restaurantId: id,
+        status: { in: ['PENDING', 'CONFIRMED', 'SEATED'] },
+      },
+      select: { id: true, status: true },
+    });
+
+    if (activeReservation) {
+      throw new BadRequestException(
+        'Cannot delete restaurant with active reservations. Please complete or cancel them first.',
+      );
+    }
+
+    const newSlug = `${restaurant.slug}-deleted-${Date.now()}`;
+
+    // Transaction: mark restaurant INACTIVE, rename slug
+    // - Deactivate and disassociate other users
+    // - Keep the performing user active but disassociate their restaurant and role
+    await this.prisma.$transaction(async (tx) => {
+      await tx.restaurant.update({
+        where: { id },
+        data: {
+          status: 'INACTIVE',
+          slug: newSlug,
+        },
+      });
+
+      // Deactivate and disassociate all OTHER users
+      await tx.user.updateMany({
+        where: { restaurantId: id, id: { not: performedByUserId } },
+        data: { isActive: false, restaurantId: null, roleId: null },
+      });
+
+      // For the performing user: keep account active, remove restaurant association and role
+      await tx.user.update({
+        where: { id: performedByUserId },
+        data: { restaurantId: null, roleId: null },
+      });
+    });
+
+    // Return minimal info so frontend can refresh session and redirect to onboarding
+    return {
+      message: 'Restaurant deleted (soft) successfully',
+      id,
+      redirect: '/onboarding',
+    };
   }
 
   /**

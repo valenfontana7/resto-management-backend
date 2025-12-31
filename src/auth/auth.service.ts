@@ -2,7 +2,6 @@ import {
   Injectable,
   ConflictException,
   UnauthorizedException,
-  BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -13,8 +12,10 @@ import { User } from '@prisma/client';
 export interface JwtPayload {
   sub: string; // userId
   email: string;
-  roleId: string;
-  restaurantId: string;
+  roleId: string | null;
+  restaurantId: string | null;
+  roleName?: string | null;
+  restaurantSlug?: string | null;
 }
 
 export interface AuthResponse {
@@ -22,8 +23,10 @@ export interface AuthResponse {
     id: string;
     email: string;
     name: string;
-    roleId: string;
-    restaurantId: string;
+    roleId: string | null;
+    restaurantId: string | null;
+    roleName?: string | null;
+    restaurantSlug?: string | null;
   };
   token: string;
   expiresAt: string;
@@ -78,28 +81,8 @@ export class AuthService {
           name: true,
         },
       });
-
-      const token = this.jwtService.sign({
-        sub: user.id,
-        email: user.email,
-        roleId: null,
-        restaurantId: null,
-      });
-
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7);
-
-      return {
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          roleId: null as any,
-          restaurantId: null as any,
-        },
-        token,
-        expiresAt: expiresAt.toISOString(),
-      };
+      // Use generateAuthResponse to include proper claims (roleName, restaurantSlug)
+      return await this.generateAuthResponse(user as any);
     }
 
     // Crear restaurante con roles del sistema y usuario admin en una transacción
@@ -183,7 +166,7 @@ export class AuthService {
       return { user, restaurant };
     });
 
-    return this.generateAuthResponse(result.user);
+    return await this.generateAuthResponse(result.user);
   }
 
   async login(dto: LoginDto): Promise<AuthResponse> {
@@ -217,10 +200,10 @@ export class AuthService {
       include: { restaurant: true, role: true },
     });
 
-    return this.generateAuthResponse(updatedUser as User);
+    return await this.generateAuthResponse(updatedUser as User);
   }
 
-  async validateUser(userId: string): Promise<User> {
+  async validateUser(userId: string): Promise<any> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -272,12 +255,23 @@ export class AuthService {
     return { user };
   }
 
-  private generateAuthResponse(user: User): AuthResponse {
+  private async generateAuthResponse(user: User | any): Promise<AuthResponse> {
+    // Ensure role and restaurant relations are present
+    let fullUser = user;
+    if (!user || !('role' in user) || !('restaurant' in user)) {
+      fullUser = await this.prisma.user.findUnique({
+        where: { id: user.id },
+        include: { role: true, restaurant: true },
+      });
+    }
+
     const payload: JwtPayload = {
-      sub: user.id,
-      email: user.email,
-      roleId: user.roleId || '',
-      restaurantId: user.restaurantId || '',
+      sub: fullUser.id,
+      email: fullUser.email,
+      roleId: fullUser.roleId ?? null,
+      restaurantId: fullUser.restaurantId ?? null,
+      roleName: fullUser.role?.name ?? null,
+      restaurantSlug: fullUser.restaurant?.slug ?? null,
     };
 
     const token = this.jwtService.sign(payload);
@@ -288,15 +282,27 @@ export class AuthService {
 
     return {
       user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        roleId: user.roleId || '',
-        restaurantId: user.restaurantId || '',
+        id: fullUser.id,
+        email: fullUser.email,
+        name: fullUser.name,
+        roleId: fullUser.roleId ?? null,
+        restaurantId: fullUser.restaurantId ?? null,
+        roleName: fullUser.role?.name ?? null,
+        restaurantSlug: fullUser.restaurant?.slug ?? null,
       },
       token,
       expiresAt: expiresAt.toISOString(),
     };
+  }
+
+  // Public helper: generate AuthResponse (token + user) for a user id
+  async createAuthResponseForUserId(userId: string): Promise<AuthResponse> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { role: true, restaurant: true },
+    });
+    if (!user) throw new UnauthorizedException('User not found');
+    return await this.generateAuthResponse(user as any);
   }
 
   private generateSlug(name: string): string {
