@@ -456,6 +456,15 @@ export class RestaurantsService {
           ...(currentBranding.sections || {}),
           ...(sanitized.sections || {}),
         },
+        mobileMenu: {
+          ...(currentBranding.mobileMenu || {}),
+          ...(sanitized.mobileMenu || {}),
+          // Preserve items array if not explicitly sent in update
+          items:
+            sanitized.mobileMenu?.items !== undefined
+              ? sanitized.mobileMenu.items
+              : currentBranding.mobileMenu?.items,
+        },
       };
 
       updateData.branding = mergedBranding;

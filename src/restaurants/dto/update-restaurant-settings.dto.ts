@@ -194,6 +194,49 @@ export class BrandingSectionsDto {
   footer?: BrandingSectionColorDto;
 }
 
+export class MobileMenuItemDto {
+  @ApiPropertyOptional({ example: 'Inicio' })
+  @IsString()
+  label: string;
+
+  @ApiPropertyOptional({ example: '/' })
+  @IsString()
+  @Matches(/^(\/|https?:\/\/|tel:)/, {
+    message: 'href must start with /, http://, https://, or tel:',
+  })
+  href: string;
+
+  @ApiPropertyOptional({ example: 'Home' })
+  @IsOptional()
+  @IsString()
+  icon?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+}
+
+export class MobileMenuConfigDto {
+  @ApiPropertyOptional({ example: '#FF5722' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  backgroundColor?: string;
+
+  @ApiPropertyOptional({ example: '#FFFFFF' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  textColor?: string;
+
+  @ApiPropertyOptional({ type: [MobileMenuItemDto] })
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => MobileMenuItemDto)
+  items?: MobileMenuItemDto[];
+}
+
 export class BrandingDto {
   @ApiPropertyOptional({ type: BrandingColorsDto })
   @IsOptional()
@@ -245,6 +288,12 @@ export class BrandingDto {
   @ValidateNested()
   @Type(() => BrandingSectionsDto)
   sections?: BrandingSectionsDto;
+
+  @ApiPropertyOptional({ type: MobileMenuConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => MobileMenuConfigDto)
+  mobileMenu?: MobileMenuConfigDto;
 }
 
 // ==================== Features DTO ====================
