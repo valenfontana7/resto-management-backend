@@ -8,6 +8,7 @@ export interface RequestUser {
   email: string;
   roleId: string | null;
   restaurantId: string | null;
+  role?: string | null;
 }
 
 @Injectable()
@@ -29,6 +30,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: user.email,
       roleId: user.roleId || null,
       restaurantId: user.restaurantId || null,
+      role: user.role?.name || null,
     };
   }
 }

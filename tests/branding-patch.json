@@ -1,0 +1,16 @@
+{
+  "branding": {
+    "hero": {
+      "minHeight": "xl",
+      "textAlign": "center",
+      "textShadow": true,
+      "overlayColor": "#000000",
+      "overlayOpacity": 60
+    },
+    "layout": {
+      "showHeroSection": true,
+      "showStats": false,
+      "compactMode": false
+    }
+  }
+}

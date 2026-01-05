@@ -1,0 +1,46 @@
+version: '3.8'
+services:
+  app:
+    image: ${DOCKERHUB_IMAGE:-valenfontana7/resto-management-backend:latest}
+    restart: always
+    ports:
+      - '4000:4000'
+    volumes:
+      - ./uploads:/app/uploads:rw
+    depends_on:
+      - db
+    env_file:
+      - .env
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-resto_user}:${POSTGRES_PASSWORD:-255655}@db:5432/${POSTGRES_DB:-resto_db}?schema=public}
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-4000}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-resto_user}:${POSTGRES_PASSWORD:-255655}@db:5432/${POSTGRES_DB:-resto_db}?schema=public}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-7d}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      BACKEND_URL: ${BACKEND_URL:-}
+      MP_TOKEN_ENCRYPTION_KEY: ${MP_TOKEN_ENCRYPTION_KEY:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_KEY: ${S3_KEY:-}
+      S3_SECRET: ${S3_SECRET:-}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-resto}
+      POSTGRES_USER: ${POSTGRES_USER:-resto}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:

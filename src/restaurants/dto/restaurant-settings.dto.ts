@@ -191,6 +191,45 @@ export class BrandingLayoutDto {
   menuLayout?: string;
 }
 
+export class MobileMenuItemDto {
+  @IsString()
+  @IsNotEmpty()
+  label: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^(\/|https?:\/\/|tel:)/, {
+    message: 'href must start with /, http://, https://, or tel:',
+  })
+  href: string;
+
+  @IsOptional()
+  @IsString()
+  icon?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+}
+
+export class MobileMenuConfigDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  backgroundColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  textColor?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => MobileMenuItemDto)
+  items?: MobileMenuItemDto[];
+}
+
 export class UpdateBrandingDto {
   @IsOptional()
   @ValidateNested()
@@ -213,6 +252,11 @@ export class UpdateBrandingDto {
   @ValidateNested()
   @Type(() => BrandingLayoutDto)
   layout?: BrandingLayoutDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => MobileMenuConfigDto)
+  mobileMenu?: MobileMenuConfigDto;
 }
 
 // ==================== Payment Methods ====================

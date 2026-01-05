@@ -12,6 +12,8 @@ import {
   BadRequestException,
   UseInterceptors,
   UploadedFile,
+  Res,
+  Req,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -27,6 +29,8 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { RestaurantsService } from './restaurants.service';
+import { AuthService } from '../auth/auth.service';
+import type { Response, Request } from 'express';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/decorators/current-user.decorator';
@@ -43,7 +47,10 @@ import { UpdateRestaurantSettingsDto } from './dto/update-restaurant-settings.dt
 @ApiTags('Restaurants')
 @Controller('api/restaurants')
 export class RestaurantsController {
-  constructor(private readonly restaurantsService: RestaurantsService) {}
+  constructor(
+    private readonly restaurantsService: RestaurantsService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Public()
   @Get('slug/:slug')
@@ -51,8 +58,37 @@ export class RestaurantsController {
   @ApiParam({ name: 'slug', description: 'The slug of the restaurant' })
   @ApiResponse({ status: 200, description: 'Return the restaurant.' })
   @ApiResponse({ status: 404, description: 'Restaurant not found.' })
-  async getBySlug(@Param('slug') slug: string) {
+  async getBySlug(
+    @Param('slug') slug: string,
+    @Query('increment') increment?: string,
+    @Req() req?: Request,
+  ) {
     const restaurant = await this.restaurantsService.findBySlug(slug);
+    try {
+      if (restaurant?.id) {
+        const meta = {
+          ip:
+            (req?.headers['x-forwarded-for'] as string) ||
+            req?.socket?.remoteAddress ||
+            null,
+          userAgent: req?.headers['user-agent'] || null,
+          referrer:
+            (req?.headers['referer'] as string) ||
+            (req?.headers['referrer'] as string) ||
+            null,
+        };
+        // Only skip increment when client explicitly requests it via query
+        // param `increment=false`. Do NOT rely on Authorization header here.
+        const explicitNoIncrement =
+          typeof increment === 'string' && increment.toLowerCase() === 'false';
+        if (!explicitNoIncrement) {
+          this.restaurantsService.logVisit(restaurant.id, meta).catch(() => {});
+        }
+      }
+    } catch (e) {
+      // ignore analytics errors for public route
+    }
+
     return { restaurant };
   }
 
@@ -71,6 +107,32 @@ export class RestaurantsController {
     return { restaurant };
   }
 
+  @ApiOperation({ summary: 'Get restaurant analytics (visits count)' })
+  @ApiBearerAuth()
+  @Get(':id/analytics')
+  async getAnalytics(
+    @Param('id') id: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @CurrentUser() user?: RequestUser,
+  ) {
+    if (!user || user.restaurantId !== id) {
+      throw new ForbiddenException(
+        'You can only access your own restaurant analytics',
+      );
+    }
+
+    const fromDate = from ? new Date(from) : undefined;
+    const toDate = to ? new Date(to) : undefined;
+
+    const count = await this.restaurantsService.getVisitsCount(
+      id,
+      fromDate,
+      toDate,
+    );
+    return { success: true, count };
+  }
+
   @Post()
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new restaurant' })
@@ -82,7 +144,45 @@ export class RestaurantsController {
     description: 'The restaurant has been successfully created.',
   })
   async create(@Body() createDto: any, @CurrentUser() user: RequestUser) {
-    const restaurant = await this.restaurantsService.create(createDto);
+    // Support frontend onboarding payloads under `onboardingData` or legacy flat payload
+    let payload = createDto;
+    if (createDto?.onboardingData) {
+      const d = createDto.onboardingData;
+      const businessInfo = d.businessInfo || {};
+      const contact = d.contact || {};
+      const paymentMethods = d.paymentMethods || {};
+
+      payload = {
+        businessInfo: {
+          name: businessInfo.name || businessInfo.restaurantName || null,
+          type: businessInfo.type || businessInfo.businessType || null,
+          cuisineTypes: businessInfo.cuisineTypes || businessInfo.cuisine || [],
+          description: businessInfo.description || null,
+          logo: businessInfo.logo || null,
+        },
+        contact: {
+          email: contact.email,
+          phone: contact.phone,
+          address: contact.address,
+          city: contact.city,
+          country: contact.country,
+          postalCode: contact.postalCode,
+        },
+        branding: {},
+        businessRules: {
+          orders: {
+            minOrderAmount:
+              paymentMethods.minOrder || paymentMethods.minOrderAmount || 1000,
+            orderLeadTime: (d.estimatedTime && parseInt(d.estimatedTime)) || 30,
+          },
+        },
+        features: {},
+        hours: d.hours || {},
+        slug: contact.customSlug || undefined,
+      };
+    }
+
+    const restaurant = await this.restaurantsService.create(payload);
 
     // Associate restaurant with user
     await this.restaurantsService.associateUserWithRestaurant(
@@ -137,11 +237,19 @@ export class RestaurantsController {
       });
 
       return { restaurant };
-    } catch (error) {
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : JSON.stringify(error);
+      const stack = error instanceof Error ? error.stack : undefined;
+
       console.error('❌ Error updating restaurant:', {
         id,
-        error: error.message,
-        stack: error.stack,
+        error: message,
+        stack,
         payload: updateDto,
       });
       throw error;
@@ -360,10 +468,7 @@ export class RestaurantsController {
       throw new BadRequestException('Asset type is required');
     }
 
-    const result = await this.restaurantsService.deleteAsset(
-      id,
-      type as string,
-    );
+    const result = await this.restaurantsService.deleteAsset(id, type);
     return { success: true, result };
   }
 
@@ -457,7 +562,7 @@ export class RestaurantsController {
     const result = await this.restaurantsService.saveUploadedAsset(
       id,
       file,
-      type as string,
+      type,
     );
 
     return { success: true, result };
@@ -501,5 +606,51 @@ export class RestaurantsController {
     );
 
     return { success: true, result };
+  }
+
+  @ApiOperation({ summary: 'Delete restaurant (soft)' })
+  @Delete(':id')
+  @ApiBearerAuth()
+  async deleteRestaurant(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (user.restaurantId !== id) {
+      throw new ForbiddenException('You can only delete your own restaurant');
+    }
+
+    // Only owner allowed
+    // Allow both OWNER and Admin roles to delete the restaurant
+    const allowed = ['OWNER', 'Owner', 'owner', 'Admin', 'admin'];
+    if (!user.role || !allowed.includes(user.role)) {
+      throw new ForbiddenException(
+        'Only the owner or admin can delete the restaurant',
+      );
+    }
+
+    const result = await this.restaurantsService.deleteRestaurant(
+      id,
+      user.userId,
+    );
+
+    // Issue a fresh token for the performing user (now disassociated)
+    const authResp = await this.authService.createAuthResponseForUserId(
+      user.userId,
+    );
+
+    // Set cookie so frontend receives new auth-token automatically
+    res.cookie('auth-token', authResp.token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    return {
+      success: true,
+      result,
+      auth: { token: authResp.token, user: authResp.user },
+    };
   }
 }

@@ -278,7 +278,16 @@ export class DishesService {
 
       // Si ya es una URL absoluta (legacy), retornarla tal cual
       if (/^https?:\/\//i.test(base64String)) {
-        return base64String;
+        throw new BadRequestException(
+          'Legacy external URLs are not supported. Please upload the image to /api/uploads and send the returned key.',
+        );
+      }
+
+      // Si ya es una ruta local (/uploads/...), normalizar según backend (Spaces/CDN)
+      if (base64String.startsWith('/uploads/')) {
+        throw new BadRequestException(
+          'Legacy local uploads are not supported. Please upload the image to /api/uploads and send the returned key.',
+        );
       }
 
       // Si es null o vacío, retornar null
