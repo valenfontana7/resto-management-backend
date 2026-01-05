@@ -39,6 +39,18 @@ async function bootstrap() {
     const normalized = normalizeOrigin(origin).toLowerCase();
     if (!normalized) return false;
 
+    // Si la allowlist es solo de localhost (config típica de dev), no bloquear otras origins.
+    const isLocalDevList =
+      allowedOrigins.length > 0 &&
+      allowedOrigins.every((raw) => {
+        const entry = normalizeOrigin(raw).toLowerCase();
+        return (
+          /^https?:\/\/localhost(?::\d+)?$/.test(entry) ||
+          /^https?:\/\/127\.0\.0\.1(?::\d+)?$/.test(entry)
+        );
+      });
+    if (isLocalDevList) return true;
+
     let originUrl: URL | null = null;
     try {
       originUrl = new URL(normalized);
