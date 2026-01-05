@@ -11,6 +11,7 @@ import {
   UpdateOrderStatusDto,
   OrderFiltersDto,
   OrderStatus,
+  PaymentStatus,
 } from './dto/order.dto';
 
 @Injectable()
@@ -324,33 +325,57 @@ export class OrdersService {
       throw new NotFoundException(`Order with ID ${id} not found`);
     }
 
+    const parsed = this.parseOrderStatusOrPaymentStatus(updateDto.status);
+
+    // Caso especial: marcar como pagado (UI suele enviar status=paid)
+    if (parsed.kind === 'payment') {
+      const updatedOrder = await this.prisma.order.update({
+        where: { id },
+        data: {
+          paymentStatus: parsed.paymentStatus,
+        },
+        include: {
+          items: {
+            include: {
+              dish: true,
+            },
+          },
+          statusHistory: {
+            orderBy: {
+              createdAt: 'desc',
+            },
+            take: 5,
+          },
+        },
+      });
+
+      return updatedOrder;
+    }
+
     // Validar transiciones de estado válidas
-    this.validateStatusTransition(
-      order.status as OrderStatus,
-      updateDto.status,
-    );
+    this.validateStatusTransition(order.status as OrderStatus, parsed.status);
 
     // Actualizar orden y crear historial
     const updatedOrder = await this.prisma.order.update({
       where: { id },
       data: {
-        status: updateDto.status,
+        status: parsed.status,
         preparedAt:
-          updateDto.status === OrderStatus.READY
+          parsed.status === OrderStatus.READY
             ? new Date()
             : order.preparedAt,
         deliveredAt:
-          updateDto.status === OrderStatus.DELIVERED
+          parsed.status === OrderStatus.DELIVERED
             ? new Date()
             : order.deliveredAt,
         cancelledAt:
-          updateDto.status === OrderStatus.CANCELLED
+          parsed.status === OrderStatus.CANCELLED
             ? new Date()
             : order.cancelledAt,
         statusHistory: {
           create: {
             fromStatus: order.status as OrderStatus,
-            toStatus: updateDto.status,
+            toStatus: parsed.status,
             changedBy: userId,
             notes: updateDto.notes,
           },
@@ -372,6 +397,36 @@ export class OrdersService {
     });
 
     return updatedOrder;
+  }
+
+  private parseOrderStatusOrPaymentStatus(value: unknown):
+    | { kind: 'status'; status: OrderStatus }
+    | { kind: 'payment'; paymentStatus: PaymentStatus } {
+    const raw = String(value ?? '').trim();
+    if (!raw) {
+      throw new BadRequestException('status is required');
+    }
+
+    const normalized = raw.toUpperCase();
+
+    // Tolerancia a UI/clients que envían "paid" en el campo status.
+    if (normalized === 'PAID') {
+      return { kind: 'payment', paymentStatus: PaymentStatus.PAID };
+    }
+
+    // Alias comunes
+    if (normalized === 'CANCELED') {
+      return { kind: 'status', status: OrderStatus.CANCELLED };
+    }
+
+    const allowed = new Set<string>(Object.values(OrderStatus));
+    if (!allowed.has(normalized)) {
+      throw new BadRequestException(
+        `Invalid status: ${raw}. Allowed: ${Array.from(allowed).join(', ')}`,
+      );
+    }
+
+    return { kind: 'status', status: normalized as OrderStatus };
   }
 
   async getStats(restaurantId: string, userId: string) {
