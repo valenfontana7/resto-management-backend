@@ -56,9 +56,7 @@ export class UploadsController {
 
       const head = await this.s3.headObject(key);
 
-      const ifNoneMatch = (
-        res.req.headers['if-none-match'] as string | undefined
-      )?.trim();
+      const ifNoneMatch = res.req.headers['if-none-match']?.trim();
       if (ifNoneMatch && head.etag && ifNoneMatch === head.etag) {
         res.status(304);
         this.applyCacheHeaders(res, head);
@@ -156,8 +154,8 @@ export class UploadsController {
 
     const safeFolder =
       (folder || 'images')
-        .replace(/[^a-z0-9-_\/]/gi, '')
-        .replace(/^\/+|\/+$/g, '') || 'images';
+        .replace(/[^a-z0-9-_/]/gi, '')
+        .replace(/^/+|/+/$/g, '') || 'images';
 
     const extFromName = (file.originalname || '')
       .toLowerCase()
@@ -234,7 +232,7 @@ export class UploadsController {
     }
 
     // basic control char guard
-    if (/\u0000/.test(key)) {
+    if (/\x00/.test(key)) {
       throw new BadRequestException('Invalid key');
     }
 

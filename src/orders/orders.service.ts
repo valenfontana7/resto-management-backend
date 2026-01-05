@@ -584,7 +584,7 @@ export class OrdersService {
   async getTopDishes(restaurantId: string, userId: string, period: string) {
     await this.verifyRestaurantOwnership(restaurantId, userId);
 
-    let startDate = new Date();
+    const startDate = new Date();
     startDate.setHours(0, 0, 0, 0);
 
     if (period === 'week') {

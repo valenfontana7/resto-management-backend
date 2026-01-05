@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RestaurantsController } from './restaurants.controller';
 import { RestaurantsService } from './restaurants.service';
+import { AuthService } from '../auth/auth.service';
 
 describe('RestaurantsController', () => {
   let controller: RestaurantsController;
@@ -11,6 +12,10 @@ describe('RestaurantsController', () => {
       providers: [
         {
           provide: RestaurantsService,
+          useValue: {},
+        },
+        {
+          provide: AuthService,
           useValue: {},
         },
       ],

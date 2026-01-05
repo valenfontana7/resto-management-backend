@@ -97,7 +97,7 @@ export class RestaurantsService {
       mapped.coverImage = this.s3.toClientUrl(mapped.coverImage);
 
     if (mapped.branding && typeof mapped.branding === 'object') {
-      const branding: any = { ...(mapped.branding as any) };
+      const branding: any = { ...mapped.branding };
       if ('logo' in branding)
         branding.logo = this.s3.toClientUrl(branding.logo);
       if ('bannerImage' in branding)
@@ -143,7 +143,7 @@ export class RestaurantsService {
 
   private normalizeBrandingForResponse(branding: any) {
     if (!branding || typeof branding !== 'object') return branding;
-    const out = { ...branding } as any;
+    const out = { ...branding };
     try {
       if ('hero' in out) {
         out.hero = this.normalizeHero(out.hero);
@@ -151,7 +151,7 @@ export class RestaurantsService {
       if ('layout' in out) {
         out.layout = this.normalizeLayout(out.layout);
       }
-    } catch (e) {
+    } catch {
       // swallow - be permissive on read
       out.hero = out.hero || null;
       out.layout = out.layout || null;
@@ -424,7 +424,7 @@ export class RestaurantsService {
       // Accept flat legacy keys and normalize into nested `branding` structure
       const normalizeFlatToNested = (b: any) => {
         if (!b || typeof b !== 'object') return b;
-        const out = { ...b } as any;
+        const out = { ...b };
 
         const map: Record<string, string[]> = {
           hero_overlayOpacity: ['hero', 'overlayOpacity'],
@@ -459,7 +459,6 @@ export class RestaurantsService {
         for (const k of Object.keys(map)) {
           if (k in out) {
             const path = map[k];
-            let node = out;
             // ensure root `sections` etc exist
             if (path[0] === 'sections') {
               out.sections = out.sections || {};
@@ -639,7 +638,7 @@ export class RestaurantsService {
 
     const updated = await this.prisma.restaurant.update({
       where: { id },
-      data: updateData as any,
+      data: updateData,
       include: {
         hours: true,
       },
@@ -764,7 +763,7 @@ export class RestaurantsService {
 
       // Best-effort delete en Spaces
       void this.s3.deleteObjectByUrl(key);
-    } catch (e) {
+    } catch {
       // ignore
     }
   }
@@ -831,7 +830,7 @@ export class RestaurantsService {
     return traverse(branding, currentBranding, []);
   }
 
-  private coerceBooleanField(value: any, fieldName: string) {
+  private coerceBooleanField(value: any) {
     if (value === null || value === undefined) return value;
     if (typeof value === 'boolean') return value;
     if (typeof value === 'string') {
@@ -973,11 +972,11 @@ export class RestaurantsService {
 
   private sanitizeBrandingInput(branding: any) {
     if (!branding || typeof branding !== 'object') return branding;
-    const out = { ...branding } as any;
+    const out = { ...branding };
 
     // sanitize hero
     if (out.hero && typeof out.hero === 'object') {
-      const h = { ...out.hero } as any;
+      const h = { ...out.hero };
       if (
         'overlayOpacity' in h &&
         (h.overlayOpacity === null || typeof h.overlayOpacity === 'object')
@@ -1001,7 +1000,7 @@ export class RestaurantsService {
 
     // sanitize layout booleans
     if (out.layout && typeof out.layout === 'object') {
-      const l = { ...out.layout } as any;
+      const l = { ...out.layout };
       for (const f of ['showHeroSection', 'showStats', 'compactMode']) {
         if (f in l && typeof l[f] === 'object') l[f] = null;
       }
@@ -1048,7 +1047,7 @@ export class RestaurantsService {
   /**
    * Update payment methods configuration
    */
-  async updatePaymentMethods(id: string, config: UpdatePaymentMethodsDto) {
+  async updatePaymentMethods(id: string, _config: UpdatePaymentMethodsDto) {
     // Store as JSON in a dedicated field (requires migration)
     // For now, we'll use a simple approach with Restaurant fields
     const updateData: any = {};
@@ -1083,7 +1082,7 @@ export class RestaurantsService {
         features: {
           ...currentFeatures,
           delivery: enableDelivery,
-        } as any,
+        },
       },
     });
 
@@ -1458,6 +1457,14 @@ export class RestaurantsService {
         if (branding.logo !== undefined) branding.logo = null;
         updateData.branding = branding;
       }
+    } else if (normalized === 'favicon') {
+      if (restaurant.branding && typeof restaurant.branding === 'object') {
+        const branding = { ...(restaurant.branding as object) } as any;
+        if (branding.favicon !== undefined)
+          await this.s3.deleteObjectByUrl(branding.favicon);
+        if (branding.favicon !== undefined) branding.favicon = null;
+        updateData.branding = branding;
+      }
     } else {
       throw new BadRequestException(`Unknown asset type: ${type}`);
     }
@@ -1492,7 +1499,9 @@ export class RestaurantsService {
             normalized === 'cover' ||
             normalized === 'coverimage'
           ? 'banner'
-          : null;
+          : normalized === 'favicon'
+            ? 'favicon'
+            : null;
 
     if (!assetType) {
       throw new BadRequestException(`Unknown asset type: ${type}`);
@@ -1590,6 +1599,17 @@ export class RestaurantsService {
           await this.s3.deleteObjectByUrl(branding.logo);
         branding.logo = uploaded.key;
         updateData.branding = branding;
+      }
+    } else if (normalized === 'favicon') {
+      if (restaurant.branding && typeof restaurant.branding === 'object') {
+        const branding = { ...(restaurant.branding as object) } as any;
+        if (branding.favicon !== undefined)
+          await this.s3.deleteObjectByUrl(branding.favicon);
+        branding.favicon = uploaded.key;
+        updateData.branding = branding;
+      } else {
+        // Create branding object if it doesn't exist
+        updateData.branding = { favicon: uploaded.key };
       }
     } else {
       throw new BadRequestException(`Unknown asset type: ${type}`);

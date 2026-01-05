@@ -150,7 +150,7 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
     app = moduleRef.createNestApplication();
     await app.init();
 
-    const prisma = app.get(PrismaService) as any;
+    const prisma = app.get(PrismaService);
     await prisma.restaurant.create({
       data: {
         id: 'r1',
