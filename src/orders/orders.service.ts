@@ -361,9 +361,7 @@ export class OrdersService {
       data: {
         status: parsed.status,
         preparedAt:
-          parsed.status === OrderStatus.READY
-            ? new Date()
-            : order.preparedAt,
+          parsed.status === OrderStatus.READY ? new Date() : order.preparedAt,
         deliveredAt:
           parsed.status === OrderStatus.DELIVERED
             ? new Date()
@@ -399,7 +397,9 @@ export class OrdersService {
     return updatedOrder;
   }
 
-  private parseOrderStatusOrPaymentStatus(value: unknown):
+  private parseOrderStatusOrPaymentStatus(
+    value: unknown,
+  ):
     | { kind: 'status'; status: OrderStatus }
     | { kind: 'payment'; paymentStatus: PaymentStatus } {
     const raw = String(value ?? '').trim();
