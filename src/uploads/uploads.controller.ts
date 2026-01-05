@@ -210,7 +210,15 @@ export class UploadsController {
       // keep raw
     }
 
-    const key = decoded.replace(/^\/+/, '');
+    let key = decoded.replace(/^\/+/, '');
+
+    // Back-compat: si el cliente manda "uploads/..." como key, remover el prefijo.
+    if (key.startsWith('uploads/')) {
+      key = key.substring('uploads/'.length);
+    }
+
+    // Back-compat: si el cliente manda accidentalmente "api/uploads/..."
+    key = key.replace(/^api\/uploads\//, '');
 
     if (!key || key.length > 2048) {
       throw new BadRequestException('Invalid key');

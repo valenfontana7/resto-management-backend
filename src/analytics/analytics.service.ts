@@ -7,6 +7,15 @@ import { OrderStatus } from '@prisma/client';
 export class AnalyticsService {
   constructor(private prisma: PrismaService) {}
 
+  async getVisitsCount(restaurantId: string, from?: Date, to?: Date) {
+    const where: any = { restaurantId, metric: 'page_view' };
+    if (from || to) where.date = {};
+    if (from) where.date.gte = from;
+    if (to) where.date.lte = to;
+
+    return this.prisma.analytics.count({ where });
+  }
+
   /**
    * Get sales data over time
    */

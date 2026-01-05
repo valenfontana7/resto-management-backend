@@ -1,4 +1,11 @@
-import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Param,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AnalyticsQueryDto, TopItemsQueryDto } from './dto/analytics.dto';
@@ -7,6 +14,31 @@ import { AnalyticsQueryDto, TopItemsQueryDto } from './dto/analytics.dto';
 @UseGuards(JwtAuthGuard)
 export class AnalyticsController {
   constructor(private readonly analyticsService: AnalyticsService) {}
+
+  @Get('restaurant/:restaurantId/visits')
+  async getVisits(
+    @Param('restaurantId') restaurantId: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const fromDate = from ? new Date(from) : undefined;
+    const toDate = to ? new Date(to) : undefined;
+
+    if (from && Number.isNaN(fromDate?.getTime())) {
+      throw new BadRequestException('Invalid from date');
+    }
+    if (to && Number.isNaN(toDate?.getTime())) {
+      throw new BadRequestException('Invalid to date');
+    }
+
+    const visits = await this.analyticsService.getVisitsCount(
+      restaurantId,
+      fromDate,
+      toDate,
+    );
+
+    return { visits };
+  }
 
   @Get('restaurant/:restaurantId/sales')
   async getSales(
