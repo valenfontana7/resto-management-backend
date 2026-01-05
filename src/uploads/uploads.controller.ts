@@ -11,7 +11,14 @@ import {
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -29,24 +36,29 @@ export class UploadsController {
   @Get('presign-get')
   async presignGet(@Query('key') keyParam: string) {
     const key = this.normalizeAndValidateKey(keyParam);
-    const url = await this.s3.createPresignedGetUrl({ key, expiresInSeconds: 60 });
+    const url = await this.s3.createPresignedGetUrl({
+      key,
+      expiresInSeconds: 60,
+    });
     return { url, expiresInSeconds: 60 };
   }
 
   @Public()
   @ApiOperation({ summary: 'Proxy (stream) an object from Spaces by key' })
-  @ApiParam({ name: 'key', description: 'Object key inside the bucket (supports slashes)' })
+  @ApiParam({
+    name: 'key',
+    description: 'Object key inside the bucket (supports slashes)',
+  })
   @Get('*key')
-  async proxyGet(
-    @Param('key') keyParam: string,
-    @Res() res: Response,
-  ) {
+  async proxyGet(@Param('key') keyParam: string, @Res() res: Response) {
     try {
       const key = this.normalizeAndValidateKey(keyParam);
 
       const head = await this.s3.headObject(key);
 
-      const ifNoneMatch = (res.req.headers['if-none-match'] as string | undefined)?.trim();
+      const ifNoneMatch = (
+        res.req.headers['if-none-match'] as string | undefined
+      )?.trim();
       if (ifNoneMatch && head.etag && ifNoneMatch === head.etag) {
         res.status(304);
         this.applyCacheHeaders(res, head);
@@ -92,7 +104,10 @@ export class UploadsController {
 
   @Public()
   @ApiOperation({ summary: 'HEAD object from Spaces by key (metadata only)' })
-  @ApiParam({ name: 'key', description: 'Object key inside the bucket (supports slashes)' })
+  @ApiParam({
+    name: 'key',
+    description: 'Object key inside the bucket (supports slashes)',
+  })
   @Head('*key')
   async proxyHead(@Param('key') keyParam: string, @Res() res: Response) {
     try {
@@ -114,7 +129,9 @@ export class UploadsController {
   }
 
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Upload an image (stores in Spaces). Returns key to store in DB.' })
+  @ApiOperation({
+    summary: 'Upload an image (stores in Spaces). Returns key to store in DB.',
+  })
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileInterceptor('file', {
@@ -125,7 +142,8 @@ export class UploadsController {
   @ApiQuery({
     name: 'folder',
     required: false,
-    description: 'Optional folder/prefix (e.g., dishes, categories, restaurants)',
+    description:
+      'Optional folder/prefix (e.g., dishes, categories, restaurants)',
   })
   @Post('image')
   async uploadImage(
@@ -136,9 +154,14 @@ export class UploadsController {
       throw new BadRequestException('File is required');
     }
 
-    const safeFolder = (folder || 'images').replace(/[^a-z0-9-_\/]/gi, '').replace(/^\/+|\/+$/g, '') || 'images';
+    const safeFolder =
+      (folder || 'images')
+        .replace(/[^a-z0-9-_\/]/gi, '')
+        .replace(/^\/+|\/+$/g, '') || 'images';
 
-    const extFromName = (file.originalname || '').toLowerCase().match(/\.(jpg|jpeg|png|webp|gif|svg)$/)?.[0];
+    const extFromName = (file.originalname || '')
+      .toLowerCase()
+      .match(/\.(jpg|jpeg|png|webp|gif|svg)$/)?.[0];
     const extFromType = (() => {
       const ct = (file.mimetype || '').toLowerCase();
       if (ct === 'image/jpeg' || ct === 'image/jpg') return '.jpg';
@@ -168,7 +191,10 @@ export class UploadsController {
 
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete an image by key' })
-  @ApiParam({ name: 'key', description: 'Object key inside the bucket (supports slashes)' })
+  @ApiParam({
+    name: 'key',
+    description: 'Object key inside the bucket (supports slashes)',
+  })
   @Delete('image/*key')
   async deleteImage(@Param('key') keyParam: string) {
     const key = this.normalizeAndValidateKey(keyParam);
@@ -209,12 +235,19 @@ export class UploadsController {
 
   private applyCacheHeaders(
     res: Response,
-    head: { contentType?: string; contentLength?: number; etag?: string; lastModified?: Date },
+    head: {
+      contentType?: string;
+      contentLength?: number;
+      etag?: string;
+      lastModified?: Date;
+    },
   ) {
     if (head.contentType) res.setHeader('Content-Type', head.contentType);
-    if (typeof head.contentLength === 'number') res.setHeader('Content-Length', String(head.contentLength));
+    if (typeof head.contentLength === 'number')
+      res.setHeader('Content-Length', String(head.contentLength));
     if (head.etag) res.setHeader('ETag', head.etag);
-    if (head.lastModified) res.setHeader('Last-Modified', head.lastModified.toUTCString());
+    if (head.lastModified)
+      res.setHeader('Last-Modified', head.lastModified.toUTCString());
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   }
 

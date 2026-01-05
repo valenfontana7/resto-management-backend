@@ -367,7 +367,9 @@ export class RestaurantsController {
     return { success: true, result };
   }
 
-  @ApiOperation({ summary: 'Create a presigned upload URL for a restaurant asset' })
+  @ApiOperation({
+    summary: 'Create a presigned upload URL for a restaurant asset',
+  })
   @Get(':id/assets/presign')
   @ApiBearerAuth()
   @ApiQuery({

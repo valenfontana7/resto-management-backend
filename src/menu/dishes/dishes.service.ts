@@ -164,7 +164,8 @@ export class DishesService {
           // Actualizar imagen
           // Si viene base64 (data:image/...), subimos a S3 y borramos la anterior
           const isBase64 = /^data:image\//i.test(dto.image);
-          if (dish.image && isBase64) await this.s3.deleteObjectByUrl(dish.image);
+          if (dish.image && isBase64)
+            await this.s3.deleteObjectByUrl(dish.image);
           imagePath = await this.saveBase64Image(dto.image, 'dish');
         }
       }
@@ -270,7 +271,9 @@ export class DishesService {
     try {
       // Si ya es una URL/endpoint proxy, extraer key (para guardar key en DB)
       if (base64String.startsWith('/api/uploads/')) {
-        return base64String.replace(/^\/api\/uploads\//, '').split('?')[0] || null;
+        return (
+          base64String.replace(/^\/api\/uploads\//, '').split('?')[0] || null
+        );
       }
 
       // Si ya es una URL absoluta (legacy), retornarla tal cual

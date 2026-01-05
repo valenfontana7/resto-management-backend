@@ -19,7 +19,6 @@ async function bootstrap() {
   );
   app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
-
   // Nota: las imágenes se sirven exclusivamente desde S3 (no desde disco local).
 
   // CORS: permitir solicitudes desde el frontend y permitir cookies/credenciales

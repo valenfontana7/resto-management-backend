@@ -41,11 +41,11 @@ export class S3Service {
       undefined;
 
     this.proxyBaseUrl =
-      (this.config.get<string>('BASE_URL') ||
+      (
+        this.config.get<string>('BASE_URL') ||
         this.config.get<string>('BACKEND_URL') ||
-        '')
-        .trim() ||
-      undefined;
+        ''
+      ).trim() || undefined;
 
     const prefix = (
       this.config.get<string>('S3_KEY_PREFIX') ||
@@ -144,7 +144,8 @@ export class S3Service {
     );
 
     const requiredHeaders: Record<string, string> = {};
-    if (params.contentType) requiredHeaders['Content-Type'] = params.contentType;
+    if (params.contentType)
+      requiredHeaders['Content-Type'] = params.contentType;
     if (params.cacheControl)
       requiredHeaders['Cache-Control'] = params.cacheControl;
     if (this.objectAcl) requiredHeaders['x-amz-acl'] = String(this.objectAcl);
@@ -187,7 +188,9 @@ export class S3Service {
       return {
         contentType: head.ContentType,
         contentLength:
-          typeof head.ContentLength === 'number' ? head.ContentLength : undefined,
+          typeof head.ContentLength === 'number'
+            ? head.ContentLength
+            : undefined,
         etag: head.ETag,
         lastModified: head.LastModified,
       };

@@ -262,7 +262,9 @@ export class CategoriesService {
     try {
       // Si ya es una URL/endpoint proxy, extraer key (para guardar key en DB)
       if (base64String.startsWith('/api/uploads/')) {
-        return base64String.replace(/^\/api\/uploads\//, '').split('?')[0] || null;
+        return (
+          base64String.replace(/^\/api\/uploads\//, '').split('?')[0] || null
+        );
       }
 
       // Si ya es una URL absoluta (legacy), retornarla tal cual

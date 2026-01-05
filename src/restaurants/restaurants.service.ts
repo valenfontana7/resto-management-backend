@@ -60,7 +60,8 @@ export class RestaurantsService {
 
     if (mapped.branding && typeof mapped.branding === 'object') {
       const branding: any = { ...(mapped.branding as any) };
-      if ('logo' in branding) branding.logo = this.s3.toClientUrl(branding.logo);
+      if ('logo' in branding)
+        branding.logo = this.s3.toClientUrl(branding.logo);
       if ('bannerImage' in branding)
         branding.bannerImage = this.s3.toClientUrl(branding.bannerImage);
       if ('coverImage' in branding)
@@ -78,7 +79,7 @@ export class RestaurantsService {
     // Map frontend field names to backend field names
     const businessInfo = data.businessInfo || {};
     const restaurantName = businessInfo.restaurantName || businessInfo.name;
-    
+
     if (!restaurantName) {
       throw new Error('Restaurant name is required');
     }
@@ -137,7 +138,8 @@ export class RestaurantsService {
     }
 
     // Use customSlug if provided, otherwise generate from name
-    const slug = contact.customSlug || data.slug || this.generateSlug(restaurantName);
+    const slug =
+      contact.customSlug || data.slug || this.generateSlug(restaurantName);
 
     const existingRestaurant = await this.prisma.restaurant.findUnique({
       where: { slug },
@@ -193,9 +195,12 @@ export class RestaurantsService {
           minOrderAmount: businessRules.orders?.minOrderAmount || 1000,
           orderLeadTime: businessRules.orders?.orderLeadTime || 30,
 
-          hours: hoursData.length > 0 ? {
-            create: hoursData,
-          } : undefined,
+          hours:
+            hoursData.length > 0
+              ? {
+                  create: hoursData,
+                }
+              : undefined,
         },
       });
 
@@ -880,7 +885,12 @@ export class RestaurantsService {
     if (!ext) ext = '.jpg';
 
     const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const key = path.posix.join('restaurants', id, assetType, `${unique}${ext}`);
+    const key = path.posix.join(
+      'restaurants',
+      id,
+      assetType,
+      `${unique}${ext}`,
+    );
 
     return this.s3.createPresignedPutUrl({
       key,
@@ -910,7 +920,12 @@ export class RestaurantsService {
 
     const ext = (path.extname(file.originalname || '') || '').toLowerCase();
     const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const key = path.posix.join('restaurants', id, normalized, `${unique}${ext}`);
+    const key = path.posix.join(
+      'restaurants',
+      id,
+      normalized,
+      `${unique}${ext}`,
+    );
 
     const uploaded = await this.s3.uploadObject({
       key,
@@ -945,7 +960,8 @@ export class RestaurantsService {
 
       if (restaurant.branding && typeof restaurant.branding === 'object') {
         const branding = { ...(restaurant.branding as object) } as any;
-        if (branding.logo !== undefined) await this.s3.deleteObjectByUrl(branding.logo);
+        if (branding.logo !== undefined)
+          await this.s3.deleteObjectByUrl(branding.logo);
         branding.logo = uploaded.key;
         updateData.branding = branding;
       }
