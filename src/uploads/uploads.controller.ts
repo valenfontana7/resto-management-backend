@@ -155,7 +155,7 @@ export class UploadsController {
     const safeFolder =
       (folder || 'images')
         .replace(/[^a-z0-9-_/]/gi, '')
-        .replace(/^/+|/+/$/g, '') || 'images';
+        .replace(/^\/+|\/+$/g, '') || 'images';
 
     const extFromName = (file.originalname || '')
       .toLowerCase()

@@ -893,10 +893,7 @@ export class RestaurantsService {
 
     // textShadow
     if ('textShadow' in hero) {
-      out.textShadow = this.coerceBooleanField(
-        hero.textShadow,
-        'branding.hero.textShadow',
-      );
+      out.textShadow = this.coerceBooleanField(hero.textShadow);
     }
 
     // textAlign
@@ -964,7 +961,7 @@ export class RestaurantsService {
     const boolFields = ['showHeroSection', 'showStats', 'compactMode'];
     for (const f of boolFields) {
       if (f in layout) {
-        out[f] = this.coerceBooleanField(layout[f], `branding.layout.${f}`);
+        out[f] = this.coerceBooleanField(layout[f]);
       }
     }
     return out;
