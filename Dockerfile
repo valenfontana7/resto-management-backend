@@ -47,9 +47,6 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 # Verify dist was copied
 RUN ls -la /app/ && ls -la /app/dist/
 
-# Create uploads directory
-RUN mkdir -p uploads/dishes uploads/categories
-
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nestjs -u 1001

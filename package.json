@@ -35,6 +35,8 @@
     "@nestjs/websockets": "^11.1.9",
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.1",
+    "@aws-sdk/client-s3": "^3.879.0",
+    "@aws-sdk/s3-request-presigner": "^3.879.0",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",

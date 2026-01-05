@@ -6,8 +6,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateDishDto, UpdateDishDto } from './dto/dish.dto';
-import * as fs from 'fs';
 import * as path from 'path';
+import { S3Service } from '../../storage/s3.service';
 
 export interface DishFilters {
   categoryId?: string;
@@ -18,7 +18,10 @@ export interface DishFilters {
 
 @Injectable()
 export class DishesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly s3: S3Service,
+  ) {}
 
   async findAllPublic(restaurantId: string, filters?: DishFilters) {
     const where: any = {
@@ -37,7 +40,13 @@ export class DishesService {
       orderBy: [{ category: { order: 'asc' } }, { name: 'asc' }],
     });
 
-    return { dishes, total: dishes.length };
+    return {
+      dishes: dishes.map((d) => ({
+        ...d,
+        image: this.s3.toClientUrl(d.image),
+      })),
+      total: dishes.length,
+    };
   }
 
   async findAll(restaurantId: string, userId: string, filters?: DishFilters) {
@@ -47,9 +56,6 @@ export class DishesService {
       restaurantId,
       deletedAt: null,
     };
-
-    // Limpiar imágenes rotas (404)
-    await this.cleanBrokenImages(restaurantId);
 
     if (filters?.categoryId) where.categoryId = filters.categoryId;
     if (filters?.available !== undefined) where.isAvailable = filters.available;
@@ -69,7 +75,13 @@ export class DishesService {
       orderBy: [{ category: { order: 'asc' } }, { name: 'asc' }],
     });
 
-    return { dishes, total: dishes.length };
+    return {
+      dishes: dishes.map((d) => ({
+        ...d,
+        image: this.s3.toClientUrl(d.image),
+      })),
+      total: dishes.length,
+    };
   }
 
   async create(restaurantId: string, userId: string, dto: CreateDishDto) {
@@ -106,7 +118,12 @@ export class DishesService {
       include: { category: { select: { id: true, name: true } } },
     });
 
-    return { dish };
+    return {
+      dish: {
+        ...dish,
+        image: this.s3.toClientUrl(dish.image),
+      },
+    };
   }
 
   async update(dishId: string, userId: string, dto: UpdateDishDto) {
@@ -140,14 +157,14 @@ export class DishesService {
         if (dto.image === null || dto.image === '') {
           // Eliminar imagen
           if (dish.image) {
-            this.deleteImage(dish.image);
+            await this.s3.deleteObjectByUrl(dish.image);
           }
           imagePath = null;
         } else if (dto.image) {
           // Actualizar imagen
-          if (dish.image && !dto.image.startsWith('/uploads/')) {
-            this.deleteImage(dish.image);
-          }
+          // Si viene base64 (data:image/...), subimos a S3 y borramos la anterior
+          const isBase64 = /^data:image\//i.test(dto.image);
+          if (dish.image && isBase64) await this.s3.deleteObjectByUrl(dish.image);
           imagePath = await this.saveBase64Image(dto.image, 'dish');
         }
       }
@@ -169,7 +186,12 @@ export class DishesService {
         include: { category: { select: { id: true, name: true } } },
       });
 
-      return { dish: updated };
+      return {
+        dish: {
+          ...updated,
+          image: this.s3.toClientUrl(updated.image),
+        },
+      };
     } catch (error) {
       console.error('❌ Error updating dish:', {
         dishId,
@@ -194,7 +216,7 @@ export class DishesService {
 
     // Eliminar imagen si existe
     if (dish.image) {
-      this.deleteImage(dish.image);
+      await this.s3.deleteObjectByUrl(dish.image);
     }
 
     await this.prisma.dish.update({
@@ -246,8 +268,13 @@ export class DishesService {
     type: 'dish' | 'category',
   ): Promise<string | null> {
     try {
-      // Si ya es una URL válida (/uploads/...), retornarla directamente
-      if (base64String.startsWith('/uploads/')) {
+      // Si ya es una URL/endpoint proxy, extraer key (para guardar key en DB)
+      if (base64String.startsWith('/api/uploads/')) {
+        return base64String.replace(/^\/api\/uploads\//, '').split('?')[0] || null;
+      }
+
+      // Si ya es una URL absoluta (legacy), retornarla tal cual
+      if (/^https?:\/\//i.test(base64String)) {
         return base64String;
       }
 
@@ -294,65 +321,21 @@ export class DishesService {
         );
       }
 
-      // Crear directorio si no existe
       const folderName = type === 'dish' ? 'dishes' : 'categories';
-      const uploadDir = path.join(process.cwd(), 'uploads', folderName);
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-
-      // Generar nombre único para el archivo
       const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`;
-      const filepath = path.join(uploadDir, filename);
+      const key = path.posix.join(folderName, filename);
 
-      // Guardar archivo
-      fs.writeFileSync(filepath, buffer);
-
-      // Retornar ruta relativa para guardar en DB
-      return `/uploads/${folderName}/${filename}`;
-    } catch (error) {
-      throw new BadRequestException('Error saving image: ' + error.message);
-    }
-  }
-
-  private deleteImage(imagePath: string): void {
-    try {
-      const fullPath = path.join(process.cwd(), imagePath);
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
-      }
-    } catch (error) {
-      console.error('Error deleting image:', error);
-    }
-  }
-
-  /**
-   * Limpia imágenes rotas de la base de datos
-   * Si la imagen no existe en disco, la elimina de la BD
-   */
-  private async cleanBrokenImages(restaurantId: string): Promise<void> {
-    try {
-      const dishes = await this.prisma.dish.findMany({
-        where: { restaurantId, image: { not: null }, deletedAt: null },
-        select: { id: true, image: true },
+      const uploaded = await this.s3.uploadObject({
+        key,
+        body: buffer,
+        contentType: `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+        cacheControl: 'public, max-age=31536000, immutable',
       });
 
-      for (const dish of dishes) {
-        if (!dish.image) continue;
-
-        const fullPath = path.join(process.cwd(), dish.image);
-        if (!fs.existsSync(fullPath)) {
-          console.log(
-            `🧹 Cleaning broken image for dish ${dish.id}: ${dish.image}`,
-          );
-          await this.prisma.dish.update({
-            where: { id: dish.id },
-            data: { image: null },
-          });
-        }
-      }
+      // Guardamos el key en DB (bucket privado) y servimos vía /api/uploads/:key
+      return uploaded.key;
     } catch (error) {
-      console.error('Error cleaning broken images:', error);
+      throw new BadRequestException('Error saving image: ' + error.message);
     }
   }
 }

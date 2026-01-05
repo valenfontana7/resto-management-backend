@@ -7,12 +7,15 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto';
-import * as fs from 'fs';
 import * as path from 'path';
+import { S3Service } from '../../storage/s3.service';
 
 @Injectable()
 export class CategoriesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly s3: S3Service,
+  ) {}
 
   async findAll(restaurantId: string, userId: string) {
     // Verificar ownership
@@ -48,6 +51,7 @@ export class CategoriesService {
     return {
       categories: categories.map((cat) => ({
         ...cat,
+        image: this.s3.toClientUrl(cat.image),
         dishCount: cat._count.dishes,
         _count: undefined,
       })),
@@ -100,7 +104,12 @@ export class CategoriesService {
       },
     });
 
-    return { category };
+    return {
+      category: {
+        ...category,
+        image: this.s3.toClientUrl(category.image),
+      },
+    };
   }
 
   async update(categoryId: string, userId: string, dto: UpdateCategoryDto) {
@@ -138,7 +147,7 @@ export class CategoriesService {
     if (dto.image) {
       // Eliminar imagen anterior si existe
       if (category.image) {
-        this.deleteImage(category.image);
+        await this.s3.deleteObjectByUrl(category.image);
       }
       imagePath = await this.saveBase64Image(dto.image, 'category');
     }
@@ -154,7 +163,12 @@ export class CategoriesService {
       },
     });
 
-    return { category: updated };
+    return {
+      category: {
+        ...updated,
+        image: this.s3.toClientUrl(updated.image),
+      },
+    };
   }
 
   async delete(categoryId: string, userId: string) {
@@ -187,7 +201,7 @@ export class CategoriesService {
 
     // Eliminar imagen si existe
     if (category.image) {
-      this.deleteImage(category.image);
+      await this.s3.deleteObjectByUrl(category.image);
     }
 
     // Soft delete
@@ -246,8 +260,13 @@ export class CategoriesService {
     type: 'dish' | 'category',
   ): Promise<string | null> {
     try {
-      // Si ya es una URL válida (/uploads/...), retornarla directamente
-      if (base64String.startsWith('/uploads/')) {
+      // Si ya es una URL/endpoint proxy, extraer key (para guardar key en DB)
+      if (base64String.startsWith('/api/uploads/')) {
+        return base64String.replace(/^\/api\/uploads\//, '').split('?')[0] || null;
+      }
+
+      // Si ya es una URL absoluta (legacy), retornarla tal cual
+      if (/^https?:\/\//i.test(base64String)) {
         return base64String;
       }
 
@@ -294,35 +313,21 @@ export class CategoriesService {
         );
       }
 
-      // Crear directorio si no existe
       const folderName = type === 'dish' ? 'dishes' : 'categories';
-      const uploadDir = path.join(process.cwd(), 'uploads', folderName);
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-
-      // Generar nombre único para el archivo
       const filename = `${Date.now()}-${Math.random().toString(36).substring(7)}.${extension}`;
-      const filepath = path.join(uploadDir, filename);
+      const key = path.posix.join(folderName, filename);
 
-      // Guardar archivo
-      fs.writeFileSync(filepath, buffer);
+      const uploaded = await this.s3.uploadObject({
+        key,
+        body: buffer,
+        contentType: `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+        cacheControl: 'public, max-age=31536000, immutable',
+      });
 
-      // Retornar ruta relativa para guardar en DB
-      return `/uploads/${folderName}/${filename}`;
+      // Guardamos el key en DB (bucket privado) y servimos vía /api/uploads/:key
+      return uploaded.key;
     } catch (error) {
       throw new BadRequestException('Error saving image: ' + error.message);
-    }
-  }
-
-  private deleteImage(imagePath: string): void {
-    try {
-      const fullPath = path.join(process.cwd(), imagePath);
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
-      }
-    } catch (error) {
-      console.error('Error deleting image:', error);
     }
   }
 }

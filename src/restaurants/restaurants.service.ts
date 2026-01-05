@@ -11,20 +11,25 @@ import {
   UpdatePaymentMethodsDto,
   UpdateDeliveryZonesDto,
 } from './dto/restaurant-settings.dto';
-import * as fs from 'fs';
 import * as path from 'path';
+import { S3Service } from '../storage/s3.service';
 
 @Injectable()
 export class RestaurantsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly s3: S3Service,
+  ) {}
 
   async findBySlug(slug: string) {
-    return this.prisma.restaurant.findUnique({
+    const restaurant = await this.prisma.restaurant.findUnique({
       where: { slug },
       include: {
         hours: true,
       },
     });
+
+    return this.mapRestaurantForClient(restaurant);
   }
 
   async findById(id: string) {
@@ -39,18 +44,73 @@ export class RestaurantsService {
       throw new NotFoundException(`Restaurant with ID ${id} not found`);
     }
 
-    return restaurant;
+    return this.mapRestaurantForClient(restaurant);
+  }
+
+  private mapRestaurantForClient<T extends Record<string, any> | null>(
+    restaurant: T,
+  ): T {
+    if (!restaurant) return restaurant;
+
+    const mapped: any = { ...restaurant };
+
+    if ('logo' in mapped) mapped.logo = this.s3.toClientUrl(mapped.logo);
+    if ('coverImage' in mapped)
+      mapped.coverImage = this.s3.toClientUrl(mapped.coverImage);
+
+    if (mapped.branding && typeof mapped.branding === 'object') {
+      const branding: any = { ...(mapped.branding as any) };
+      if ('logo' in branding) branding.logo = this.s3.toClientUrl(branding.logo);
+      if ('bannerImage' in branding)
+        branding.bannerImage = this.s3.toClientUrl(branding.bannerImage);
+      if ('coverImage' in branding)
+        branding.coverImage = this.s3.toClientUrl(branding.coverImage);
+      mapped.branding = branding;
+    }
+
+    return mapped;
   }
 
   async create(payload: any) {
-    const data = payload.config || payload;
+    // Support both old structure (config/businessInfo) and new structure (onboardingData)
+    const data = payload.onboardingData || payload.config || payload;
 
-    if (!data.businessInfo?.name) {
+    // Map frontend field names to backend field names
+    const businessInfo = data.businessInfo || {};
+    const restaurantName = businessInfo.restaurantName || businessInfo.name;
+    
+    if (!restaurantName) {
       throw new Error('Restaurant name is required');
     }
 
-    const { businessInfo, contact, branding, businessRules, features, hours } =
-      data;
+    const contact = data.contact || {};
+    const branding = data.branding || {
+      colors: {
+        primary: '#4f46e5',
+        secondary: '#9333ea',
+        accent: '#ec4899',
+        text: '#1f2937',
+        background: '#ffffff',
+      },
+      layout: {
+        menuStyle: 'grid',
+        categoryDisplay: 'tabs',
+        showHeroSection: true,
+      },
+    };
+    const businessRules = data.businessRules || {
+      orders: {
+        minOrderAmount: 1000,
+        orderLeadTime: 30,
+      },
+    };
+    const features = data.features || {
+      onlineOrdering: true,
+      reservations: true,
+      delivery: false,
+      takeaway: true,
+    };
+    const hours = data.hours || {};
 
     const hoursData: any[] = [];
     const daysMap = {
@@ -63,20 +123,21 @@ export class RestaurantsService {
       saturday: 6,
     };
 
-    if (hours) {
+    if (hours && Object.keys(hours).length > 0) {
       for (const [day, schedule] of Object.entries(hours)) {
         if (daysMap[day] !== undefined) {
           hoursData.push({
             dayOfWeek: daysMap[day],
-            openTime: (schedule as any).openTime,
-            closeTime: (schedule as any).closeTime,
-            isOpen: (schedule as any).isOpen,
+            openTime: (schedule as any).openTime || '09:00',
+            closeTime: (schedule as any).closeTime || '22:00',
+            isOpen: (schedule as any).isOpen !== false,
           });
         }
       }
     }
 
-    const slug = data.slug || this.generateSlug(businessInfo.name);
+    // Use customSlug if provided, otherwise generate from name
+    const slug = contact.customSlug || data.slug || this.generateSlug(restaurantName);
 
     const existingRestaurant = await this.prisma.restaurant.findUnique({
       where: { slug },
@@ -94,22 +155,32 @@ export class RestaurantsService {
       const restaurant = await tx.restaurant.create({
         data: {
           slug,
-          name: businessInfo.name,
-          type: businessInfo.type,
-          cuisineTypes: businessInfo.cuisineTypes,
-          description: businessInfo.description,
+          name: restaurantName,
+          type: businessInfo.businessType || businessInfo.type || 'restaurant',
+          cuisineTypes: businessInfo.cuisine || businessInfo.cuisineTypes || [],
+          description: businessInfo.description || '',
 
-          email: contact.email,
-          phone: contact.phone,
-          address: contact.address,
-          city: contact.city,
-          country: contact.country,
-          postalCode: contact.postalCode,
+          email: contact.email || '',
+          phone: contact.phone || '',
+          address: contact.address || '',
+          city: contact.city || '',
+          country: contact.country || '',
+          postalCode: contact.postalCode || '',
 
           branding: {
-            colors: branding.colors,
-            layout: branding.layout,
-            typography: {
+            colors: branding.colors || {
+              primary: '#4f46e5',
+              secondary: '#9333ea',
+              accent: '#ec4899',
+              text: '#1f2937',
+              background: '#ffffff',
+            },
+            layout: branding.layout || {
+              menuStyle: 'grid',
+              categoryDisplay: 'tabs',
+              showHeroSection: true,
+            },
+            typography: branding.typography || {
               fontFamily: 'Inter',
               fontSize: 'md',
             },
@@ -119,12 +190,12 @@ export class RestaurantsService {
 
           socialMedia: {},
 
-          minOrderAmount: businessRules.orders.minOrderAmount,
-          orderLeadTime: businessRules.orders.orderLeadTime,
+          minOrderAmount: businessRules.orders?.minOrderAmount || 1000,
+          orderLeadTime: businessRules.orders?.orderLeadTime || 30,
 
-          hours: {
+          hours: hoursData.length > 0 ? {
             create: hoursData,
-          },
+          } : undefined,
         },
       });
 
@@ -731,20 +802,28 @@ export class RestaurantsService {
       normalized === 'cover' ||
       normalized === 'coverimage'
     ) {
+      await this.s3.deleteObjectByUrl(restaurant.coverImage);
       updateData.coverImage = null;
 
       // If branding JSON stores banner/cover, clear it as well
       if (restaurant.branding && typeof restaurant.branding === 'object') {
         const branding = { ...(restaurant.branding as object) } as any;
+        if (branding.bannerImage !== undefined)
+          await this.s3.deleteObjectByUrl(branding.bannerImage);
+        if (branding.coverImage !== undefined)
+          await this.s3.deleteObjectByUrl(branding.coverImage);
         if (branding.bannerImage !== undefined) branding.bannerImage = null;
         if (branding.coverImage !== undefined) branding.coverImage = null;
         updateData.branding = branding;
       }
     } else if (normalized === 'logo') {
+      await this.s3.deleteObjectByUrl(restaurant.logo);
       updateData.logo = null;
 
       if (restaurant.branding && typeof restaurant.branding === 'object') {
         const branding = { ...(restaurant.branding as object) } as any;
+        if (branding.logo !== undefined)
+          await this.s3.deleteObjectByUrl(branding.logo);
         if (branding.logo !== undefined) branding.logo = null;
         updateData.branding = branding;
       }
@@ -757,11 +836,62 @@ export class RestaurantsService {
       data: updateData,
     });
 
-    return { restaurant: updated };
+    return { restaurant: this.mapRestaurantForClient(updated) };
+  }
+
+  async presignAssetUpload(
+    id: string,
+    type: string,
+    opts?: { contentType?: string; filename?: string },
+  ) {
+    const restaurant: any = await this.prisma.restaurant.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException(`Restaurant with ID ${id} not found`);
+    }
+
+    const normalized = String(type).toLowerCase();
+    const assetType =
+      normalized === 'logo'
+        ? 'logo'
+        : normalized === 'banner' ||
+            normalized === 'cover' ||
+            normalized === 'coverimage'
+          ? 'banner'
+          : null;
+
+    if (!assetType) {
+      throw new BadRequestException(`Unknown asset type: ${type}`);
+    }
+
+    let ext = (opts?.filename ? path.extname(opts.filename) : '').toLowerCase();
+    if (!ext && opts?.contentType) {
+      const ct = opts.contentType.toLowerCase();
+      if (ct === 'image/jpeg' || ct === 'image/jpg') ext = '.jpg';
+      else if (ct === 'image/png') ext = '.png';
+      else if (ct === 'image/webp') ext = '.webp';
+      else if (ct === 'image/gif') ext = '.gif';
+      else if (ct === 'image/svg+xml') ext = '.svg';
+      else ext = '.jpg';
+    }
+    if (!ext) ext = '.jpg';
+
+    const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const key = path.posix.join('restaurants', id, assetType, `${unique}${ext}`);
+
+    return this.s3.createPresignedPutUrl({
+      key,
+      contentType: opts?.contentType,
+      cacheControl: 'public, max-age=31536000, immutable',
+      expiresInSeconds: 60,
+    });
   }
 
   /**
-   * Save uploaded asset file to disk and update restaurant record
+   * Save uploaded asset file to S3 and update restaurant record
    */
   async saveUploadedAsset(id: string, file: Express.Multer.File, type: string) {
     const restaurant: any = await this.prisma.restaurant.findUnique({
@@ -769,65 +899,57 @@ export class RestaurantsService {
     });
 
     if (!restaurant) {
-      // remove file if saved by multer
-      try {
-        if (file && file.path && fs.existsSync(file.path))
-          fs.unlinkSync(file.path);
-      } catch (e) {}
       throw new NotFoundException(`Restaurant with ID ${id} not found`);
     }
 
     const normalized = String(type).toLowerCase();
 
-    // Compute relative path to store in DB: /uploads/restaurants/:id/filename
-    const relativePath = `/uploads/restaurants/${id}/${path.basename(file.path)}`;
+    if (!file?.buffer || !file?.mimetype) {
+      throw new BadRequestException('Invalid upload: missing file buffer');
+    }
+
+    const ext = (path.extname(file.originalname || '') || '').toLowerCase();
+    const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const key = path.posix.join('restaurants', id, normalized, `${unique}${ext}`);
+
+    const uploaded = await this.s3.uploadObject({
+      key,
+      body: file.buffer,
+      contentType: file.mimetype,
+      cacheControl: 'public, max-age=31536000, immutable',
+    });
 
     const updateData: any = {};
-
-    // Delete previous files if exist
-    const deleteIfExists = (p: string | null | undefined) => {
-      try {
-        if (!p) return;
-        const full = path.join(process.cwd(), p);
-        if (fs.existsSync(full)) fs.unlinkSync(full);
-      } catch (e) {
-        // ignore
-      }
-    };
 
     if (
       normalized === 'banner' ||
       normalized === 'cover' ||
       normalized === 'coverimage'
     ) {
-      // delete old coverImage
-      deleteIfExists(restaurant.coverImage);
-      updateData.coverImage = relativePath;
+      await this.s3.deleteObjectByUrl(restaurant.coverImage);
+      updateData.coverImage = uploaded.key;
 
       if (restaurant.branding && typeof restaurant.branding === 'object') {
         const branding = { ...(restaurant.branding as object) } as any;
         if (branding.bannerImage !== undefined)
-          deleteIfExists(branding.bannerImage);
-        branding.bannerImage = relativePath;
-        branding.coverImage = relativePath;
+          await this.s3.deleteObjectByUrl(branding.bannerImage);
+        if (branding.coverImage !== undefined)
+          await this.s3.deleteObjectByUrl(branding.coverImage);
+        branding.bannerImage = uploaded.key;
+        branding.coverImage = uploaded.key;
         updateData.branding = branding;
       }
     } else if (normalized === 'logo') {
-      deleteIfExists(restaurant.logo);
-      updateData.logo = relativePath;
+      await this.s3.deleteObjectByUrl(restaurant.logo);
+      updateData.logo = uploaded.key;
 
       if (restaurant.branding && typeof restaurant.branding === 'object') {
         const branding = { ...(restaurant.branding as object) } as any;
-        if (branding.logo !== undefined) deleteIfExists(branding.logo);
-        branding.logo = relativePath;
+        if (branding.logo !== undefined) await this.s3.deleteObjectByUrl(branding.logo);
+        branding.logo = uploaded.key;
         updateData.branding = branding;
       }
     } else {
-      // Unknown type: remove uploaded file and throw
-      try {
-        if (file && file.path && fs.existsSync(file.path))
-          fs.unlinkSync(file.path);
-      } catch (e) {}
       throw new BadRequestException(`Unknown asset type: ${type}`);
     }
 
@@ -836,6 +958,6 @@ export class RestaurantsService {
       data: updateData,
     });
 
-    return { restaurant: updated };
+    return { restaurant: this.mapRestaurantForClient(updated) };
   }
 }

@@ -25,9 +25,7 @@ import {
 } from '@nestjs/swagger';
 
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import * as fs from 'fs';
-import { extname, join } from 'path';
+import { memoryStorage } from 'multer';
 import { RestaurantsService } from './restaurants.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -369,6 +367,47 @@ export class RestaurantsController {
     return { success: true, result };
   }
 
+  @ApiOperation({ summary: 'Create a presigned upload URL for a restaurant asset' })
+  @Get(':id/assets/presign')
+  @ApiBearerAuth()
+  @ApiQuery({
+    name: 'type',
+    required: true,
+    description: 'Asset type (e.g., banner, logo)',
+  })
+  @ApiQuery({
+    name: 'contentType',
+    required: false,
+    description: 'MIME type (e.g., image/png)',
+  })
+  @ApiQuery({
+    name: 'filename',
+    required: false,
+    description: 'Original filename (used to infer extension)',
+  })
+  async presignAssetUpload(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Query('type') type: string,
+    @Query('contentType') contentType?: string,
+    @Query('filename') filename?: string,
+  ) {
+    if (user.restaurantId !== id) {
+      throw new ForbiddenException('You can only modify your own restaurant');
+    }
+
+    if (!type) {
+      throw new BadRequestException('Asset type is required');
+    }
+
+    const result = await this.restaurantsService.presignAssetUpload(id, type, {
+      contentType,
+      filename,
+    });
+
+    return { success: true, result };
+  }
+
   @ApiOperation({ summary: 'Upload restaurant asset (logo, banner, ...)' })
   @Post(':id/assets')
   @ApiBearerAuth()
@@ -380,28 +419,7 @@ export class RestaurantsController {
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (req, _file, cb) => {
-          try {
-            const restaurantId = req.params.id;
-            const dir = join(
-              process.cwd(),
-              'uploads',
-              'restaurants',
-              restaurantId,
-            );
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            cb(null, dir);
-          } catch (err) {
-            cb(err, join(process.cwd(), 'uploads'));
-          }
-        },
-        filename: (_req, file, cb) => {
-          const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-          const extension = extname(file.originalname) || '';
-          cb(null, `${unique}${extension}`);
-        },
-      }),
+      storage: memoryStorage(),
       limits: { fileSize: 10 * 1024 * 1024 },
     }),
   )
@@ -449,28 +467,7 @@ export class RestaurantsController {
   @ApiConsumes('multipart/form-data')
   @UseInterceptors(
     FileInterceptor('logo', {
-      storage: diskStorage({
-        destination: (req, _file, cb) => {
-          try {
-            const restaurantId = req.params.id;
-            const dir = join(
-              process.cwd(),
-              'uploads',
-              'restaurants',
-              restaurantId,
-            );
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            cb(null, dir);
-          } catch (err) {
-            cb(err, join(process.cwd(), 'uploads'));
-          }
-        },
-        filename: (_req, file, cb) => {
-          const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-          const extension = extname(file.originalname) || '';
-          cb(null, `${unique}${extension}`);
-        },
-      }),
+      storage: memoryStorage(),
       limits: { fileSize: 10 * 1024 * 1024 },
     }),
   )

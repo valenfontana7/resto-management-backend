@@ -39,10 +39,22 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION: 7d
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      MP_TOKEN_ENCRYPTION_KEY: ${MP_TOKEN_ENCRYPTION_KEY}
+      MERCADOPAGO_ACCESS_TOKEN: ${MERCADOPAGO_ACCESS_TOKEN}
+      MERCADOPAGO_NOTIFICATION_URL: ${MERCADOPAGO_NOTIFICATION_URL}
+      BASE_URL: ${BASE_URL:-http://localhost:4000}
+      # DigitalOcean Spaces (S3-compatible) - Image storage
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_KEY: ${S3_KEY}
+      S3_SECRET: ${S3_SECRET}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL}
+      S3_ACL: ${S3_ACL}
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
+      S3_KEY_PREFIX: ${S3_KEY_PREFIX}
     ports:
       - '4000:4000'
-    volumes:
-      - ./uploads:/app/uploads
     healthcheck:
       test:
         [

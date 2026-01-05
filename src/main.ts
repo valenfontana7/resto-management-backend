@@ -4,7 +4,6 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import * as bodyParser from 'body-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { join } from 'path';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -20,12 +19,8 @@ async function bootstrap() {
   );
   app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
-  // Servir archivos estáticos desde la carpeta uploads
-  const uploadsPath = join(process.cwd(), 'uploads');
-  console.log('📁 Serving static files from:', uploadsPath);
-  app.useStaticAssets(uploadsPath, {
-    prefix: '/uploads/',
-  });
+
+  // Nota: las imágenes se sirven exclusivamente desde S3 (no desde disco local).
 
   // CORS: permitir solicitudes desde el frontend y permitir cookies/credenciales
   const frontendRaw = (process.env.FRONTEND_URL ?? '').trim();

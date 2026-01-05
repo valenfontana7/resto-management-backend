@@ -15,6 +15,7 @@ import { ReservationsModule } from './reservations/reservations.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { DeliveryModule } from './delivery/delivery.module';
 import { MercadoPagoModule } from './mercadopago/mercadopago.module';
+import { UploadsModule } from './uploads/uploads.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { MercadoPagoModule } from './mercadopago/mercadopago.module';
     AnalyticsModule,
     DeliveryModule,
     MercadoPagoModule,
+    UploadsModule,
   ],
   controllers: [AppController],
   providers: [
