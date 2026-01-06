@@ -3,6 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -20,349 +22,122 @@ import {
   DeliveryStatus,
 } from './dto/delivery.dto';
 import { Prisma } from '@prisma/client';
+import { DeliveryZonesService } from './services/delivery-zones.service';
+import { DeliveryDriversService } from './services/delivery-drivers.service';
 
 @Injectable()
 export class DeliveryService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => DeliveryZonesService))
+    private readonly zonesService: DeliveryZonesService,
+    @Inject(forwardRef(() => DeliveryDriversService))
+    private readonly driversService: DeliveryDriversService,
+  ) {}
 
   // ============================================
-  // DELIVERY ZONES
+  // DELIVERY ZONES (delegados)
   // ============================================
 
+  /**
+   * @deprecated Usa DeliveryZonesService.getZones() directamente
+   */
   async getZones(restaurantId: string) {
-    const zones = await this.prisma.deliveryZone.findMany({
-      where: { restaurantId },
-      include: {
-        _count: {
-          select: { deliveryOrders: true },
-        },
-      },
-      orderBy: { name: 'asc' },
-    });
-
-    // Calcular estadísticas básicas
-    const zonesWithStats = await Promise.all(
-      zones.map(async (zone) => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const ordersToday = await this.prisma.deliveryOrder.count({
-          where: {
-            zoneId: zone.id,
-            createdAt: { gte: today },
-          },
-        });
-
-        const avgDeliveryTime = await this.prisma.deliveryOrder.aggregate({
-          where: {
-            zoneId: zone.id,
-            status: 'DELIVERED',
-            deliveredAt: { not: null },
-            assignedAt: { not: null },
-          },
-          _avg: {
-            estimatedDeliveryTime: true,
-          },
-        });
-
-        return {
-          ...zone,
-          stats: {
-            ordersToday,
-            avgDeliveryTime: avgDeliveryTime._avg.estimatedDeliveryTime || 0,
-          },
-        };
-      }),
-    );
-
-    return { zones: zonesWithStats };
+    return this.zonesService.getZones(restaurantId);
   }
 
+  /**
+   * @deprecated Usa DeliveryZonesService.createZone() directamente
+   */
   async createZone(restaurantId: string, dto: CreateDeliveryZoneDto) {
-    // Verificar que no existe otra zona con el mismo nombre
-    const existing = await this.prisma.deliveryZone.findUnique({
-      where: {
-        restaurantId_name: {
-          restaurantId,
-          name: dto.name,
-        },
-      },
-    });
-
-    if (existing) {
-      throw new ConflictException(
-        `Ya existe una zona con el nombre "${dto.name}"`,
-      );
-    }
-
-    const zone = await this.prisma.deliveryZone.create({
-      data: {
-        restaurantId,
-        ...dto,
-      },
-    });
-
-    return { success: true, zone, message: 'Zona creada exitosamente' };
+    return this.zonesService.createZone(restaurantId, dto);
   }
 
+  /**
+   * @deprecated Usa DeliveryZonesService.updateZone() directamente
+   */
   async updateZone(
     restaurantId: string,
     zoneId: string,
     dto: UpdateDeliveryZoneDto,
   ) {
-    const zone = await this.prisma.deliveryZone.findFirst({
-      where: { id: zoneId, restaurantId },
-    });
-
-    if (!zone) {
-      throw new NotFoundException('Zona no encontrada');
-    }
-
-    // Si se cambia el nombre, verificar unicidad
-    if (dto.name && dto.name !== zone.name) {
-      const existing = await this.prisma.deliveryZone.findUnique({
-        where: {
-          restaurantId_name: {
-            restaurantId,
-            name: dto.name,
-          },
-        },
-      });
-
-      if (existing) {
-        throw new ConflictException(
-          `Ya existe una zona con el nombre "${dto.name}"`,
-        );
-      }
-    }
-
-    const updated = await this.prisma.deliveryZone.update({
-      where: { id: zoneId },
-      data: dto,
-    });
-
-    return { success: true, zone: updated };
+    return this.zonesService.updateZone(restaurantId, zoneId, dto);
   }
 
+  /**
+   * @deprecated Usa DeliveryZonesService.deleteZone() directamente
+   */
   async deleteZone(restaurantId: string, zoneId: string) {
-    const zone = await this.prisma.deliveryZone.findFirst({
-      where: { id: zoneId, restaurantId },
-    });
-
-    if (!zone) {
-      throw new NotFoundException('Zona no encontrada');
-    }
-
-    await this.prisma.deliveryZone.delete({
-      where: { id: zoneId },
-    });
-
-    return { success: true, message: 'Zona eliminada' };
+    return this.zonesService.deleteZone(restaurantId, zoneId);
   }
 
   // ============================================
-  // DELIVERY DRIVERS
+  // DELIVERY DRIVERS (delegados)
   // ============================================
 
+  /**
+   * @deprecated Usa DeliveryDriversService.getDrivers() directamente
+   */
   async getDrivers(restaurantId: string, filters: DriverFiltersDto) {
-    const where: Prisma.DeliveryDriverWhereInput = { restaurantId };
-
-    if (filters.isActive !== undefined) {
-      where.isActive = filters.isActive;
-    }
-    if (filters.isAvailable !== undefined) {
-      where.isAvailable = filters.isAvailable;
-    }
-
-    const drivers = await this.prisma.deliveryDriver.findMany({
-      where,
-      include: {
-        _count: {
-          select: { deliveryOrders: true },
-        },
-        locations: {
-          orderBy: { timestamp: 'desc' },
-          take: 1,
-        },
-      },
-      orderBy: { name: 'asc' },
-    });
-
-    // Agregar estadísticas para cada repartidor
-    const driversWithStats = await Promise.all(
-      drivers.map(async (driver) => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const currentOrders = await this.prisma.deliveryOrder.count({
-          where: {
-            driverId: driver.id,
-            status: { in: ['ASSIGNED', 'PICKED_UP', 'IN_TRANSIT'] },
-          },
-        });
-
-        const deliveriesToday = await this.prisma.deliveryOrder.count({
-          where: {
-            driverId: driver.id,
-            createdAt: { gte: today },
-            status: 'DELIVERED',
-          },
-        });
-
-        const avgTime = await this.prisma.deliveryOrder.aggregate({
-          where: {
-            driverId: driver.id,
-            status: 'DELIVERED',
-          },
-          _avg: {
-            estimatedDeliveryTime: true,
-          },
-        });
-
-        return {
-          id: driver.id,
-          name: driver.name,
-          phone: driver.phone,
-          email: driver.email,
-          vehicle: driver.vehicle,
-          licensePlate: driver.licensePlate,
-          isActive: driver.isActive,
-          isAvailable: driver.isAvailable,
-          avatarUrl: driver.avatarUrl,
-          stats: {
-            currentOrders,
-            deliveriesToday,
-            avgDeliveryTime: avgTime._avg.estimatedDeliveryTime || 0,
-            totalDeliveries: driver._count.deliveryOrders,
-          },
-          currentLocation:
-            driver.locations.length > 0
-              ? {
-                  lat: driver.locations[0].lat,
-                  lng: driver.locations[0].lng,
-                  updatedAt: driver.locations[0].timestamp,
-                }
-              : null,
-          createdAt: driver.createdAt,
-        };
-      }),
-    );
-
-    return { drivers: driversWithStats };
+    return this.driversService.getDrivers(restaurantId, filters);
   }
 
+  /**
+   * @deprecated Usa DeliveryDriversService.createDriver() directamente
+   */
   async createDriver(restaurantId: string, dto: CreateDeliveryDriverDto) {
-    const driver = await this.prisma.deliveryDriver.create({
-      data: {
-        restaurantId,
-        ...dto,
-      },
-    });
-
-    return { success: true, driver, message: 'Repartidor creado exitosamente' };
+    return this.driversService.createDriver(restaurantId, dto);
   }
 
+  /**
+   * @deprecated Usa DeliveryDriversService.updateDriver() directamente
+   */
   async updateDriver(
     restaurantId: string,
     driverId: string,
     dto: UpdateDeliveryDriverDto,
   ) {
-    const driver = await this.prisma.deliveryDriver.findFirst({
-      where: { id: driverId, restaurantId },
-    });
-
-    if (!driver) {
-      throw new NotFoundException('Repartidor no encontrado');
-    }
-
-    const updated = await this.prisma.deliveryDriver.update({
-      where: { id: driverId },
-      data: dto,
-    });
-
-    return { success: true, driver: updated };
+    return this.driversService.updateDriver(restaurantId, driverId, dto);
   }
 
+  /**
+   * @deprecated Usa DeliveryDriversService.deleteDriver() directamente
+   */
   async deleteDriver(restaurantId: string, driverId: string) {
-    const driver = await this.prisma.deliveryDriver.findFirst({
-      where: { id: driverId, restaurantId },
-      include: {
-        deliveryOrders: {
-          where: {
-            status: { in: ['ASSIGNED', 'PICKED_UP', 'IN_TRANSIT'] },
-          },
-        },
-      },
-    });
-
-    if (!driver) {
-      throw new NotFoundException('Repartidor no encontrado');
-    }
-
-    if (driver.deliveryOrders.length > 0) {
-      throw new BadRequestException(
-        'No se puede eliminar un repartidor con pedidos activos',
-      );
-    }
-
-    await this.prisma.deliveryDriver.delete({
-      where: { id: driverId },
-    });
-
-    return { success: true, message: 'Repartidor eliminado' };
+    return this.driversService.deleteDriver(restaurantId, driverId);
   }
 
+  /**
+   * @deprecated Usa DeliveryDriversService.getDriverStats() directamente
+   */
   async getDriverStats(
     restaurantId: string,
     driverId: string,
     filters: DriverStatsFiltersDto,
   ) {
-    const driver = await this.prisma.deliveryDriver.findFirst({
-      where: { id: driverId, restaurantId },
-    });
+    return this.driversService.getDriverStats(restaurantId, driverId, filters);
+  }
 
-    if (!driver) {
-      throw new NotFoundException('Repartidor no encontrado');
-    }
+  /**
+   * @deprecated Usa DeliveryDriversService.updateDriverLocation() directamente
+   */
+  async updateDriverLocation(
+    restaurantId: string,
+    driverId: string,
+    dto: UpdateDriverLocationDto,
+  ) {
+    return this.driversService.updateDriverLocation(
+      restaurantId,
+      driverId,
+      dto,
+    );
+  }
 
-    const { startDate, endDate } = this.getDateRange(filters.period || 'today');
-
-    const deliveries = await this.prisma.deliveryOrder.findMany({
-      where: {
-        driverId,
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-        status: 'DELIVERED',
-      },
-    });
-
-    const totalDeliveries = deliveries.length;
-    const avgDeliveryTime =
-      deliveries.reduce((sum, d) => sum + (d.estimatedDeliveryTime || 0), 0) /
-        totalDeliveries || 0;
-    const totalEarnings = deliveries.reduce((sum, d) => sum + d.deliveryFee, 0);
-
-    // Deliveries por día
-    const deliveriesByDay = this.groupByDay(deliveries);
-
-    // Deliveries por hora
-    const deliveriesByHour = this.groupByHour(deliveries);
-
-    return {
-      driver: {
-        id: driver.id,
-        name: driver.name,
-      },
-      stats: {
-        totalDeliveries,
-        avgDeliveryTime: Math.round(avgDeliveryTime),
-        totalEarnings,
-        deliveriesByDay,
-        deliveriesByHour,
-      },
-    };
+  /**
+   * @deprecated Usa DeliveryDriversService.getDriverLocation() directamente
+   */
+  async getDriverLocation(restaurantId: string, driverId: string) {
+    return this.driversService.getDriverLocation(restaurantId, driverId);
   }
 
   // ============================================
@@ -845,65 +620,6 @@ export class DeliveryService {
         activeDrivers,
         topDriver,
         topZone,
-      },
-    };
-  }
-
-  // ============================================
-  // DRIVER LOCATION
-  // ============================================
-
-  async updateDriverLocation(
-    restaurantId: string,
-    driverId: string,
-    dto: UpdateDriverLocationDto,
-  ) {
-    const driver = await this.prisma.deliveryDriver.findFirst({
-      where: { id: driverId, restaurantId },
-    });
-
-    if (!driver) {
-      throw new NotFoundException('Repartidor no encontrado');
-    }
-
-    await this.prisma.driverLocation.create({
-      data: {
-        driverId,
-        lat: dto.lat,
-        lng: dto.lng,
-        heading: dto.heading,
-        speed: dto.speed,
-      },
-    });
-
-    return { success: true, timestamp: new Date() };
-  }
-
-  async getDriverLocation(restaurantId: string, driverId: string) {
-    const driver = await this.prisma.deliveryDriver.findFirst({
-      where: { id: driverId, restaurantId },
-    });
-
-    if (!driver) {
-      throw new NotFoundException('Repartidor no encontrado');
-    }
-
-    const location = await this.prisma.driverLocation.findFirst({
-      where: { driverId },
-      orderBy: { timestamp: 'desc' },
-    });
-
-    if (!location) {
-      throw new NotFoundException('No hay ubicación disponible');
-    }
-
-    return {
-      location: {
-        lat: location.lat,
-        lng: location.lng,
-        heading: location.heading,
-        speed: location.speed,
-        timestamp: location.timestamp,
       },
     };
   }

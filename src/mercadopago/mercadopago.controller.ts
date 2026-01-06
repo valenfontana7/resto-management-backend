@@ -8,12 +8,12 @@ import {
   Query,
   Req,
   BadRequestException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/decorators/current-user.decorator';
+import { assertRestaurantAccess } from '../common/decorators/verify-restaurant-access.decorator';
 import { MercadoPagoCredentialsService } from './mercadopago-credentials.service';
 import { MercadoPagoService } from './mercadopago.service';
 import type { PreferenceRequestBody } from './mercadopago.service';
@@ -37,7 +37,7 @@ export class MercadoPagoController {
       throw new BadRequestException({ error: 'restaurantId es requerido' });
     }
 
-    this.assertRestaurantAccess(user, id);
+    assertRestaurantAccess(user, id);
 
     return this.credentialsService.getStatus(id);
   }
@@ -54,7 +54,7 @@ export class MercadoPagoController {
       throw new BadRequestException({ error: 'restaurantId es requerido' });
     }
 
-    this.assertRestaurantAccess(user, restaurantId);
+    assertRestaurantAccess(user, restaurantId);
 
     const accessToken = (body?.accessToken ?? '').trim();
     if (!accessToken) {
@@ -79,7 +79,7 @@ export class MercadoPagoController {
       throw new BadRequestException({ error: 'restaurantId es requerido' });
     }
 
-    this.assertRestaurantAccess(user, restaurantId);
+    assertRestaurantAccess(user, restaurantId);
 
     await this.credentialsService.clearToken(restaurantId);
     return { success: true };
@@ -102,27 +102,6 @@ export class MercadoPagoController {
     const rawBody: Buffer | undefined = req?.rawBody;
     await this.mercadoPagoService.recordWebhookEvent(rawBody, body);
     return { received: true };
-  }
-
-  private assertRestaurantAccess(
-    user: RequestUser | undefined,
-    restaurantId: string,
-  ) {
-    if (!user) {
-      throw new ForbiddenException('Unauthorized');
-    }
-
-    if (user.role === 'SUPER_ADMIN') {
-      return;
-    }
-
-    if (!user.restaurantId) {
-      throw new ForbiddenException('User does not have a restaurant');
-    }
-
-    if (user.restaurantId !== restaurantId) {
-      throw new ForbiddenException('You can only manage your own restaurant');
-    }
   }
 
   private getOrigin(req: any): string {

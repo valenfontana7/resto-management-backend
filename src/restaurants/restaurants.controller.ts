@@ -16,6 +16,10 @@ import {
   Req,
 } from '@nestjs/common';
 import {
+  VerifyRestaurantAccess,
+  VerifyRestaurantRole,
+} from '../common/decorators/verify-restaurant-access.decorator';
+import {
   ApiTags,
   ApiOperation,
   ApiResponse,
@@ -29,6 +33,9 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { RestaurantsService } from './restaurants.service';
+import { RestaurantUsersService } from './services/restaurant-users.service';
+import { RestaurantBrandingService } from './services/restaurant-branding.service';
+import { RestaurantSettingsService } from './services/restaurant-settings.service';
 import { AuthService } from '../auth/auth.service';
 import type { Response, Request } from 'express';
 import { Public } from '../auth/decorators/public.decorator';
@@ -49,6 +56,9 @@ import { UpdateRestaurantSettingsDto } from './dto/update-restaurant-settings.dt
 export class RestaurantsController {
   constructor(
     private readonly restaurantsService: RestaurantsService,
+    private readonly usersService: RestaurantUsersService,
+    private readonly brandingService: RestaurantBrandingService,
+    private readonly settingsService: RestaurantSettingsService,
     private readonly authService: AuthService,
   ) {}
 
@@ -82,7 +92,7 @@ export class RestaurantsController {
         const explicitNoIncrement =
           typeof increment === 'string' && increment.toLowerCase() === 'false';
         if (!explicitNoIncrement) {
-          this.restaurantsService.logVisit(restaurant.id, meta).catch(() => {});
+          this.settingsService.logVisit(restaurant.id, meta).catch(() => {});
         }
       }
     } catch (e) {
@@ -111,22 +121,15 @@ export class RestaurantsController {
   @ApiBearerAuth()
   @Get(':id/analytics')
   async getAnalytics(
-    @Param('id') id: string,
+    @VerifyRestaurantAccess('id') restaurantId: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
-    @CurrentUser() user?: RequestUser,
   ) {
-    if (!user || user.restaurantId !== id) {
-      throw new ForbiddenException(
-        'You can only access your own restaurant analytics',
-      );
-    }
-
     const fromDate = from ? new Date(from) : undefined;
     const toDate = to ? new Date(to) : undefined;
 
     const count = await this.restaurantsService.getVisitsCount(
-      id,
+      restaurantId,
       fromDate,
       toDate,
     );
@@ -207,18 +210,12 @@ export class RestaurantsController {
     description: 'The restaurant has been successfully updated.',
   })
   async update(
-    @Param('id') id: string,
+    @VerifyRestaurantAccess('id') restaurantId: string,
     @Body() updateDto: UpdateRestaurantSettingsDto,
-    @CurrentUser() user: RequestUser,
   ) {
     try {
-      // Verify ownership
-      if (user.restaurantId !== id) {
-        throw new ForbiddenException('You can only update your own restaurant');
-      }
-
       console.log('🔵 Controller received update request:', {
-        id,
+        id: restaurantId,
         payload: updateDto,
         hasBranding: !!updateDto.branding,
         brandingKeys: updateDto.branding ? Object.keys(updateDto.branding) : [],
@@ -227,7 +224,10 @@ export class RestaurantsController {
           : [],
       });
 
-      const restaurant = await this.restaurantsService.update(id, updateDto);
+      const restaurant = await this.restaurantsService.update(
+        restaurantId,
+        updateDto,
+      );
 
       console.log('🟢 Controller returning restaurant:', {
         id: restaurant.id,
@@ -247,7 +247,7 @@ export class RestaurantsController {
       const stack = error instanceof Error ? error.stack : undefined;
 
       console.error('❌ Error updating restaurant:', {
-        id,
+        id: restaurantId,
         error: message,
         stack,
         payload: updateDto,
@@ -265,16 +265,11 @@ export class RestaurantsController {
   @Put(':id/hours')
   @ApiBearerAuth()
   async updateHours(
-    @Param('id') id: string,
+    @VerifyRestaurantAccess('id') restaurantId: string,
     @Body() dto: UpdateBusinessHoursDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    if (user.restaurantId !== id) {
-      throw new ForbiddenException('You can only update your own restaurant');
-    }
-
-    const updatedHours = await this.restaurantsService.updateHours(
-      id,
+    const updatedHours = await this.settingsService.updateHours(
+      restaurantId,
       dto.hours,
     );
     return { success: true, hours: updatedHours };
@@ -285,15 +280,13 @@ export class RestaurantsController {
   @Put(':id/branding')
   @ApiBearerAuth()
   async updateBranding(
-    @Param('id') id: string,
+    @VerifyRestaurantAccess('id') restaurantId: string,
     @Body() dto: UpdateBrandingDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    if (user.restaurantId !== id) {
-      throw new ForbiddenException('You can only update your own restaurant');
-    }
-
-    const branding = await this.restaurantsService.updateBranding(id, dto);
+    const branding = await this.brandingService.updateBranding(
+      restaurantId,
+      dto,
+    );
     return { success: true, branding };
   }
 
@@ -302,16 +295,11 @@ export class RestaurantsController {
   @Put(':id/payment-methods')
   @ApiBearerAuth()
   async updatePaymentMethods(
-    @Param('id') id: string,
+    @VerifyRestaurantAccess('id') restaurantId: string,
     @Body() dto: UpdatePaymentMethodsDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    if (user.restaurantId !== id) {
-      throw new ForbiddenException('You can only update your own restaurant');
-    }
-
-    const paymentMethods = await this.restaurantsService.updatePaymentMethods(
-      id,
+    const paymentMethods = await this.settingsService.updatePaymentMethods(
+      restaurantId,
       dto,
     );
     return { success: true, paymentMethods, updatedAt: new Date() };
@@ -322,15 +310,13 @@ export class RestaurantsController {
   @Put(':id/delivery-zones')
   @ApiBearerAuth()
   async updateDeliveryZones(
-    @Param('id') id: string,
+    @VerifyRestaurantAccess('id') restaurantId: string,
     @Body() dto: UpdateDeliveryZonesDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    if (user.restaurantId !== id) {
-      throw new ForbiddenException('You can only update your own restaurant');
-    }
-
-    const zones = await this.restaurantsService.updateDeliveryZones(id, dto);
+    const zones = await this.settingsService.updateDeliveryZones(
+      restaurantId,
+      dto,
+    );
     return { success: true, deliveryZones: zones, updatedAt: new Date() };
   }
 
@@ -338,12 +324,8 @@ export class RestaurantsController {
   @ApiParam({ name: 'id', description: 'The id of the restaurant' })
   @Get(':id/roles')
   @ApiBearerAuth()
-  async getRoles(@Param('id') id: string, @CurrentUser() user: RequestUser) {
-    if (user.restaurantId !== id) {
-      throw new ForbiddenException('You can only access your own restaurant');
-    }
-
-    const roles = await this.restaurantsService.getRoles(id);
+  async getRoles(@VerifyRestaurantAccess('id') restaurantId: string) {
+    const roles = await this.usersService.getRoles(restaurantId);
     return { success: true, roles };
   }
 
@@ -351,15 +333,8 @@ export class RestaurantsController {
   @ApiParam({ name: 'id', description: 'The id of the restaurant' })
   @Get(':id/users')
   @ApiBearerAuth()
-  async getRestaurantUsers(
-    @Param('id') id: string,
-    @CurrentUser() user: RequestUser,
-  ) {
-    if (user.restaurantId !== id) {
-      throw new ForbiddenException('You can only access your own restaurant');
-    }
-
-    const users = await this.restaurantsService.getRestaurantUsers(id);
+  async getRestaurantUsers(@VerifyRestaurantAccess('id') restaurantId: string) {
+    const users = await this.usersService.getRestaurantUsers(restaurantId);
     return { success: true, users };
   }
 
@@ -368,20 +343,13 @@ export class RestaurantsController {
   @Post(':id/users')
   @ApiBearerAuth()
   async inviteUser(
-    @Param('id') id: string,
+    @VerifyRestaurantAccess('id') restaurantId: string,
     @Body() dto: InviteUserDto,
-    @CurrentUser() user: RequestUser,
   ) {
     console.log('Received invite user DTO:', dto);
 
-    if (user.restaurantId !== id) {
-      throw new ForbiddenException(
-        'You can only invite users to your own restaurant',
-      );
-    }
-
     // Support both roleId (new) and role name (legacy)
-    const newUser = await this.restaurantsService.inviteUser(id, {
+    const newUser = await this.usersService.inviteUser(restaurantId, {
       email: dto.email,
       roleId: dto.roleId,
       roleName: dto.role,
@@ -397,19 +365,12 @@ export class RestaurantsController {
   @Put(':id/users/:userId')
   @ApiBearerAuth()
   async updateUserRole(
-    @Param('id') id: string,
+    @VerifyRestaurantAccess('id') restaurantId: string,
     @Param('userId') userId: string,
     @Body() dto: UpdateUserRoleDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    if (user.restaurantId !== id) {
-      throw new ForbiddenException(
-        'You can only update users in your own restaurant',
-      );
-    }
-
-    const updatedUser = await this.restaurantsService.updateUserRole(
-      id,
+    const updatedUser = await this.usersService.updateUserRole(
+      restaurantId,
       userId,
       {
         roleId: dto.roleId,
@@ -426,22 +387,11 @@ export class RestaurantsController {
   @Delete(':id/users/:userId')
   @ApiBearerAuth()
   async removeUser(
-    @Param('id') id: string,
+    @VerifyRestaurantRole({ paramName: 'id', role: 'OWNER' })
+    restaurantId: string,
     @Param('userId') userId: string,
-    @CurrentUser() user: RequestUser,
   ) {
-    if (user.restaurantId !== id) {
-      throw new ForbiddenException(
-        'You can only remove users from your own restaurant',
-      );
-    }
-
-    // Only owner can remove users
-    if (user.role !== 'OWNER') {
-      throw new ForbiddenException('Only the owner can remove users');
-    }
-
-    return this.restaurantsService.removeUser(id, userId);
+    return this.usersService.removeUser(restaurantId, userId);
   }
 
   @ApiOperation({ summary: 'Delete restaurant asset (logo, banner, ...)' })
@@ -453,22 +403,17 @@ export class RestaurantsController {
     description: 'Asset type (e.g., banner, logo) as query parameter',
   })
   async deleteAsset(
-    @Param('id') id: string,
+    @VerifyRestaurantAccess('id') restaurantId: string,
     @Body() body: { type?: string },
-    @CurrentUser() user: RequestUser,
     @Query('type') queryType?: string,
   ) {
-    if (user.restaurantId !== id) {
-      throw new ForbiddenException('You can only modify your own restaurant');
-    }
-
     const type = body?.type ?? queryType;
 
     if (!type) {
       throw new BadRequestException('Asset type is required');
     }
 
-    const result = await this.restaurantsService.deleteAsset(id, type);
+    const result = await this.brandingService.deleteAsset(restaurantId, type);
     return { success: true, result };
   }
 
@@ -493,24 +438,23 @@ export class RestaurantsController {
     description: 'Original filename (used to infer extension)',
   })
   async presignAssetUpload(
-    @Param('id') id: string,
-    @CurrentUser() user: RequestUser,
+    @VerifyRestaurantAccess('id') restaurantId: string,
     @Query('type') type: string,
     @Query('contentType') contentType?: string,
     @Query('filename') filename?: string,
   ) {
-    if (user.restaurantId !== id) {
-      throw new ForbiddenException('You can only modify your own restaurant');
-    }
-
     if (!type) {
       throw new BadRequestException('Asset type is required');
     }
 
-    const result = await this.restaurantsService.presignAssetUpload(id, type, {
-      contentType,
-      filename,
-    });
+    const result = await this.brandingService.presignAssetUpload(
+      restaurantId,
+      type,
+      {
+        contentType,
+        filename,
+      },
+    );
 
     return { success: true, result };
   }
@@ -540,16 +484,11 @@ export class RestaurantsController {
     },
   })
   async uploadAsset(
-    @Param('id') id: string,
+    @VerifyRestaurantAccess('id') restaurantId: string,
     @UploadedFile() file: Express.Multer.File,
     @Body() body: { type?: string },
-    @CurrentUser() user: RequestUser,
     @Query('type') queryType?: string,
   ) {
-    if (user.restaurantId !== id) {
-      throw new ForbiddenException('You can only modify your own restaurant');
-    }
-
     const type = body?.type ?? queryType;
     if (!type) {
       throw new BadRequestException('Asset type is required');
@@ -559,8 +498,8 @@ export class RestaurantsController {
       throw new BadRequestException('File is required');
     }
 
-    const result = await this.restaurantsService.saveUploadedAsset(
-      id,
+    const result = await this.brandingService.saveUploadedAsset(
+      restaurantId,
       file,
       type,
     );
@@ -587,20 +526,15 @@ export class RestaurantsController {
     },
   })
   async uploadLogo(
-    @Param('id') id: string,
+    @VerifyRestaurantAccess('id') restaurantId: string,
     @UploadedFile() file: Express.Multer.File,
-    @CurrentUser() user: RequestUser,
   ) {
-    if (user.restaurantId !== id) {
-      throw new ForbiddenException('You can only modify your own restaurant');
-    }
-
     if (!file) {
       throw new BadRequestException('File is required');
     }
 
-    const result = await this.restaurantsService.saveUploadedAsset(
-      id,
+    const result = await this.brandingService.saveUploadedAsset(
+      restaurantId,
       file,
       'logo',
     );
@@ -612,25 +546,20 @@ export class RestaurantsController {
   @Delete(':id')
   @ApiBearerAuth()
   async deleteRestaurant(
-    @Param('id') id: string,
+    @VerifyRestaurantAccess('id') restaurantId: string,
     @CurrentUser() user: RequestUser,
     @Res({ passthrough: true }) res: Response,
   ) {
-    if (user.restaurantId !== id) {
-      throw new ForbiddenException('You can only delete your own restaurant');
-    }
-
-    // Only owner allowed
-    // Allow both OWNER and Admin roles to delete the restaurant
-    const allowed = ['OWNER', 'Owner', 'owner', 'Admin', 'admin'];
-    if (!user.role || !allowed.includes(user.role)) {
+    // Only owner or admin allowed
+    const allowedRoles = ['OWNER', 'Owner', 'owner', 'Admin', 'admin'];
+    if (!user.role || !allowedRoles.includes(user.role)) {
       throw new ForbiddenException(
         'Only the owner or admin can delete the restaurant',
       );
     }
 
     const result = await this.restaurantsService.deleteRestaurant(
-      id,
+      restaurantId,
       user.userId,
     );
 

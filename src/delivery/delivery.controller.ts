@@ -8,7 +8,6 @@ import {
   Body,
   Param,
   Query,
-  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -17,9 +16,8 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { DeliveryService } from './delivery.service';
-import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import type { RequestUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
+import { VerifyRestaurantAccess } from '../common/decorators/verify-restaurant-access.decorator';
 import {
   CreateDeliveryZoneDto,
   UpdateDeliveryZoneDto,
@@ -40,15 +38,6 @@ import {
 export class DeliveryController {
   constructor(private deliveryService: DeliveryService) {}
 
-  // Verificar ownership del restaurante
-  private checkOwnership(user: RequestUser, restaurantId: string) {
-    if (user.restaurantId !== restaurantId) {
-      throw new ForbiddenException(
-        'No tienes permisos para acceder a este restaurante',
-      );
-    }
-  }
-
   // ============================================
   // DELIVERY ORDERS - 5 endpoints
   // ============================================
@@ -57,11 +46,9 @@ export class DeliveryController {
   @ApiOperation({ summary: 'Listar pedidos delivery con filtros' })
   @ApiResponse({ status: 200, description: 'Lista de pedidos delivery' })
   async getOrders(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Query() filters: DeliveryOrderFiltersDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    this.checkOwnership(user, restaurantId);
     return this.deliveryService.getOrders(restaurantId, filters);
   }
 
@@ -69,11 +56,9 @@ export class DeliveryController {
   @ApiOperation({ summary: 'Obtener pedido delivery por ID' })
   @ApiResponse({ status: 200, description: 'Detalles del pedido' })
   async getOrderById(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Param('orderId') orderId: string,
-    @CurrentUser() user: RequestUser,
   ) {
-    this.checkOwnership(user, restaurantId);
     return this.deliveryService.getOrderById(restaurantId, orderId);
   }
 
@@ -84,12 +69,10 @@ export class DeliveryController {
     description: 'Repartidor asignado exitosamente',
   })
   async assignDriver(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Param('orderId') orderId: string,
     @Body() dto: AssignDriverDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    this.checkOwnership(user, restaurantId);
     return this.deliveryService.assignDriver(restaurantId, orderId, dto);
   }
 
@@ -97,12 +80,10 @@ export class DeliveryController {
   @ApiOperation({ summary: 'Actualizar estado del delivery' })
   @ApiResponse({ status: 200, description: 'Estado actualizado' })
   async updateStatus(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Param('orderId') orderId: string,
     @Body() dto: UpdateDeliveryStatusDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    this.checkOwnership(user, restaurantId);
     return this.deliveryService.updateStatus(restaurantId, orderId, dto);
   }
 
@@ -110,11 +91,9 @@ export class DeliveryController {
   @ApiOperation({ summary: 'Estadísticas de delivery' })
   @ApiResponse({ status: 200, description: 'Estadísticas generales' })
   async getStats(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Query() filters: DeliveryStatsFiltersDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    this.checkOwnership(user, restaurantId);
     return this.deliveryService.getStats(restaurantId, filters);
   }
 
@@ -126,11 +105,9 @@ export class DeliveryController {
   @ApiOperation({ summary: 'Listar repartidores' })
   @ApiResponse({ status: 200, description: 'Lista de repartidores' })
   async getDrivers(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Query() filters: DriverFiltersDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    this.checkOwnership(user, restaurantId);
     return this.deliveryService.getDrivers(restaurantId, filters);
   }
 
@@ -138,11 +115,9 @@ export class DeliveryController {
   @ApiOperation({ summary: 'Crear repartidor' })
   @ApiResponse({ status: 201, description: 'Repartidor creado' })
   async createDriver(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() dto: CreateDeliveryDriverDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    this.checkOwnership(user, restaurantId);
     return this.deliveryService.createDriver(restaurantId, dto);
   }
 
@@ -150,12 +125,10 @@ export class DeliveryController {
   @ApiOperation({ summary: 'Actualizar repartidor' })
   @ApiResponse({ status: 200, description: 'Repartidor actualizado' })
   async updateDriver(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Param('driverId') driverId: string,
     @Body() dto: UpdateDeliveryDriverDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    this.checkOwnership(user, restaurantId);
     return this.deliveryService.updateDriver(restaurantId, driverId, dto);
   }
 
@@ -163,11 +136,9 @@ export class DeliveryController {
   @ApiOperation({ summary: 'Eliminar repartidor' })
   @ApiResponse({ status: 200, description: 'Repartidor eliminado' })
   async deleteDriver(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Param('driverId') driverId: string,
-    @CurrentUser() user: RequestUser,
   ) {
-    this.checkOwnership(user, restaurantId);
     return this.deliveryService.deleteDriver(restaurantId, driverId);
   }
 
@@ -178,12 +149,10 @@ export class DeliveryController {
     description: 'Estadísticas del repartidor',
   })
   async getDriverStats(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Param('driverId') driverId: string,
     @Query() filters: DriverStatsFiltersDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    this.checkOwnership(user, restaurantId);
     return this.deliveryService.getDriverStats(restaurantId, driverId, filters);
   }
 
@@ -191,12 +160,10 @@ export class DeliveryController {
   @ApiOperation({ summary: 'Actualizar ubicación del repartidor' })
   @ApiResponse({ status: 200, description: 'Ubicación actualizada' })
   async updateDriverLocation(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Param('driverId') driverId: string,
     @Body() dto: UpdateDriverLocationDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    this.checkOwnership(user, restaurantId);
     return this.deliveryService.updateDriverLocation(
       restaurantId,
       driverId,
@@ -208,11 +175,9 @@ export class DeliveryController {
   @ApiOperation({ summary: 'Obtener ubicación actual del repartidor' })
   @ApiResponse({ status: 200, description: 'Ubicación del repartidor' })
   async getDriverLocation(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Param('driverId') driverId: string,
-    @CurrentUser() user: RequestUser,
   ) {
-    this.checkOwnership(user, restaurantId);
     return this.deliveryService.getDriverLocation(restaurantId, driverId);
   }
 
@@ -223,11 +188,7 @@ export class DeliveryController {
   @Get('zones')
   @ApiOperation({ summary: 'Listar zonas de delivery' })
   @ApiResponse({ status: 200, description: 'Lista de zonas' })
-  async getZones(
-    @Param('restaurantId') restaurantId: string,
-    @CurrentUser() user: RequestUser,
-  ) {
-    this.checkOwnership(user, restaurantId);
+  async getZones(@VerifyRestaurantAccess('restaurantId') restaurantId: string) {
     return this.deliveryService.getZones(restaurantId);
   }
 
@@ -235,11 +196,9 @@ export class DeliveryController {
   @ApiOperation({ summary: 'Crear zona de delivery' })
   @ApiResponse({ status: 201, description: 'Zona creada' })
   async createZone(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() dto: CreateDeliveryZoneDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    this.checkOwnership(user, restaurantId);
     return this.deliveryService.createZone(restaurantId, dto);
   }
 
@@ -247,12 +206,10 @@ export class DeliveryController {
   @ApiOperation({ summary: 'Actualizar zona de delivery' })
   @ApiResponse({ status: 200, description: 'Zona actualizada' })
   async updateZone(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Param('zoneId') zoneId: string,
     @Body() dto: UpdateDeliveryZoneDto,
-    @CurrentUser() user: RequestUser,
   ) {
-    this.checkOwnership(user, restaurantId);
     return this.deliveryService.updateZone(restaurantId, zoneId, dto);
   }
 
@@ -260,11 +217,9 @@ export class DeliveryController {
   @ApiOperation({ summary: 'Eliminar zona de delivery' })
   @ApiResponse({ status: 200, description: 'Zona eliminada' })
   async deleteZone(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Param('zoneId') zoneId: string,
-    @CurrentUser() user: RequestUser,
   ) {
-    this.checkOwnership(user, restaurantId);
     return this.deliveryService.deleteZone(restaurantId, zoneId);
   }
 }

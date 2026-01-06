@@ -1,9 +1,6 @@
-import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { OwnershipService } from '../common/services/ownership.service';
 import {
   CreateReservationDto,
   UpdateReservationDto,
@@ -11,16 +8,23 @@ import {
   ReservationStatus,
 } from './dto/reservation.dto';
 
+/**
+ * Servicio para gestión de reservaciones.
+ * Refactorizado para usar OwnershipService centralizado (DRY + SOLID).
+ */
 @Injectable()
 export class ReservationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ownership: OwnershipService,
+  ) {}
 
   async create(
     restaurantId: string,
     userId: string,
     createDto: CreateReservationDto,
   ) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const reservationData: any = {
       restaurantId,
@@ -51,7 +55,7 @@ export class ReservationsService {
     userId: string,
     filters: ReservationFiltersDto,
   ) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const where: any = {
       restaurantId,
@@ -87,7 +91,7 @@ export class ReservationsService {
   }
 
   async findOne(id: string, restaurantId: string, userId: string) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const reservation = await this.prisma.reservation.findFirst({
       where: {
@@ -112,7 +116,7 @@ export class ReservationsService {
     userId: string,
     updateDto: UpdateReservationDto,
   ) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const reservation = await this.prisma.reservation.findFirst({
       where: {
@@ -150,7 +154,7 @@ export class ReservationsService {
   }
 
   async delete(id: string, restaurantId: string, userId: string) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const reservation = await this.prisma.reservation.findFirst({
       where: {
@@ -176,7 +180,7 @@ export class ReservationsService {
     userId: string,
     status: ReservationStatus,
   ) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const reservation = await this.prisma.reservation.findFirst({
       where: {
@@ -196,18 +200,5 @@ export class ReservationsService {
         table: true,
       },
     });
-  }
-
-  private async verifyRestaurantOwnership(
-    restaurantId: string,
-    userId: string,
-  ) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || user.restaurantId !== restaurantId) {
-      throw new ForbiddenException('You do not have access to this restaurant');
-    }
   }
 }

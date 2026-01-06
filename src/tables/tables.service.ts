@@ -2,10 +2,10 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
-  ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { OwnershipService } from '../common/services/ownership.service';
 import { TableStatus as PrismaTableStatus } from '@prisma/client';
 import {
   CreateTableDto,
@@ -18,14 +18,17 @@ import {
 
 @Injectable()
 export class TablesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ownership: OwnershipService,
+  ) {}
 
   async create(
     restaurantId: string,
     userId: string,
     createDto: CreateTableDto,
   ) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     // Verificar que no exista una mesa con ese número
     const existingTable = await this.prisma.table.findUnique({
@@ -95,7 +98,7 @@ export class TablesService {
   }
 
   async findAll(restaurantId: string, userId: string) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     // Obtener todas las áreas con sus mesas
     const areas = await this.prisma.tableArea.findMany({
@@ -165,7 +168,7 @@ export class TablesService {
   }
 
   async findOne(id: string, restaurantId: string, userId: string) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const table = await this.prisma.table.findFirst({
       where: {
@@ -200,7 +203,7 @@ export class TablesService {
     userId: string,
     updateDto: UpdateTableDto,
   ) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const table = await this.prisma.table.findFirst({
       where: {
@@ -277,7 +280,7 @@ export class TablesService {
   }
 
   async delete(id: string, restaurantId: string, userId: string) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const table = await this.prisma.table.findFirst({
       where: {
@@ -311,7 +314,7 @@ export class TablesService {
     status: TableStatus,
     statusDto?: UpdateTableStatusDto,
   ) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const table = await this.prisma.table.findFirst({
       where: {
@@ -377,7 +380,7 @@ export class TablesService {
     userId: string,
     createDto: CreateTableAreaDto,
   ) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     return this.prisma.tableArea.create({
       data: {
@@ -391,7 +394,7 @@ export class TablesService {
   }
 
   async findAllAreas(restaurantId: string, userId: string) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     return this.prisma.tableArea.findMany({
       where: { restaurantId },
@@ -408,7 +411,7 @@ export class TablesService {
     userId: string,
     updateDto: UpdateTableAreaDto,
   ) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const area = await this.prisma.tableArea.findFirst({
       where: {
@@ -431,7 +434,7 @@ export class TablesService {
   }
 
   async deleteArea(id: string, restaurantId: string, userId: string) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const area = await this.prisma.tableArea.findFirst({
       where: {
@@ -462,7 +465,7 @@ export class TablesService {
 
   // Estadísticas
   async getStats(restaurantId: string, userId: string) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const tables = await this.prisma.table.findMany({
       where: { restaurantId },
@@ -546,18 +549,5 @@ export class TablesService {
       createdAt: table.createdAt,
       updatedAt: table.updatedAt,
     };
-  }
-
-  private async verifyRestaurantOwnership(
-    restaurantId: string,
-    userId: string,
-  ) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || user.restaurantId !== restaurantId) {
-      throw new ForbiddenException('You do not have access to this restaurant');
-    }
   }
 }

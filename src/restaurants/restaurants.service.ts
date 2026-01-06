@@ -3,6 +3,8 @@ import {
   ConflictException,
   NotFoundException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
@@ -13,12 +15,21 @@ import {
 } from './dto/restaurant-settings.dto';
 import * as path from 'path';
 import { S3Service } from '../storage/s3.service';
+import { RestaurantUsersService } from './services/restaurant-users.service';
+import { RestaurantBrandingService } from './services/restaurant-branding.service';
+import { RestaurantSettingsService } from './services/restaurant-settings.service';
 
 @Injectable()
 export class RestaurantsService {
   constructor(
     private prisma: PrismaService,
     private readonly s3: S3Service,
+    @Inject(forwardRef(() => RestaurantUsersService))
+    private readonly usersService: RestaurantUsersService,
+    @Inject(forwardRef(() => RestaurantBrandingService))
+    private readonly brandingService: RestaurantBrandingService,
+    @Inject(forwardRef(() => RestaurantSettingsService))
+    private readonly settingsService: RestaurantSettingsService,
   ) {}
 
   async findBySlug(slug: string) {
@@ -110,6 +121,9 @@ export class RestaurantsService {
     return mapped;
   }
 
+  /**
+   * @deprecated Usa RestaurantSettingsService.logVisit() directamente
+   */
   async logVisit(
     restaurantId: string,
     meta?: {
@@ -118,18 +132,7 @@ export class RestaurantsService {
       referrer?: string | null;
     },
   ) {
-    try {
-      await this.prisma.analytics.create({
-        data: {
-          restaurantId,
-          metric: 'page_view',
-          value: 1,
-          metadata: meta || {},
-        },
-      });
-    } catch (e) {
-      console.warn('Failed to log analytics:', e?.message || e);
-    }
+    return this.settingsService.logVisit(restaurantId, meta);
   }
 
   async getVisitsCount(restaurantId: string, from?: Date, to?: Date) {
@@ -660,50 +663,11 @@ export class RestaurantsService {
     return updated;
   }
 
+  /**
+   * @deprecated Usa RestaurantSettingsService.updateHours() directamente
+   */
   async updateHours(id: string, hours: any[]) {
-    // Transaction: Delete old hours, insert new ones
-    return this.prisma.$transaction(async () => {
-      await this.prisma.businessHour.deleteMany({
-        where: { restaurantId: id },
-      });
-
-      // Only create records for days that are open
-      const openHours = hours.filter((h) => h.isOpen === true);
-
-      if (openHours && openHours.length > 0) {
-        await this.prisma.businessHour.createMany({
-          data: openHours.map((h) => ({
-            restaurantId: id,
-            dayOfWeek: h.dayOfWeek,
-            openTime: h.openTime,
-            closeTime: h.closeTime,
-            isOpen: true,
-          })),
-        });
-      }
-
-      // Return all days (0-6) with proper structure
-      const savedHours = await this.prisma.businessHour.findMany({
-        where: { restaurantId: id },
-      });
-
-      // Create a complete week structure (0-6)
-      const allDays = Array.from({ length: 7 }, (_, dayOfWeek) => {
-        const existingHour = savedHours.find((h) => h.dayOfWeek === dayOfWeek);
-        if (existingHour) {
-          return existingHour;
-        }
-        // Return closed day structure for days without records
-        return {
-          dayOfWeek,
-          isOpen: false,
-          openTime: null,
-          closeTime: null,
-        };
-      });
-
-      return allDays;
-    });
+    return this.settingsService.updateHours(id, hours);
   }
 
   private generateSlug(name: string): string {
@@ -1006,154 +970,44 @@ export class RestaurantsService {
 
     return out;
   }
-  // LEGACY METHOD - Use update() instead with branding JSON field
+
   /**
-   * Update restaurant branding settings
-   * @deprecated Use update() method with branding JSON field
+   * @deprecated Usa RestaurantBrandingService.updateBranding() directamente
    */
   async updateBranding(id: string, branding: UpdateBrandingDto) {
-    // Convert to new format
-    const brandingData: any = {};
-
-    if (branding.colors || branding.layout || branding.logo !== undefined) {
-      brandingData.branding = {};
-
-      if (branding.colors) {
-        brandingData.branding.colors = branding.colors;
-      }
-
-      if (branding.layout) {
-        brandingData.branding.layout = branding.layout;
-      }
-
-      if (branding.logo !== undefined) {
-        brandingData.branding.logo = branding.logo;
-      }
-
-      if (branding.coverImage !== undefined) {
-        brandingData.branding.bannerImage = branding.coverImage;
-      }
-    }
-
-    return this.prisma.restaurant.update({
-      where: { id },
-      data: brandingData,
-    });
+    return this.brandingService.updateBranding(id, branding);
   }
 
   /**
-   * Update payment methods configuration
+   * @deprecated Usa RestaurantSettingsService.updatePaymentMethods() directamente
    */
-  async updatePaymentMethods(id: string, _config: UpdatePaymentMethodsDto) {
-    // Store as JSON in a dedicated field (requires migration)
-    // For now, we'll use a simple approach with Restaurant fields
-    const updateData: any = {};
-
-    // We need to add paymentMethods field to Restaurant schema
-    // This is a placeholder - requires migration
-    return this.prisma.restaurant.update({
-      where: { id },
-      data: updateData,
-      select: {
-        updatedAt: true,
-      },
-    });
+  async updatePaymentMethods(id: string, config: UpdatePaymentMethodsDto) {
+    return this.settingsService.updatePaymentMethods(id, config);
   }
 
   /**
-   * Update delivery zones configuration
+   * @deprecated Usa RestaurantSettingsService.updateDeliveryZones() directamente
    */
   async updateDeliveryZones(id: string, config: UpdateDeliveryZonesDto) {
-    const { deliveryZones, enableDelivery } = config;
-
-    // Update restaurant delivery settings in features (JSON field)
-    const restaurant: any = await this.prisma.restaurant.findUnique({
-      where: { id },
-    });
-
-    const currentFeatures = restaurant?.features || {};
-
-    await this.prisma.restaurant.update({
-      where: { id },
-      data: {
-        features: {
-          ...currentFeatures,
-          delivery: enableDelivery,
-        },
-      },
-    });
-
-    // Update or create delivery zones
-    if (deliveryZones && deliveryZones.length > 0) {
-      // Delete existing zones
-      await this.prisma.deliveryZone.deleteMany({
-        where: { restaurantId: id },
-      });
-
-      // Create new zones
-      await this.prisma.deliveryZone.createMany({
-        data: deliveryZones.map((zone) => ({
-          restaurantId: id,
-          name: zone.name,
-          deliveryFee: zone.deliveryFee || 0,
-          minOrder: zone.minOrder || 0,
-          estimatedTime: zone.estimatedTime || '',
-          areas: zone.areas || [],
-        })),
-      });
-    }
-
-    return this.prisma.deliveryZone.findMany({
-      where: { restaurantId: id },
-    });
+    return this.settingsService.updateDeliveryZones(id, config);
   }
 
   /**
-   * Get roles with permissions for a restaurant
+   * @deprecated Usa RestaurantUsersService.getRoles() directamente
    */
   async getRoles(restaurantId: string) {
-    return this.prisma.role.findMany({
-      where: { restaurantId },
-      select: {
-        id: true,
-        name: true,
-        permissions: true,
-        color: true,
-        isSystemRole: true,
-      },
-      orderBy: { name: 'asc' },
-    });
+    return this.usersService.getRoles(restaurantId);
   }
 
   /**
-   * Get all users from a restaurant
+   * @deprecated Usa RestaurantUsersService.getRestaurantUsers() directamente
    */
   async getRestaurantUsers(restaurantId: string) {
-    return this.prisma.user.findMany({
-      where: { restaurantId },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        lastLogin: true,
-        roleId: true,
-        role: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-          },
-        },
-        isActive: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    return this.usersService.getRestaurantUsers(restaurantId);
   }
 
   /**
-   * Invite a user to a restaurant
-   * TODO: Implement invitation system with email and expiration
+   * @deprecated Usa RestaurantUsersService.inviteUser() directamente
    */
   async inviteUser(
     restaurantId: string,
@@ -1164,164 +1018,25 @@ export class RestaurantsService {
       name?: string;
     },
   ) {
-    let role;
-    const roleIdentifier = inviteDto.roleId || inviteDto.roleName;
-
-    if (!roleIdentifier) {
-      throw new BadRequestException('Either roleId or role name is required');
-    }
-
-    // Try to find role by ID first
-    role = await this.prisma.role.findUnique({
-      where: { id: roleIdentifier },
-    });
-
-    // If not found by ID, try by name (case-insensitive)
-    if (!role) {
-      // Try exact match first
-      role = await this.prisma.role.findFirst({
-        where: {
-          restaurantId,
-          name: {
-            equals: roleIdentifier,
-            mode: 'insensitive',
-          },
-        },
-      });
-
-      // If still not found, try capitalized version (Manager, Waiter, etc.)
-      if (!role && roleIdentifier.length > 0) {
-        const capitalizedName =
-          roleIdentifier.charAt(0).toUpperCase() +
-          roleIdentifier.slice(1).toLowerCase();
-        role = await this.prisma.role.findFirst({
-          where: {
-            restaurantId,
-            name: capitalizedName,
-          },
-        });
-      }
-    }
-
-    if (!role) {
-      throw new NotFoundException(
-        `Role '${roleIdentifier}' not found in this restaurant`,
-      );
-    }
-
-    // Verify role belongs to this restaurant
-    if (role.restaurantId !== restaurantId) {
-      throw new BadRequestException('Invalid role for this restaurant');
-    }
-
-    // Check if user already exists with this email in this restaurant
-    const existingUser = await this.prisma.user.findFirst({
-      where: {
-        restaurantId,
-        email: inviteDto.email,
-      },
-    });
-
-    if (existingUser) {
-      throw new ConflictException('User already exists in this restaurant');
-    }
-
-    // Create new user with temporary password
-    const hashedPassword = await bcrypt.hash('TempPassword123!', 10);
-
-    return this.prisma.user.create({
-      data: {
-        name: inviteDto.email.split('@')[0], // Use email prefix as default name
-        email: inviteDto.email,
-        password: hashedPassword,
-        restaurantId,
-        roleId: role.id,
-        isActive: true,
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        isActive: true,
-        createdAt: true,
-      },
-    });
+    return this.usersService.inviteUser(restaurantId, inviteDto);
   }
 
   /**
-   * Update user role and status
+   * @deprecated Usa RestaurantUsersService.updateUserRole() directamente
    */
   async updateUserRole(
     restaurantId: string,
     userId: string,
     updateDto: { roleId?: string; isActive?: boolean },
   ) {
-    // Verify user belongs to this restaurant
-    const user = await this.prisma.user.findFirst({
-      where: { id: userId, restaurantId },
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found in this restaurant');
-    }
-
-    // If updating role, verify it belongs to this restaurant
-    if (updateDto.roleId) {
-      const role = await this.prisma.role.findUnique({
-        where: { id: updateDto.roleId },
-      });
-
-      if (!role || role.restaurantId !== restaurantId) {
-        throw new BadRequestException('Invalid role for this restaurant');
-      }
-    }
-
-    return this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        roleId: updateDto.roleId,
-        isActive: updateDto.isActive,
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        roleId: true,
-        role: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-          },
-        },
-        isActive: true,
-        createdAt: true,
-      },
-    });
+    return this.usersService.updateUserRole(restaurantId, userId, updateDto);
   }
 
   /**
-   * Remove user from restaurant
+   * @deprecated Usa RestaurantUsersService.removeUser() directamente
    */
   async removeUser(restaurantId: string, userId: string) {
-    // Verify user belongs to this restaurant
-    const user = await this.prisma.user.findFirst({
-      where: { id: userId, restaurantId },
-    });
-
-    if (!user) {
-      throw new NotFoundException('User not found in this restaurant');
-    }
-
-    // Soft delete: set isActive to false
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: {
-        isActive: false,
-      },
-    });
-
-    return { success: true, message: 'User removed successfully' };
+    return this.usersService.removeUser(restaurantId, userId);
   }
 
   /**
@@ -1405,218 +1120,27 @@ export class RestaurantsService {
   }
 
   /**
-   * Delete a restaurant asset by type (e.g., 'banner', 'logo')
+   * @deprecated Usa RestaurantBrandingService.deleteAsset() directamente
    */
   async deleteAsset(id: string, type?: string) {
-    const restaurant: any = await this.prisma.restaurant.findUnique({
-      where: { id },
-    });
-
-    if (!restaurant) {
-      throw new NotFoundException(`Restaurant with ID ${id} not found`);
-    }
-
-    if (!type) {
-      throw new BadRequestException('Asset type is required');
-    }
-
-    const updateData: any = {};
-
-    const normalized = String(type).toLowerCase();
-
-    if (
-      normalized === 'banner' ||
-      normalized === 'cover' ||
-      normalized === 'coverimage'
-    ) {
-      await this.s3.deleteObjectByUrl(restaurant.coverImage);
-      updateData.coverImage = null;
-
-      // If branding JSON stores banner/cover, clear it as well
-      if (restaurant.branding && typeof restaurant.branding === 'object') {
-        const branding = { ...(restaurant.branding as object) } as any;
-        if (branding.bannerImage !== undefined)
-          await this.s3.deleteObjectByUrl(branding.bannerImage);
-        if (branding.coverImage !== undefined)
-          await this.s3.deleteObjectByUrl(branding.coverImage);
-        if (branding.bannerImage !== undefined) branding.bannerImage = null;
-        if (branding.coverImage !== undefined) branding.coverImage = null;
-        updateData.branding = branding;
-      }
-    } else if (normalized === 'logo') {
-      await this.s3.deleteObjectByUrl(restaurant.logo);
-      updateData.logo = null;
-
-      if (restaurant.branding && typeof restaurant.branding === 'object') {
-        const branding = { ...(restaurant.branding as object) } as any;
-        if (branding.logo !== undefined)
-          await this.s3.deleteObjectByUrl(branding.logo);
-        if (branding.logo !== undefined) branding.logo = null;
-        updateData.branding = branding;
-      }
-    } else if (normalized === 'favicon') {
-      if (restaurant.branding && typeof restaurant.branding === 'object') {
-        const branding = { ...(restaurant.branding as object) } as any;
-        if (branding.favicon !== undefined)
-          await this.s3.deleteObjectByUrl(branding.favicon);
-        if (branding.favicon !== undefined) branding.favicon = null;
-        updateData.branding = branding;
-      }
-    } else {
-      throw new BadRequestException(`Unknown asset type: ${type}`);
-    }
-
-    const updated = await this.prisma.restaurant.update({
-      where: { id },
-      data: updateData,
-    });
-
-    return { restaurant: this.mapRestaurantForClient(updated) };
+    return this.brandingService.deleteAsset(id, type);
   }
 
+  /**
+   * @deprecated Usa RestaurantBrandingService.presignAssetUpload() directamente
+   */
   async presignAssetUpload(
     id: string,
     type: string,
     opts?: { contentType?: string; filename?: string },
   ) {
-    const restaurant: any = await this.prisma.restaurant.findUnique({
-      where: { id },
-      select: { id: true },
-    });
-
-    if (!restaurant) {
-      throw new NotFoundException(`Restaurant with ID ${id} not found`);
-    }
-
-    const normalized = String(type).toLowerCase();
-    const assetType =
-      normalized === 'logo'
-        ? 'logo'
-        : normalized === 'banner' ||
-            normalized === 'cover' ||
-            normalized === 'coverimage'
-          ? 'banner'
-          : normalized === 'favicon'
-            ? 'favicon'
-            : null;
-
-    if (!assetType) {
-      throw new BadRequestException(`Unknown asset type: ${type}`);
-    }
-
-    let ext = (opts?.filename ? path.extname(opts.filename) : '').toLowerCase();
-    if (!ext && opts?.contentType) {
-      const ct = opts.contentType.toLowerCase();
-      if (ct === 'image/jpeg' || ct === 'image/jpg') ext = '.jpg';
-      else if (ct === 'image/png') ext = '.png';
-      else if (ct === 'image/webp') ext = '.webp';
-      else if (ct === 'image/gif') ext = '.gif';
-      else if (ct === 'image/svg+xml') ext = '.svg';
-      else ext = '.jpg';
-    }
-    if (!ext) ext = '.jpg';
-
-    const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const key = path.posix.join(
-      'restaurants',
-      id,
-      assetType,
-      `${unique}${ext}`,
-    );
-
-    return this.s3.createPresignedPutUrl({
-      key,
-      contentType: opts?.contentType,
-      cacheControl: 'public, max-age=31536000, immutable',
-      expiresInSeconds: 60,
-    });
+    return this.brandingService.presignAssetUpload(id, type, opts);
   }
 
   /**
-   * Save uploaded asset file to S3 and update restaurant record
+   * @deprecated Usa RestaurantBrandingService.saveUploadedAsset() directamente
    */
   async saveUploadedAsset(id: string, file: Express.Multer.File, type: string) {
-    const restaurant: any = await this.prisma.restaurant.findUnique({
-      where: { id },
-    });
-
-    if (!restaurant) {
-      throw new NotFoundException(`Restaurant with ID ${id} not found`);
-    }
-
-    const normalized = String(type).toLowerCase();
-
-    if (!file?.buffer || !file?.mimetype) {
-      throw new BadRequestException('Invalid upload: missing file buffer');
-    }
-
-    const ext = (path.extname(file.originalname || '') || '').toLowerCase();
-    const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const key = path.posix.join(
-      'restaurants',
-      id,
-      normalized,
-      `${unique}${ext}`,
-    );
-
-    const uploaded = await this.s3.uploadObject({
-      key,
-      body: file.buffer,
-      contentType: file.mimetype,
-      cacheControl: 'public, max-age=31536000, immutable',
-    });
-
-    const updateData: any = {};
-
-    if (
-      normalized === 'banner' ||
-      normalized === 'cover' ||
-      normalized === 'coverimage'
-    ) {
-      await this.s3.deleteObjectByUrl(restaurant.coverImage);
-      updateData.coverImage = uploaded.key;
-
-      if (restaurant.branding && typeof restaurant.branding === 'object') {
-        const branding = { ...(restaurant.branding as object) } as any;
-        if (branding.bannerImage !== undefined)
-          await this.s3.deleteObjectByUrl(branding.bannerImage);
-        if (branding.coverImage !== undefined)
-          await this.s3.deleteObjectByUrl(branding.coverImage);
-        branding.bannerImage = uploaded.key;
-        branding.coverImage = uploaded.key;
-        updateData.branding = branding;
-      }
-    } else if (normalized === 'logo') {
-      await this.s3.deleteObjectByUrl(restaurant.logo);
-      updateData.logo = uploaded.key;
-
-      if (restaurant.branding && typeof restaurant.branding === 'object') {
-        const branding = { ...(restaurant.branding as object) } as any;
-        if (branding.logo !== undefined)
-          await this.s3.deleteObjectByUrl(branding.logo);
-        branding.logo = uploaded.key;
-        updateData.branding = branding;
-      }
-    } else if (normalized === 'favicon') {
-      if (restaurant.branding && typeof restaurant.branding === 'object') {
-        const branding = { ...(restaurant.branding as object) } as any;
-        if (branding.favicon !== undefined)
-          await this.s3.deleteObjectByUrl(branding.favicon);
-        branding.favicon = uploaded.key;
-        updateData.branding = branding;
-      } else {
-        // Create branding object if it doesn't exist
-        updateData.branding = { favicon: uploaded.key };
-      }
-    } else {
-      throw new BadRequestException(`Unknown asset type: ${type}`);
-    }
-
-    const updated = await this.prisma.restaurant.update({
-      where: { id },
-      data: updateData,
-    });
-
-    return { restaurant: this.mapRestaurantForClient(updated) };
+    return this.brandingService.saveUploadedAsset(id, file, type);
   }
 }

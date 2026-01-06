@@ -2,9 +2,9 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { OwnershipService } from '../common/services/ownership.service';
 import * as crypto from 'crypto';
 import {
   CreateOrderDto,
@@ -16,7 +16,10 @@ import {
 
 @Injectable()
 export class OrdersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ownership: OwnershipService,
+  ) {}
 
   async create(restaurantId: string, createDto: CreateOrderDto) {
     if (!createDto) {
@@ -224,7 +227,7 @@ export class OrdersService {
     filters: OrderFiltersDto,
   ) {
     // Verificar que el usuario pertenece al restaurante
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const where: any = {
       restaurantId,
@@ -277,7 +280,7 @@ export class OrdersService {
   }
 
   async findOne(id: string, restaurantId: string, userId: string) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const order = await this.prisma.order.findFirst({
       where: {
@@ -312,7 +315,7 @@ export class OrdersService {
     userId: string,
     updateDto: UpdateOrderStatusDto,
   ) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const order = await this.prisma.order.findFirst({
       where: {
@@ -430,7 +433,7 @@ export class OrdersService {
   }
 
   async getStats(restaurantId: string, userId: string) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -478,7 +481,7 @@ export class OrdersService {
   }
 
   async getTodayStats(restaurantId: string, userId: string) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -582,7 +585,7 @@ export class OrdersService {
   }
 
   async getTopDishes(restaurantId: string, userId: string, period: string) {
-    await this.verifyRestaurantOwnership(restaurantId, userId);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const startDate = new Date();
     startDate.setHours(0, 0, 0, 0);
@@ -656,19 +659,6 @@ export class OrdersService {
             : 0,
       })),
     };
-  }
-
-  private async verifyRestaurantOwnership(
-    restaurantId: string,
-    userId: string,
-  ) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-    });
-
-    if (!user || user.restaurantId !== restaurantId) {
-      throw new ForbiddenException('You do not have access to this restaurant');
-    }
   }
 
   private validateStatusTransition(
