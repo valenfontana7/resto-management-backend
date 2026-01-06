@@ -260,6 +260,11 @@ export class CategoriesService {
     type: 'dish' | 'category',
   ): Promise<string | null> {
     try {
+      // Si ya es una key directa (de /api/uploads/image), retornarla tal cual
+      if (/^[a-z0-9]+\/[a-z0-9_-]+\.[a-z0-9]+$/i.test(base64String)) {
+        return base64String;
+      }
+
       // Si ya es una URL/endpoint proxy, extraer key (para guardar key en DB)
       if (base64String.startsWith('/api/uploads/')) {
         return (
