@@ -27,9 +27,13 @@ async function bootstrap() {
     return trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
   };
 
-  const frontendRaw = (process.env.FRONTEND_URL ?? '').trim();
-  const allowedOrigins = frontendRaw
-    ? frontendRaw
+  const corsOriginsRaw = (
+    process.env.CORS_ORIGINS ??
+    process.env.FRONTEND_URL ??
+    ''
+  ).trim();
+  const allowedOrigins = corsOriginsRaw
+    ? corsOriginsRaw
         .split(',')
         .map((s) => normalizeOrigin(s))
         .filter(Boolean)
@@ -99,7 +103,7 @@ async function bootstrap() {
       // Allow non-browser requests (e.g., server-to-server, curl)
       if (!origin) return callback(null, true);
 
-      // If no FRONTEND_URL configured, reflect origin (safe for local dev)
+      // If no CORS_ORIGINS/FRONTEND_URL configured, reflect origin (safe for local dev)
       if (allowedOrigins.length === 0) return callback(null, true);
 
       if (isAllowedOrigin(origin)) return callback(null, true);
