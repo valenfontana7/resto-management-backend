@@ -11,16 +11,31 @@ echo "🚀 Starting deployment..."
 echo "📥 Pulling latest code..."
 git pull origin master
 
-# If docker-compose exists, prefer containerized flow
-if [ -f docker-compose.yml ]; then
-  echo "📦 Using Docker Compose flow"
+# Prefer Docker Compose v2 if available
+if docker compose version >/dev/null 2>&1; then
+  COMPOSE="docker compose"
+else
+  COMPOSE="docker-compose"
+fi
+
+# Prefer production compose file when present
+COMPOSE_FILE=""
+if [ -f docker-compose.prod.yml ]; then
+  COMPOSE_FILE="docker-compose.prod.yml"
+elif [ -f docker-compose.yml ]; then
+  COMPOSE_FILE="docker-compose.yml"
+fi
+
+# If docker compose exists, prefer containerized flow
+if [ -n "$COMPOSE_FILE" ]; then
+  echo "📦 Using Docker Compose flow ($COMPOSE_FILE)"
 
   # Ensure DB is up
   echo "📥 Pulling latest images..."
-  docker-compose pull || true
+  $COMPOSE -f "$COMPOSE_FILE" pull || true
 
   echo "⬆️ Starting database container..."
-  docker-compose up -d db
+  $COMPOSE -f "$COMPOSE_FILE" up -d db
 
   echo "⏳ Waiting for Postgres to be ready..."
   # Wait until pg_isready returns success
@@ -30,13 +45,13 @@ if [ -f docker-compose.yml ]; then
   echo " OK"
 
   echo "🔨 Building app image..."
-  docker-compose build app
+  $COMPOSE -f "$COMPOSE_FILE" build app
 
   echo "🗄️ Running database migrations inside app container..."
-  docker-compose run --rm app npx prisma migrate deploy --schema=prisma/schema.prisma
+  $COMPOSE -f "$COMPOSE_FILE" run --rm app npx prisma migrate deploy --schema=/app/prisma/schema.prisma
 
   echo "⬆️ Starting (or restarting) app container..."
-  docker-compose up -d --no-deps --build app
+  $COMPOSE -f "$COMPOSE_FILE" up -d --no-deps --build app
 else
   # Host-based fallback
   echo "📦 Installing dependencies..."
