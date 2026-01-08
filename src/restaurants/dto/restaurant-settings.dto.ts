@@ -10,7 +10,6 @@ import {
   Min,
   IsUrl,
   Matches,
-  ValidationArguments,
   registerDecorator,
   ValidationOptions,
   IsNotEmpty,
@@ -27,8 +26,7 @@ function IsUrlOrSlug(validationOptions?: ValidationOptions) {
       propertyName: propertyName,
       options: validationOptions,
       validator: {
-        validate(value: any, args: ValidationArguments) {
-          if (typeof value !== 'string') return false;
+        validate(value: any) {
           // Accept URLs (http/https)
           if (value.startsWith('http://') || value.startsWith('https://')) {
             try {
@@ -44,7 +42,7 @@ function IsUrlOrSlug(validationOptions?: ValidationOptions) {
           }
           return false;
         },
-        defaultMessage(args: ValidationArguments) {
+        defaultMessage() {
           return 'Website must be a valid URL (http/https) or a relative path starting with /';
         },
       },

@@ -232,7 +232,7 @@ export class UploadsController {
     }
 
     // basic control char guard
-    if (/\x00/.test(key)) {
+    if (key.includes('\0')) {
       throw new BadRequestException('Invalid key');
     }
 

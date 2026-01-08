@@ -5,9 +5,6 @@ import {
   IsEnum,
   IsUrl,
   Matches,
-  IsNumber,
-  Min,
-  Max,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';

@@ -294,7 +294,7 @@ export class TablesService {
     }
 
     // Solo permitir eliminar si está disponible
-    if (table.status !== TableStatus.AVAILABLE) {
+    if (table.status !== PrismaTableStatus.AVAILABLE) {
       throw new BadRequestException(
         'Cannot delete table that is occupied, reserved, or being cleaned',
       );

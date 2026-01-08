@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
-  UpdatePaymentMethodsDto,
   UpdateDeliveryZonesDto,
+  UpdatePaymentMethodsDto,
 } from '../dto/restaurant-settings.dto';
 
 /**
@@ -65,20 +65,22 @@ export class RestaurantSettingsService {
   /**
    * Actualizar configuración de métodos de pago
    */
-  async updatePaymentMethods(id: string, _config: UpdatePaymentMethodsDto) {
+  async updatePaymentMethods(id: string, config: UpdatePaymentMethodsDto) {
     // Store as JSON in a dedicated field (requires migration)
     // For now, we'll use a simple approach with Restaurant fields
     const updateData: any = {};
 
     // We need to add paymentMethods field to Restaurant schema
     // This is a placeholder - requires migration
-    return this.prisma.restaurant.update({
+    await this.prisma.restaurant.update({
       where: { id },
       data: updateData,
       select: {
         updatedAt: true,
       },
     });
+
+    return config.paymentMethods;
   }
 
   /**

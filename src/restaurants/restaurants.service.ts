@@ -6,7 +6,6 @@ import {
   Inject,
   forwardRef,
 } from '@nestjs/common';
-import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   UpdateBrandingDto,
@@ -48,6 +47,7 @@ export class RestaurantsService {
         postalCode: true,
         logo: true,
         coverImage: true,
+        taxId: true,
         minOrderAmount: true,
         orderLeadTime: true,
         branding: true,
@@ -78,6 +78,7 @@ export class RestaurantsService {
         postalCode: true,
         logo: true,
         coverImage: true,
+        taxId: true,
         minOrderAmount: true,
         orderLeadTime: true,
         branding: true,

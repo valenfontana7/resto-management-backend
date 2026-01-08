@@ -255,14 +255,17 @@ export class AuthService {
     return { user };
   }
 
-  private async generateAuthResponse(user: User | any): Promise<AuthResponse> {
+  private async generateAuthResponse(user: User): Promise<AuthResponse> {
     // Ensure role and restaurant relations are present
-    let fullUser = user;
+    let fullUser: any = user;
     if (!user || !('role' in user) || !('restaurant' in user)) {
       fullUser = await this.prisma.user.findUnique({
         where: { id: user.id },
         include: { role: true, restaurant: true },
       });
+      if (!fullUser) {
+        throw new UnauthorizedException('User not found');
+      }
     }
 
     const payload: JwtPayload = {

@@ -7,7 +7,6 @@ import {
   IsArray,
   ValidateNested,
   Min,
-  Max,
   Matches,
 } from 'class-validator';
 import { Type } from 'class-transformer';

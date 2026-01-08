@@ -12,6 +12,10 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  UpdateBusinessInfoDto,
+  UpdateContactDto,
+} from './restaurant-settings.dto';
 
 // ==================== Branding DTOs ====================
 
@@ -357,6 +361,26 @@ export class SocialMediaDto {
 // ==================== Update Restaurant Settings DTO ====================
 
 export class UpdateRestaurantSettingsDto {
+  @ApiPropertyOptional({ type: UpdateBusinessInfoDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdateBusinessInfoDto)
+  businessInfo?: UpdateBusinessInfoDto;
+
+  @ApiPropertyOptional({ type: UpdateContactDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => UpdateContactDto)
+  contact?: UpdateContactDto;
+
+  @ApiPropertyOptional({ example: '20-12345678-9' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{2}-\d{8}-\d{1}$/, {
+    message: 'Invalid CUIT/CUIL format. Expected: XX-XXXXXXXX-X',
+  })
+  taxId?: string;
+
   @ApiPropertyOptional({ type: BrandingDto })
   @IsOptional()
   @ValidateNested()

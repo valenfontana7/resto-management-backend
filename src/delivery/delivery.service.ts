@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  ConflictException,
   Inject,
   forwardRef,
 } from '@nestjs/common';
@@ -464,11 +463,11 @@ export class DeliveryService {
     };
 
     // Actualizar timestamps según el estado
-    if (dto.status === 'PICKED_UP' && !delivery.pickedUpAt) {
+    if (dto.status === DeliveryStatus.PICKED_UP && !delivery.pickedUpAt) {
       updateData.pickedUpAt = new Date();
     }
 
-    if (dto.status === 'DELIVERED' && !delivery.deliveredAt) {
+    if (dto.status === DeliveryStatus.DELIVERED && !delivery.deliveredAt) {
       updateData.deliveredAt = new Date();
     }
 
@@ -628,7 +627,7 @@ export class DeliveryService {
   // PUBLIC TRACKING
   // ============================================
 
-  async getPublicTracking(orderId: string, token: string) {
+  async getPublicTracking(orderId: string) {
     // TODO: Implementar validación de token
     const delivery = await this.prisma.deliveryOrder.findFirst({
       where: { orderId },

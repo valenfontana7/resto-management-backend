@@ -26,19 +26,33 @@ class InMemoryPrisma {
   private restaurantsBySlug = new Map<string, RestaurantRow>();
 
   mercadoPagoCredential = {
-    findUnique: async ({ where, select }: any) => {
+    findUnique: ({
+      where,
+      select,
+    }: {
+      where: { restaurantId: string };
+      select?: { [K in keyof CredentialRow]?: boolean };
+    }) => {
       const row = this.credentials.get(where.restaurantId);
       if (!row) return null;
       if (!select) return row;
 
       const selected: any = {};
-      for (const key of Object.keys(select)) {
-        if (select[key]) selected[key] = (row as any)[key];
+      for (const key of Object.keys(select) as (keyof CredentialRow)[]) {
+        if (select[key]) selected[key] = row[key];
       }
       return selected;
     },
 
-    upsert: async ({ where, create, update }: any) => {
+    upsert: ({
+      where,
+      create,
+      update,
+    }: {
+      where: { restaurantId: string };
+      create: Omit<CredentialRow, 'createdAt' | 'updatedAt'>;
+      update: Partial<Omit<CredentialRow, 'createdAt' | 'updatedAt'>>;
+    }) => {
       const existing = this.credentials.get(where.restaurantId);
       const now = new Date();
       if (!existing) {
@@ -56,8 +70,9 @@ class InMemoryPrisma {
 
       const merged: CredentialRow = {
         ...existing,
-        accessTokenCiphertext: update.accessTokenCiphertext,
-        accessTokenLast4: update.accessTokenLast4 ?? null,
+        accessTokenCiphertext:
+          update.accessTokenCiphertext ?? existing.accessTokenCiphertext,
+        accessTokenLast4: update.accessTokenLast4 ?? existing.accessTokenLast4,
         isSandbox:
           typeof update.isSandbox === 'boolean'
             ? update.isSandbox
@@ -68,15 +83,21 @@ class InMemoryPrisma {
       return merged;
     },
 
-    deleteMany: async ({ where }: any) => {
+    deleteMany: ({ where }: { where: { restaurantId: string } }) => {
       this.credentials.delete(where.restaurantId);
       return { count: 1 };
     },
   };
 
   restaurant = {
-    findUnique: async ({ where, select }: any) => {
-      const slug = where?.slug;
+    findUnique: ({
+      where,
+      select,
+    }: {
+      where: { slug: string };
+      select?: { [K in keyof RestaurantRow]?: boolean };
+    }) => {
+      const slug = where.slug;
       if (typeof slug !== 'string') return null;
 
       const row = this.restaurantsBySlug.get(slug);
@@ -84,13 +105,13 @@ class InMemoryPrisma {
       if (!select) return row;
 
       const selected: any = {};
-      for (const key of Object.keys(select)) {
-        if (select[key]) selected[key] = (row as any)[key];
+      for (const key of Object.keys(select) as (keyof RestaurantRow)[]) {
+        if (select[key]) selected[key] = row[key];
       }
       return selected;
     },
 
-    create: async ({ data }: any) => {
+    create: ({ data }: { data: RestaurantRow }) => {
       const row: RestaurantRow = {
         id: data.id,
         slug: data.slug,
@@ -101,9 +122,9 @@ class InMemoryPrisma {
   };
 
   webhookEvent = {
-    create: async ({ data }: any) => {
+    create: ({ data }: { data: { eventKey: string } }) => {
       if (this.webhookKeys.has(data.eventKey)) {
-        const err: any = new Error('Unique constraint failed');
+        const err = new Error('Unique constraint failed') as any;
         err.code = 'P2002';
         throw err;
       }
@@ -155,6 +176,15 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
       data: {
         id: 'r1',
         slug: 'mi-resto',
+        name: 'Mi Resto',
+        type: 'restaurant',
+        cuisineTypes: ['argentina'],
+        description: 'Test restaurant',
+        email: 'test@example.com',
+        phone: '+123456789',
+        address: 'Test Address',
+        city: 'Test City',
+        country: 'Argentina',
       },
     });
   });

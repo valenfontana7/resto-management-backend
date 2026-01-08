@@ -7,7 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 class InMemoryPrisma {
   dish = {
-    findMany: async ({ where }: any) => {
+    findMany: ({ where }: any) => {
       const ids = where.id.in as string[];
       return ids.map((id) => ({
         id,
@@ -19,10 +19,10 @@ class InMemoryPrisma {
     },
   };
 
-  private orderRow: any | null = null;
+  private orderRow: any = null;
 
   order = {
-    create: async ({ data }: any) => {
+    create: ({ data }: any) => {
       this.orderRow = {
         id: 'o1',
         restaurantId: data.restaurantId,
@@ -48,7 +48,7 @@ class InMemoryPrisma {
       return this.orderRow;
     },
 
-    findFirst: async ({ where, select }: any) => {
+    findFirst: ({ where, select }: any) => {
       if (!this.orderRow) return null;
       if (where.id !== this.orderRow.id) return null;
       if (where.restaurantId !== this.orderRow.restaurantId) return null;

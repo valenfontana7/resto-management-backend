@@ -61,7 +61,7 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('join-restaurant')
-  handleJoinRestaurant(
+  async handleJoinRestaurant(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { restaurantId: string },
   ) {
@@ -72,7 +72,7 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     // Join the socket room for this restaurant
-    client.join(`restaurant:${restaurantId}`);
+    await client.join(`restaurant:${restaurantId}`);
 
     // Track the client
     if (!this.restaurantClients.has(restaurantId)) {
@@ -86,7 +86,7 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('leave-restaurant')
-  handleLeaveRestaurant(
+  async handleLeaveRestaurant(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { restaurantId: string },
   ) {
@@ -97,7 +97,7 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     // Leave the socket room
-    client.leave(`restaurant:${restaurantId}`);
+    await client.leave(`restaurant:${restaurantId}`);
 
     // Remove from tracking
     const clients = this.restaurantClients.get(restaurantId);

@@ -8,8 +8,6 @@ import {
   Query,
   Req,
   BadRequestException,
-  Inject,
-  forwardRef,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
@@ -110,7 +108,7 @@ export class MercadoPagoController {
     const rawBody: Buffer | undefined = req?.rawBody;
 
     // Registrar evento para idempotencia
-    const { isNew, eventKey } = await this.webhookService.recordWebhookEvent(
+    const { isNew } = await this.webhookService.recordWebhookEvent(
       rawBody,
       body,
     );

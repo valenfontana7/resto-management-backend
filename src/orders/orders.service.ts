@@ -21,11 +21,13 @@ import {
   OrderFiltersDto,
   OrderStatus,
   PaymentStatus,
+  OrderType,
 } from './dto/order.dto';
 
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
+  private readonly MERCADOPAGO_PAYMENT_METHOD = 'mercadopago';
 
   constructor(
     private readonly prisma: PrismaService,
@@ -119,7 +121,7 @@ export class OrdersService {
       createDto.subtotal ??
       orderItems.reduce((sum, item) => sum + item.subtotal, 0);
     const deliveryFee =
-      createDto.deliveryFee ?? (orderType === 'DELIVERY' ? 500 : 0);
+      createDto.deliveryFee ?? (orderType === OrderType.DELIVERY ? 500 : 0);
     const tip = createDto.tip || 0;
     const total = createDto.total ?? subtotal + deliveryFee + tip;
 
@@ -127,7 +129,10 @@ export class OrdersService {
     const orderNumber = await this.generateOrderNumber(restaurantId);
 
     // Si NO es MercadoPago, persistimos la Order directamente (no hay webhook para crearla luego)
-    if (paymentMethod !== 'mercadopago') {
+    const isMercadoPago =
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
+      String(paymentMethod) === this.MERCADOPAGO_PAYMENT_METHOD;
+    if (!isMercadoPago) {
       const order = await this.prisma.order.create({
         data: {
           orderNumber,
@@ -804,10 +809,10 @@ export class OrdersService {
   ):
     | { kind: 'status'; status: OrderStatus }
     | { kind: 'payment'; paymentStatus: PaymentStatus } {
-    const raw = String(value ?? '').trim();
-    if (!raw) {
+    if (typeof value !== 'string' || !value.trim()) {
       throw new BadRequestException('status is required');
     }
+    const raw = value.trim();
 
     const normalized = raw.toUpperCase();
 

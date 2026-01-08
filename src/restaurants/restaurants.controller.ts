@@ -95,7 +95,7 @@ export class RestaurantsController {
           this.settingsService.logVisit(restaurant.id, meta).catch(() => {});
         }
       }
-    } catch (e) {
+    } catch {
       // ignore analytics errors for public route
     }
 
