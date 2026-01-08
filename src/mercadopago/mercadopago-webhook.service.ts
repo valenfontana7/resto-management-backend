@@ -254,22 +254,24 @@ export class MercadoPagoWebhookService {
   ): Promise<{ isNew: boolean; eventKey: string }> {
     const eventKey = this.computeEventKey(rawBody, payload);
 
-    try {
-      await this.prisma.webhookEvent.create({
-        data: {
-          id: crypto.randomUUID(),
-          provider: 'mercadopago',
-          eventKey,
-          payload,
-        },
-      });
-      return { isNew: true, eventKey };
-    } catch (err: any) {
-      // P2002 = unique constraint violation = already processed
-      if (err?.code === 'P2002') {
-        return { isNew: false, eventKey };
-      }
-      throw err;
-    }
+    const existing = await this.prisma.webhookEvent.findUnique({
+      where: { eventKey },
+      select: { id: true },
+    });
+
+    await this.prisma.webhookEvent.upsert({
+      where: { eventKey },
+      create: {
+        provider: 'mercadopago',
+        eventKey,
+        payload,
+      },
+      update: {
+        // Mantener el último payload recibido (útil para debug)
+        payload,
+      },
+    });
+
+    return { isNew: !existing, eventKey };
   }
 }
