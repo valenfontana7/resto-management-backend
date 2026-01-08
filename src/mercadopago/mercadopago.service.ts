@@ -38,6 +38,7 @@ export class MercadoPagoService {
     body: PreferenceRequestBody,
   ): Promise<{
     preference: { id: string; init_point: string; sandbox_init_point?: string };
+    isSandbox: boolean;
   }> {
     const orderId = (body?.orderId ?? '').trim();
     if (!orderId) {
@@ -87,9 +88,21 @@ export class MercadoPagoService {
       effectiveRestaurantId = restaurant?.id ?? '';
     }
 
+    // Determinar si está en modo sandbox basándose en las credenciales del restaurante
+    let isSandbox = !!body.sandbox;
+    if (effectiveRestaurantId) {
+      const credential = await this.prisma.mercadoPagoCredential.findUnique({
+        where: { restaurantId: effectiveRestaurantId },
+        select: { isSandbox: true },
+      });
+      if (credential) {
+        isSandbox = !!credential.isSandbox;
+      }
+    }
+
     const accessToken = await this.resolveAccessToken(
       effectiveRestaurantId,
-      !!body.sandbox,
+      isSandbox,
     );
 
     const orderPath = slug ? `/${slug}/order/${orderId}` : `/order/${orderId}`;
@@ -113,7 +126,7 @@ export class MercadoPagoService {
 
     const notificationUrl =
       this.configService.get<string>('MERCADOPAGO_NOTIFICATION_URL') ||
-      `${origin}/api/mercadopago/webhook`;
+      `${origin}/api/webhooks/mercadopago`;
 
     // If frontendBase is not HTTPS (e.g., http://localhost), MercadoPago may reject
     // auto_return='approved' because back_urls must be publicly reachable via HTTPS.
@@ -173,6 +186,7 @@ export class MercadoPagoService {
         init_point: json.init_point,
         sandbox_init_point: json.sandbox_init_point,
       },
+      isSandbox,
     };
   }
 

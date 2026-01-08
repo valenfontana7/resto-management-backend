@@ -8,6 +8,8 @@ import {
   Query,
   Req,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
@@ -16,6 +18,7 @@ import type { RequestUser } from '../auth/decorators/current-user.decorator';
 import { assertRestaurantAccess } from '../common/decorators/verify-restaurant-access.decorator';
 import { MercadoPagoCredentialsService } from './mercadopago-credentials.service';
 import { MercadoPagoService } from './mercadopago.service';
+import { MercadoPagoWebhookService } from './mercadopago-webhook.service';
 import type { PreferenceRequestBody } from './mercadopago.service';
 
 @ApiTags('mercadopago')
@@ -24,6 +27,7 @@ export class MercadoPagoController {
   constructor(
     private readonly credentialsService: MercadoPagoCredentialsService,
     private readonly mercadoPagoService: MercadoPagoService,
+    private readonly webhookService: MercadoPagoWebhookService,
   ) {}
 
   // A) Tenant token
@@ -98,10 +102,40 @@ export class MercadoPagoController {
   @Post('webhook')
   @Public()
   @HttpCode(200)
-  async webhook(@Req() req: any, @Body() body: any) {
+  async webhook(
+    @Req() req: any,
+    @Body() body: any,
+    @Query() query: { type?: string; 'data.id'?: string },
+  ) {
     const rawBody: Buffer | undefined = req?.rawBody;
-    await this.mercadoPagoService.recordWebhookEvent(rawBody, body);
-    return { received: true };
+
+    // Registrar evento para idempotencia
+    const { isNew, eventKey } = await this.webhookService.recordWebhookEvent(
+      rawBody,
+      body,
+    );
+
+    if (!isNew) {
+      // Ya procesamos este evento
+      return { received: true, duplicate: true };
+    }
+
+    // Procesar el webhook
+    const result = await this.webhookService.handleWebhook(query, body);
+
+    return result;
+  }
+
+  // D) Webhook handler alternativo en ruta /webhooks/mercadopago
+  @Post('webhooks/mercadopago')
+  @Public()
+  @HttpCode(200)
+  async webhookAlt(
+    @Req() req: any,
+    @Body() body: any,
+    @Query() query: { type?: string; 'data.id'?: string },
+  ) {
+    return this.webhook(req, body, query);
   }
 
   private getOrigin(req: any): string {

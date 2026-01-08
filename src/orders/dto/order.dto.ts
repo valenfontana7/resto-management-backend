@@ -8,6 +8,7 @@ import {
   IsArray,
   ValidateNested,
   IsNotEmpty,
+  IsNumber,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -19,6 +20,7 @@ export enum OrderType {
 
 export enum OrderStatus {
   PENDING = 'PENDING',
+  PAID = 'PAID',
   CONFIRMED = 'CONFIRMED',
   PREPARING = 'PREPARING',
   READY = 'READY',
@@ -38,9 +40,18 @@ export class OrderItemDto {
   @IsNotEmpty()
   dishId: string;
 
+  @IsOptional()
+  @IsString()
+  name?: string;
+
   @IsInt()
   @Min(1)
   quantity: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  unitPrice?: number;
 
   @IsOptional()
   @IsString()
@@ -73,12 +84,31 @@ export class CreateOrderDto {
 
   @IsOptional()
   @IsString()
+  deliveryNotes?: string;
+
+  @IsOptional()
+  @IsString()
   tableId?: string;
 
   @IsOptional()
   @IsInt()
   @Min(0)
+  subtotal?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  deliveryFee?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
   tip?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  total?: number;
 
   @IsOptional()
   @IsString()
@@ -101,8 +131,8 @@ export class UpdateOrderStatusDto {
 
 export class OrderFiltersDto {
   @IsOptional()
-  @IsEnum(OrderStatus)
-  status?: OrderStatus;
+  @IsString()
+  status?: string;
 
   @IsOptional()
   @IsEnum(OrderType)
@@ -119,4 +149,16 @@ export class OrderFiltersDto {
   @IsOptional()
   @IsString()
   customerPhone?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Type(() => Number)
+  page?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Type(() => Number)
+  limit?: number;
 }

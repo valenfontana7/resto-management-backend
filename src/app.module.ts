@@ -17,6 +17,9 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { DeliveryModule } from './delivery/delivery.module';
 import { MercadoPagoModule } from './mercadopago/mercadopago.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { EmailModule } from './email/email.module';
+import { WebsocketModule } from './websocket/websocket.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -36,6 +39,9 @@ import { UploadsModule } from './uploads/uploads.module';
     DeliveryModule,
     MercadoPagoModule,
     UploadsModule,
+    EmailModule,
+    WebsocketModule,
+    WebhooksModule,
   ],
   controllers: [AppController],
   providers: [

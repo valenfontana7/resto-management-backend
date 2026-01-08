@@ -2,9 +2,18 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
+import { MercadoPagoService } from '../mercadopago/mercadopago.service';
+import {
+  EmailService,
+  OrderData,
+  RestaurantData,
+} from '../email/email.service';
+import { OrdersGateway, OrderUpdatePayload } from '../websocket/orders.gateway';
 import * as crypto from 'crypto';
 import {
   CreateOrderDto,
@@ -16,12 +25,22 @@ import {
 
 @Injectable()
 export class OrdersService {
+  private readonly logger = new Logger(OrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
+    private readonly mercadopagoService: MercadoPagoService,
+    private readonly emailService: EmailService,
+    private readonly ordersGateway: OrdersGateway,
+    private readonly configService: ConfigService,
   ) {}
 
-  async create(restaurantId: string, createDto: CreateOrderDto) {
+  async create(
+    restaurantId: string,
+    createDto: CreateOrderDto,
+    origin?: string,
+  ) {
     if (!createDto) {
       throw new BadRequestException('Request body is required');
     }
@@ -64,6 +83,23 @@ export class OrdersService {
       );
     }
 
+    // Obtener restaurant para el slug
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        email: true,
+        phone: true,
+        address: true,
+      },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException('Restaurant not found');
+    }
+
     // Calcular totales
     const orderItems = createDto.items.map((item) => {
       const dish = dishes.find((d) => d.id === item.dishId);
@@ -71,60 +107,222 @@ export class OrdersService {
 
       return {
         dishId: item.dishId,
+        name: dish.name,
         quantity: item.quantity,
-        unitPrice: dish.price,
-        subtotal: dish.price * item.quantity,
+        unitPrice: item.unitPrice ?? dish.price,
+        subtotal: (item.unitPrice ?? dish.price) * item.quantity,
         notes: item.notes,
       };
     });
 
-    const subtotal = orderItems.reduce((sum, item) => sum + item.subtotal, 0);
-    const deliveryFee = orderType === 'DELIVERY' ? 500 : 0; // 500 centavos = $5
+    const subtotal =
+      createDto.subtotal ??
+      orderItems.reduce((sum, item) => sum + item.subtotal, 0);
+    const deliveryFee =
+      createDto.deliveryFee ?? (orderType === 'DELIVERY' ? 500 : 0);
     const tip = createDto.tip || 0;
-    const total = subtotal + deliveryFee + tip;
+    const total = createDto.total ?? subtotal + deliveryFee + tip;
 
     const publicTrackingToken = crypto.randomBytes(32).toString('base64url');
+    const orderNumber = await this.generateOrderNumber(restaurantId);
 
-    // Crear orden con items e historial inicial
-    const order = await this.prisma.order.create({
+    // Si NO es MercadoPago, persistimos la Order directamente (no hay webhook para crearla luego)
+    if (paymentMethod !== 'mercadopago') {
+      const order = await this.prisma.order.create({
+        data: {
+          orderNumber,
+          restaurantId,
+          publicTrackingToken,
+          customerName,
+          customerEmail: createDto.customerEmail,
+          customerPhone,
+          type: orderType,
+          status: OrderStatus.PENDING,
+          paymentMethod,
+          paymentStatus: PaymentStatus.PENDING,
+          subtotal,
+          deliveryFee,
+          tip,
+          total,
+          deliveryAddress: createDto.deliveryAddress,
+          deliveryNotes: createDto.deliveryNotes,
+          tableId: createDto.tableId,
+          notes: createDto.notes,
+          items: {
+            create: orderItems.map((item) => ({
+              dishId: item.dishId,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              subtotal: item.subtotal,
+              notes: item.notes,
+            })),
+          },
+          statusHistory: {
+            create: {
+              toStatus: OrderStatus.PENDING,
+              changedBy: 'system',
+              notes: 'Pedido creado',
+            },
+          },
+        },
+        include: {
+          items: {
+            include: {
+              dish: true,
+            },
+          },
+          statusHistory: true,
+        },
+      });
+
+      return {
+        order: {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          status: order.status,
+          publicToken: order.publicTrackingToken,
+          createdAt: order.createdAt,
+        },
+        paymentUrl: undefined,
+        sandboxPaymentUrl: undefined,
+        isSandbox: false,
+        publicTrackingToken: order.publicTrackingToken,
+      };
+    }
+
+    // MercadoPago: crear checkout session (NO persistimos Order todavía)
+    const checkout = await this.prisma.checkoutSession.create({
       data: {
         restaurantId,
+        orderNumber,
         publicTrackingToken,
         customerName,
         customerEmail: createDto.customerEmail,
         customerPhone,
         type: orderType,
-        status: OrderStatus.PENDING,
         paymentMethod,
-        paymentStatus: 'PENDING',
+        paymentStatus: PaymentStatus.PENDING,
+        isSandbox: false,
+        items: orderItems.map((item) => ({
+          dishId: item.dishId,
+          name: item.name,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          subtotal: item.subtotal,
+          notes: item.notes,
+        })),
         subtotal,
         deliveryFee,
         tip,
         total,
         deliveryAddress: createDto.deliveryAddress,
+        deliveryNotes: createDto.deliveryNotes,
         tableId: createDto.tableId,
         notes: createDto.notes,
-        items: {
-          create: orderItems,
-        },
-        statusHistory: {
-          create: {
-            toStatus: OrderStatus.PENDING,
-            changedBy: 'system',
-          },
-        },
-      },
-      include: {
-        items: {
-          include: {
-            dish: true,
-          },
-        },
-        statusHistory: true,
       },
     });
 
-    return order;
+    // Crear preferencia
+    let paymentUrl: string | undefined;
+    let sandboxPaymentUrl: string | undefined;
+    let isSandbox = false;
+
+    try {
+      const requestOrigin =
+        origin ||
+        this.configService.get('BACKEND_URL') ||
+        'http://localhost:4000';
+
+      const preferenceResult = await this.mercadopagoService.createPreference(
+        requestOrigin,
+        {
+          restaurantId,
+          slug: restaurant.slug,
+          orderId: checkout.id,
+          items: orderItems.map((item) => ({
+            title: item.name,
+            quantity: item.quantity,
+            unit_price: item.unitPrice,
+          })),
+        },
+      );
+
+      // Guardar preferenceId e isSandbox en la checkout session
+      await this.prisma.checkoutSession.update({
+        where: { id: checkout.id },
+        data: {
+          preferenceId: preferenceResult.preference.id,
+          isSandbox: preferenceResult.isSandbox,
+        },
+      });
+
+      // Asignar URLs y modo sandbox
+      isSandbox = preferenceResult.isSandbox;
+      sandboxPaymentUrl = preferenceResult.preference.sandbox_init_point;
+
+      // paymentUrl es la URL que el frontend debe usar según el modo
+      paymentUrl = isSandbox
+        ? preferenceResult.preference.sandbox_init_point
+        : preferenceResult.preference.init_point;
+    } catch (error: any) {
+      this.logger.error(
+        `Error creating MercadoPago preference: ${error.message}`,
+      );
+      // No fallamos el checkout
+    }
+
+    return {
+      order: {
+        id: checkout.id,
+        orderNumber: checkout.orderNumber,
+        status: OrderStatus.PENDING,
+        publicToken: checkout.publicTrackingToken,
+        createdAt: checkout.createdAt,
+      },
+      paymentUrl,
+      sandboxPaymentUrl,
+      isSandbox,
+      publicTrackingToken: checkout.publicTrackingToken,
+    };
+  }
+
+  private async generateOrderNumber(restaurantId: string): Promise<string> {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const dateStr = `${year}${month}${day}`;
+
+    // Inicio y fin del día
+    const startOfDay = new Date(today);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(today);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Contar órdenes + checkout sessions del día para evitar colisiones
+    const [ordersCount, sessionsCount] = await Promise.all([
+      this.prisma.order.count({
+        where: {
+          restaurantId,
+          createdAt: {
+            gte: startOfDay,
+            lt: endOfDay,
+          },
+        },
+      }),
+      this.prisma.checkoutSession.count({
+        where: {
+          restaurantId,
+          createdAt: {
+            gte: startOfDay,
+            lt: endOfDay,
+          },
+        },
+      }),
+    ]);
+
+    const count = ordersCount + sessionsCount;
+    return `OD-${dateStr}-${String(count + 1).padStart(3, '0')}`;
   }
 
   async getPublicOrder(
@@ -133,6 +331,7 @@ export class OrdersService {
     token: string,
   ): Promise<{
     id: string;
+    orderNumber: string;
     restaurantId: string;
     status: string;
     paymentStatus: string;
@@ -144,12 +343,18 @@ export class OrdersService {
     tip: number;
     total: number;
     createdAt: Date;
+    paidAt: Date | null;
     items: Array<{
       title: string;
       quantity: number;
       unitPrice: number;
       subtotal: number;
     }>;
+    restaurant: {
+      name: string;
+      phone: string;
+      address: string;
+    };
   }> {
     const normalizedToken = (token ?? '').trim();
     if (!normalizedToken) {
@@ -163,6 +368,7 @@ export class OrdersService {
       },
       select: {
         id: true,
+        orderNumber: true,
         restaurantId: true,
         publicTrackingToken: true,
         status: true,
@@ -175,6 +381,7 @@ export class OrdersService {
         tip: true,
         total: true,
         createdAt: true,
+        paidAt: true,
         items: {
           select: {
             quantity: true,
@@ -187,37 +394,108 @@ export class OrdersService {
             },
           },
         },
+        restaurant: {
+          select: {
+            name: true,
+            phone: true,
+            address: true,
+          },
+        },
       },
     });
 
     // Responder como "no existe" para evitar enumeración.
-    if (!order || !order.publicTrackingToken) {
+    if (order && order.publicTrackingToken) {
+      if (order.publicTrackingToken !== normalizedToken) {
+        throw new NotFoundException('Order not found');
+      }
+
+      return {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        restaurantId: order.restaurantId,
+        status: String(order.status),
+        paymentStatus: String(order.paymentStatus),
+        paymentMethod: String(order.paymentMethod),
+        type: String(order.type),
+        subtotal: order.subtotal,
+        deliveryFee: order.deliveryFee,
+        discount: order.discount,
+        tip: order.tip,
+        total: order.total,
+        createdAt: order.createdAt,
+        paidAt: order.paidAt,
+        items: order.items.map((it) => ({
+          title: it.dish.name,
+          quantity: it.quantity,
+          unitPrice: it.unitPrice,
+          subtotal: it.subtotal,
+        })),
+        restaurant: order.restaurant,
+      };
+    }
+
+    // Fallback: todavía no existe Order (checkout pendiente)
+    const checkout = await this.prisma.checkoutSession.findFirst({
+      where: {
+        id: orderId,
+        restaurantId,
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        publicTrackingToken: true,
+        paymentMethod: true,
+        paymentStatus: true,
+        type: true,
+        subtotal: true,
+        deliveryFee: true,
+        discount: true,
+        tip: true,
+        total: true,
+        createdAt: true,
+        paidAt: true,
+        items: true,
+        restaurant: {
+          select: {
+            name: true,
+            phone: true,
+            address: true,
+          },
+        },
+      },
+    });
+
+    if (!checkout || checkout.publicTrackingToken !== normalizedToken) {
       throw new NotFoundException('Order not found');
     }
 
-    if (order.publicTrackingToken !== normalizedToken) {
-      throw new NotFoundException('Order not found');
-    }
+    const items = Array.isArray(checkout.items)
+      ? (checkout.items as any[])
+      : [];
 
     return {
-      id: order.id,
-      restaurantId: order.restaurantId,
-      status: String(order.status),
-      paymentStatus: String(order.paymentStatus),
-      paymentMethod: String(order.paymentMethod),
-      type: String(order.type),
-      subtotal: order.subtotal,
-      deliveryFee: order.deliveryFee,
-      discount: order.discount,
-      tip: order.tip,
-      total: order.total,
-      createdAt: order.createdAt,
-      items: order.items.map((it) => ({
-        title: it.dish.name,
-        quantity: it.quantity,
-        unitPrice: it.unitPrice,
-        subtotal: it.subtotal,
+      id: checkout.id,
+      orderNumber: checkout.orderNumber,
+      restaurantId,
+      status: OrderStatus.PENDING,
+      paymentStatus: String(checkout.paymentStatus),
+      paymentMethod: String(checkout.paymentMethod),
+      type: String(checkout.type),
+      subtotal: checkout.subtotal,
+      deliveryFee: checkout.deliveryFee,
+      discount: checkout.discount,
+      tip: checkout.tip,
+      total: checkout.total,
+      createdAt: checkout.createdAt,
+      paidAt: checkout.paidAt,
+      items: items.map((it) => ({
+        title: String(it?.name ?? ''),
+        quantity: Number(it?.quantity ?? 0),
+        unitPrice: Number(it?.unitPrice ?? 0),
+        subtotal: Number(it?.subtotal ?? 0),
       })),
+      restaurant: checkout.restaurant,
     };
   }
 
@@ -234,7 +512,13 @@ export class OrdersService {
     };
 
     if (filters.status) {
-      where.status = filters.status;
+      // Support comma-separated statuses
+      const statuses = filters.status.split(',').map((s) => s.trim());
+      if (statuses.length === 1) {
+        where.status = statuses[0];
+      } else {
+        where.status = { in: statuses };
+      }
     }
 
     if (filters.type) {
@@ -257,26 +541,76 @@ export class OrdersService {
       }
     }
 
-    return this.prisma.order.findMany({
-      where,
-      include: {
-        items: {
-          include: {
-            dish: true,
+    // Pagination
+    const page = filters.page || 1;
+    const limit = filters.limit || 50;
+    const skip = (page - 1) * limit;
+
+    const [orders, total, stats] = await Promise.all([
+      this.prisma.order.findMany({
+        where,
+        include: {
+          items: {
+            include: {
+              dish: true,
+            },
+          },
+          table: true,
+          statusHistory: {
+            orderBy: {
+              createdAt: 'desc',
+            },
+            take: 5,
           },
         },
-        table: true,
-        statusHistory: {
-          orderBy: {
-            createdAt: 'desc',
-          },
-          take: 5,
+        orderBy: {
+          createdAt: 'desc',
         },
+        skip,
+        take: limit,
+      }),
+      this.prisma.order.count({ where }),
+      this.getOrderStats(restaurantId),
+    ]);
+
+    return {
+      orders,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
       },
-      orderBy: {
-        createdAt: 'desc',
+      stats,
+    };
+  }
+
+  private async getOrderStats(restaurantId: string) {
+    const statuses = [
+      'PENDING',
+      'PAID',
+      'CONFIRMED',
+      'PREPARING',
+      'READY',
+      'DELIVERED',
+      'CANCELLED',
+    ];
+
+    const counts = await Promise.all(
+      statuses.map((status) =>
+        this.prisma.order.count({
+          where: { restaurantId, status: status as any },
+        }),
+      ),
+    );
+
+    return statuses.reduce(
+      (acc, status, index) => {
+        acc[status.toLowerCase()] = counts[index];
+        return acc;
       },
-    });
+      {} as Record<string, number>,
+    );
   }
 
   async findOne(id: string, restaurantId: string, userId: string) {
@@ -294,6 +628,14 @@ export class OrdersService {
           },
         },
         table: true,
+        restaurant: {
+          select: {
+            name: true,
+            email: true,
+            phone: true,
+            address: true,
+          },
+        },
         statusHistory: {
           orderBy: {
             createdAt: 'desc',
@@ -322,6 +664,22 @@ export class OrdersService {
         id,
         restaurantId,
       },
+      include: {
+        restaurant: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            address: true,
+          },
+        },
+        items: {
+          include: {
+            dish: true,
+          },
+        },
+      },
     });
 
     if (!order) {
@@ -336,6 +694,10 @@ export class OrdersService {
         where: { id },
         data: {
           paymentStatus: parsed.paymentStatus,
+          paidAt:
+            parsed.paymentStatus === PaymentStatus.PAID
+              ? new Date()
+              : order.paidAt,
         },
         include: {
           items: {
@@ -358,30 +720,28 @@ export class OrdersService {
     // Validar transiciones de estado válidas
     this.validateStatusTransition(order.status as OrderStatus, parsed.status);
 
-    // Actualizar orden y crear historial
-    const updatedOrder = await this.prisma.order.update({
-      where: { id },
-      data: {
-        status: parsed.status,
-        preparedAt:
-          parsed.status === OrderStatus.READY ? new Date() : order.preparedAt,
-        deliveredAt:
-          parsed.status === OrderStatus.DELIVERED
-            ? new Date()
-            : order.deliveredAt,
-        cancelledAt:
-          parsed.status === OrderStatus.CANCELLED
-            ? new Date()
-            : order.cancelledAt,
-        statusHistory: {
-          create: {
-            fromStatus: order.status as OrderStatus,
-            toStatus: parsed.status,
-            changedBy: userId,
-            notes: updateDto.notes,
-          },
+    // Preparar datos de actualización
+    const updateData: any = {
+      status: parsed.status,
+      statusHistory: {
+        create: {
+          fromStatus: order.status as OrderStatus,
+          toStatus: parsed.status,
+          changedBy: userId,
+          notes: updateDto.notes,
         },
       },
+    };
+
+    // Actualizar timestamp correspondiente
+    const timestampField = this.getTimestampField(parsed.status);
+    if (timestampField) {
+      updateData[timestampField] = new Date();
+    }
+
+    const updatedOrder = await this.prisma.order.update({
+      where: { id },
+      data: updateData,
       include: {
         items: {
           include: {
@@ -397,7 +757,46 @@ export class OrdersService {
       },
     });
 
+    // Enviar notificación por email al cliente si es relevante
+    if (
+      [
+        'PAID',
+        'CONFIRMED',
+        'PREPARING',
+        'READY',
+        'DELIVERED',
+        'CANCELLED',
+      ].includes(parsed.status)
+    ) {
+      const orderData = this.mapOrderToEmailData(updatedOrder);
+      const restaurantData = this.mapRestaurantToEmailData(order.restaurant);
+
+      this.emailService
+        .sendStatusUpdate(orderData, restaurantData)
+        .catch((err) => {
+          this.logger.error(
+            `Failed to send status update email: ${err.message}`,
+          );
+        });
+    }
+
+    // Emitir WebSocket
+    const wsPayload = this.mapOrderToWebSocketPayload(updatedOrder);
+    this.ordersGateway.emitOrderUpdate(restaurantId, wsPayload);
+
     return updatedOrder;
+  }
+
+  private getTimestampField(status: OrderStatus): string | null {
+    const mapping: Record<string, string> = {
+      PAID: 'paidAt',
+      CONFIRMED: 'confirmedAt',
+      PREPARING: 'preparingAt',
+      READY: 'readyAt',
+      DELIVERED: 'deliveredAt',
+      CANCELLED: 'cancelledAt',
+    };
+    return mapping[status] || null;
   }
 
   private parseOrderStatusOrPaymentStatus(
@@ -411,11 +810,6 @@ export class OrdersService {
     }
 
     const normalized = raw.toUpperCase();
-
-    // Tolerancia a UI/clients que envían "paid" en el campo status.
-    if (normalized === 'PAID') {
-      return { kind: 'payment', paymentStatus: PaymentStatus.PAID };
-    }
 
     // Alias comunes
     if (normalized === 'CANCELED') {
@@ -455,6 +849,7 @@ export class OrdersService {
             status: {
               in: [
                 OrderStatus.PENDING,
+                OrderStatus.PAID,
                 OrderStatus.CONFIRMED,
                 OrderStatus.PREPARING,
               ],
@@ -666,7 +1061,8 @@ export class OrdersService {
     newStatus: OrderStatus,
   ) {
     const validTransitions: Record<OrderStatus, OrderStatus[]> = {
-      [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
+      [OrderStatus.PENDING]: [OrderStatus.PAID, OrderStatus.CANCELLED],
+      [OrderStatus.PAID]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
       [OrderStatus.CONFIRMED]: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
       [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.CANCELLED],
       [OrderStatus.READY]: [OrderStatus.DELIVERED, OrderStatus.CANCELLED],
@@ -675,10 +1071,218 @@ export class OrdersService {
     };
 
     const allowed = validTransitions[currentStatus];
-    if (!allowed.includes(newStatus)) {
+    if (!allowed || !allowed.includes(newStatus)) {
       throw new BadRequestException(
         `Cannot transition from ${currentStatus} to ${newStatus}`,
       );
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Webhook Payment Processing
+  // ─────────────────────────────────────────────────────────────
+
+  async processCheckoutPaymentApproved(
+    checkoutSessionId: string,
+    paymentId: string,
+  ) {
+    const checkout = await this.prisma.checkoutSession.findUnique({
+      where: { id: checkoutSessionId },
+      include: {
+        restaurant: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            address: true,
+          },
+        },
+      },
+    });
+
+    if (!checkout) {
+      this.logger.warn(
+        `CheckoutSession ${checkoutSessionId} not found for payment ${paymentId}`,
+      );
+      return null;
+    }
+
+    // Idempotencia: si ya existe la Order (misma id), no recrear
+    const existingOrder = await this.prisma.order.findUnique({
+      where: { id: checkoutSessionId },
+    });
+
+    if (existingOrder) {
+      this.logger.log(
+        `Order ${checkoutSessionId} already exists, skipping create`,
+      );
+      return existingOrder;
+    }
+
+    // Marcar checkout como pagado
+    await this.prisma.checkoutSession.update({
+      where: { id: checkoutSessionId },
+      data: {
+        paymentStatus: PaymentStatus.PAID,
+        paymentId,
+        paidAt: new Date(),
+      },
+    });
+
+    const items = Array.isArray(checkout.items)
+      ? (checkout.items as any[])
+      : [];
+
+    // Crear Order (usando el mismo id que la checkout session)
+    const createdOrder = await this.prisma.order.create({
+      data: {
+        id: checkout.id,
+        orderNumber: checkout.orderNumber,
+        restaurantId: checkout.restaurantId,
+        publicTrackingToken: checkout.publicTrackingToken,
+        customerName: checkout.customerName,
+        customerEmail: checkout.customerEmail,
+        customerPhone: checkout.customerPhone,
+        type: checkout.type as any,
+        status: OrderStatus.PAID,
+        paymentMethod: checkout.paymentMethod,
+        paymentStatus: PaymentStatus.PAID,
+        paymentId,
+        preferenceId: checkout.preferenceId,
+        subtotal: checkout.subtotal,
+        deliveryFee: checkout.deliveryFee,
+        discount: checkout.discount,
+        tip: checkout.tip,
+        total: checkout.total,
+        deliveryAddress: checkout.deliveryAddress,
+        deliveryNotes: checkout.deliveryNotes,
+        tableId: checkout.tableId,
+        notes: checkout.notes,
+        paidAt: new Date(),
+        items: {
+          create: items.map((it) => ({
+            dishId: String(it.dishId),
+            quantity: Number(it.quantity),
+            unitPrice: Number(it.unitPrice),
+            subtotal: Number(it.subtotal),
+            notes: it.notes ? String(it.notes) : null,
+          })),
+        },
+        statusHistory: {
+          create: [
+            {
+              fromStatus: null,
+              toStatus: OrderStatus.PENDING,
+              changedBy: 'system',
+              notes: 'Checkout iniciado',
+            },
+            {
+              fromStatus: OrderStatus.PENDING,
+              toStatus: OrderStatus.PAID,
+              changedBy: 'system',
+              notes: `Pago confirmado (MP: ${paymentId})`,
+            },
+          ],
+        },
+      },
+      include: {
+        items: {
+          include: {
+            dish: true,
+          },
+        },
+        statusHistory: {
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 5,
+        },
+      },
+    });
+
+    // Preparar datos para emails
+    const orderData = this.mapOrderToEmailData(createdOrder);
+    const restaurantData = this.mapRestaurantToEmailData(checkout.restaurant);
+
+    // Enviar email al cliente
+    this.emailService
+      .sendOrderConfirmation(orderData, restaurantData)
+      .catch((err) => {
+        this.logger.error(
+          `Failed to send order confirmation email: ${err.message}`,
+        );
+      });
+
+    // Enviar email al restaurante
+    this.emailService
+      .sendNewOrderNotification(orderData, restaurantData)
+      .catch((err) => {
+        this.logger.error(
+          `Failed to send new order notification: ${err.message}`,
+        );
+      });
+
+    // Emitir WebSocket
+    const wsPayload = this.mapOrderToWebSocketPayload(createdOrder);
+    this.ordersGateway.emitPaymentConfirmed(checkout.restaurantId, wsPayload);
+    this.ordersGateway.emitNewOrder(checkout.restaurantId, wsPayload);
+
+    return createdOrder;
+  }
+
+  private mapOrderToEmailData(order: any): OrderData {
+    return {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      customerPhone: order.customerPhone,
+      type: order.type,
+      status: order.status,
+      subtotal: order.subtotal,
+      deliveryFee: order.deliveryFee,
+      tip: order.tip,
+      total: order.total,
+      deliveryAddress: order.deliveryAddress,
+      deliveryNotes: order.deliveryNotes,
+      publicTrackingToken: order.publicTrackingToken,
+      items: order.items.map((item: any) => ({
+        name: item.dish?.name || item.name || 'Item',
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        notes: item.notes,
+      })),
+    };
+  }
+
+  private mapRestaurantToEmailData(restaurant: any): RestaurantData {
+    return {
+      id: restaurant.id,
+      name: restaurant.name,
+      email: restaurant.email,
+      phone: restaurant.phone,
+      address: restaurant.address,
+    };
+  }
+
+  private mapOrderToWebSocketPayload(order: any): OrderUpdatePayload {
+    return {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      customerName: order.customerName,
+      customerPhone: order.customerPhone,
+      type: order.type,
+      total: order.total,
+      items: order.items.map((item: any) => ({
+        name: item.dish?.name || item.name || 'Item',
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+      })),
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+    };
   }
 }

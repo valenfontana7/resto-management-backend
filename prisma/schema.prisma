@@ -65,6 +65,7 @@ model Restaurant {
   deliveryZones   DeliveryZone[]
   deliveryDrivers DeliveryDriver[]
   mercadoPagoCredential MercadoPagoCredential?
+  checkoutSessions CheckoutSession[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -161,6 +162,7 @@ model Dish {
 
 model Order {
   id           String     @id @default(cuid())
+  orderNumber  String     // Formato: OD-YYYYMMDD-XXX (único por restaurante)
   restaurantId String
   restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
@@ -178,8 +180,8 @@ model Order {
   paymentMethod String
   paymentStatus PaymentStatus @default(PENDING)
 
-  // Amounts
-  subtotal    Int // En centavos
+  // Amounts (en centavos)
+  subtotal    Int
   deliveryFee Int @default(0)
   discount    Int @default(0)
   tip         Int @default(0)
@@ -189,6 +191,7 @@ model Order {
   deliveryAddress String?
   deliveryZoneId  String?
   deliveryZone    DeliveryZone? @relation(fields: [deliveryZoneId], references: [id])
+  deliveryNotes   String?
   estimatedTime   String?
 
   // Table info (if dine-in)
@@ -207,7 +210,11 @@ model Order {
 
   // Timestamps
   scheduledFor DateTime?
-  preparedAt   DateTime?
+  paidAt       DateTime?
+  confirmedAt  DateTime?
+  preparingAt  DateTime?
+  readyAt      DateTime?
+  preparedAt   DateTime? // Legacy, usar readyAt
   deliveredAt  DateTime?
   cancelledAt  DateTime?
 
@@ -216,8 +223,60 @@ model Order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([restaurantId, orderNumber])
   @@index([restaurantId])
   @@index([restaurantId, status])
+  @@index([restaurantId, createdAt])
+  @@index([orderNumber])
+}
+
+model CheckoutSession {
+  id           String     @id @default(cuid())
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  // Mantener el mismo id para URL pública (/order/:id) aunque la Order se cree después
+  orderNumber         String
+  publicTrackingToken String   @unique
+
+  // Customer info
+  customerName  String
+  customerEmail String?
+  customerPhone String
+
+  // Order details
+  type          OrderType
+  paymentMethod String
+  paymentStatus PaymentStatus @default(PENDING)
+
+  // Payment info (MercadoPago)
+  paymentId    String?
+  preferenceId String? @unique
+  isSandbox    Boolean @default(false)
+
+  // Snapshot de items para crear la Order cuando el pago apruebe
+  items Json
+
+  // Amounts (en centavos)
+  subtotal    Int
+  deliveryFee Int @default(0)
+  discount    Int @default(0)
+  tip         Int @default(0)
+  total       Int
+
+  // Delivery / table / notes
+  deliveryAddress String?
+  deliveryNotes   String?
+  tableId         String?
+  table           Table?  @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  notes           String?
+
+  paidAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([restaurantId, orderNumber])
   @@index([restaurantId, createdAt])
 }
 
@@ -291,12 +350,13 @@ enum OrderType {
 }
 
 enum OrderStatus {
-  PENDING
-  CONFIRMED
-  PREPARING
-  READY
-  DELIVERED
-  CANCELLED
+  PENDING     // Esperando pago
+  PAID        // Pagado, esperando confirmación
+  CONFIRMED   // Confirmado por restaurante
+  PREPARING   // En preparación
+  READY       // Listo para entregar/retirar
+  DELIVERED   // Entregado
+  CANCELLED   // Cancelado
 }
 
 enum PaymentStatus {
@@ -401,6 +461,7 @@ model Table {
   // Relations (historial)
   orders       Order[]       @relation("TableOrders")
   reservations Reservation[] @relation("TableReservations")
+  checkoutSessions CheckoutSession[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

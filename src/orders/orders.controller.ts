@@ -7,6 +7,7 @@ import {
   Param,
   Query,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -31,14 +32,17 @@ export class OrdersController {
   constructor(private readonly ordersService: OrdersService) {}
 
   // Public endpoint para crear órdenes (desde el menú público)
+  @Public()
   @Post('orders')
   @ApiOperation({ summary: 'Create a new order (public)' })
   @ApiResponse({ status: 201, description: 'Order created successfully' })
   async create(
     @Param('restaurantId') restaurantId: string,
     @Body() createDto: CreateOrderDto,
+    @Req() req: any,
   ) {
-    return this.ordersService.create(restaurantId, createDto);
+    const origin = this.getOrigin(req);
+    return this.ordersService.create(restaurantId, createDto, origin);
   }
 
   // Public endpoint para tracking de orden (sin datos sensibles)
@@ -70,15 +74,7 @@ export class OrdersController {
     @CurrentUser() user: RequestUser,
     @Query() filters: OrderFiltersDto,
   ) {
-    const orders = await this.ordersService.findAll(
-      restaurantId,
-      user.userId,
-      filters,
-    );
-    return {
-      orders,
-      count: orders.length,
-    };
+    return this.ordersService.findAll(restaurantId, user.userId, filters);
   }
 
   @Get('stats/today')
@@ -147,5 +143,28 @@ export class OrdersController {
       updateDto,
     );
     return { order };
+  }
+
+  private getOrigin(req: any): string {
+    const baseUrl = (process.env.BASE_URL ?? '').trim();
+    if (baseUrl) {
+      return baseUrl.replace(/\/$/, '');
+    }
+
+    const headers = req?.headers ?? {};
+    const proto = (headers['x-forwarded-proto'] || req?.protocol || 'http')
+      .toString()
+      .split(',')[0]
+      .trim();
+    const host = (headers['x-forwarded-host'] || headers['host'] || '')
+      .toString()
+      .split(',')[0]
+      .trim();
+
+    if (!host) {
+      return 'http://localhost:3000';
+    }
+
+    return `${proto}://${host}`;
   }
 }

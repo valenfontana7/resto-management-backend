@@ -24,6 +24,8 @@
     "deploy:setup": "npm ci && npx prisma generate && npx prisma migrate deploy && npm run build"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.879.0",
+    "@aws-sdk/s3-request-presigner": "^3.879.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -35,8 +37,6 @@
     "@nestjs/websockets": "^11.1.9",
     "@prisma/adapter-pg": "^7.0.0",
     "@prisma/client": "^7.0.1",
-    "@aws-sdk/client-s3": "^3.879.0",
-    "@aws-sdk/s3-request-presigner": "^3.879.0",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
@@ -47,6 +47,7 @@
     "passport-jwt": "^4.0.1",
     "pg": "^8.16.3",
     "reflect-metadata": "^0.2.2",
+    "resend": "^6.7.0",
     "rxjs": "^7.8.1",
     "swagger-ui-express": "^5.0.1"
   },

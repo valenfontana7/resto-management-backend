@@ -54,6 +54,9 @@ services:
       S3_ACL: ${S3_ACL}
       S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-false}
       S3_KEY_PREFIX: ${S3_KEY_PREFIX}
+      # Resend (Email)
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      EMAIL_FROM: ${EMAIL_FROM}
     ports:
       - '4000:4000'
     healthcheck:

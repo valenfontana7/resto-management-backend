@@ -52,7 +52,7 @@ export class PaymentsService {
       title: item.dish.name,
       description: item.dish.description || '',
       quantity: item.quantity,
-      unit_price: item.unitPrice / 100, // Convertir de centavos a pesos
+      unit_price: item.unitPrice,
       currency_id: 'ARS',
     }));
 
