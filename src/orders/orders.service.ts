@@ -517,8 +517,10 @@ export class OrdersService {
     };
 
     if (filters.status) {
-      // Support comma-separated statuses
-      const statuses = filters.status.split(',').map((s) => s.trim());
+      // Support comma-separated statuses and normalize to uppercase for Prisma enum
+      const statuses = filters.status
+        .split(',')
+        .map((s) => s.trim().toUpperCase());
       if (statuses.length === 1) {
         where.status = statuses[0];
       } else {
