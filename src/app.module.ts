@@ -20,6 +20,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { EmailModule } from './email/email.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     EmailModule,
     WebsocketModule,
     WebhooksModule,
+    SubscriptionsModule,
   ],
   controllers: [AppController],
   providers: [

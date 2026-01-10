@@ -855,4 +855,470 @@ export class EmailService {
       maximumFractionDigits: 2,
     });
   }
+
+  // ─────────────────────────────────────────────────────────────
+  // SUBSCRIPTION EMAILS
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Email de bienvenida al trial de 14 días
+   */
+  async sendWelcomeTrialEmail(
+    email: string,
+    restaurantName: string,
+    planName: string,
+    trialEndDate: Date,
+  ): Promise<boolean> {
+    const formattedDate = this.formatDate(trialEndDate);
+    const html = this.renderSubscriptionEmail({
+      title: '🎉 ¡Bienvenido a Restoo!',
+      subtitle: `Tu período de prueba de ${planName} comenzó`,
+      content: `
+        <p style="margin: 0 0 16px; color: #475569; font-size: 16px; line-height: 1.6;">
+          ¡Hola! Gracias por elegir <strong>Restoo</strong> para <strong>${restaurantName}</strong>.
+        </p>
+        <p style="margin: 0 0 16px; color: #475569; font-size: 16px; line-height: 1.6;">
+          Tu período de prueba <strong>gratuito de 14 días</strong> del plan <strong>${planName}</strong> ya está activo.
+        </p>
+        <div style="background: #f0fdf4; border-radius: 12px; padding: 20px; margin: 24px 0;">
+          <p style="margin: 0; color: #166534; font-size: 14px;">
+            ✅ <strong>Tu trial termina el ${formattedDate}</strong><br>
+            Hasta entonces, disfrutá de todas las funcionalidades premium sin costo.
+          </p>
+        </div>
+        <p style="margin: 0; color: #475569; font-size: 16px; line-height: 1.6;">
+          Si tenés alguna pregunta, no dudes en contactarnos.
+        </p>
+      `,
+      ctaText: 'Ir al Dashboard',
+      ctaUrl: `${this.frontendUrl}/admin`,
+    });
+
+    return this.sendEmail({
+      from: `Restoo <${this.fromEmail}>`,
+      to: email,
+      subject: `🎉 ¡Bienvenido a Restoo! Tu trial de ${planName} comenzó`,
+      html,
+    });
+  }
+
+  /**
+   * Aviso de trial por terminar (3 días o 1 día antes)
+   */
+  async sendTrialEndingEmail(
+    email: string,
+    restaurantName: string,
+    planName: string,
+    daysRemaining: number,
+    amount: number,
+  ): Promise<boolean> {
+    const dayText = daysRemaining === 1 ? 'día' : 'días';
+    const urgencyColor = daysRemaining === 1 ? '#dc2626' : '#f59e0b';
+    const formattedAmount = this.formatPrice(amount / 100);
+
+    const html = this.renderSubscriptionEmail({
+      title: `⏰ Tu trial termina en ${daysRemaining} ${dayText}`,
+      subtitle: `No pierdas acceso a ${planName}`,
+      content: `
+        <p style="margin: 0 0 16px; color: #475569; font-size: 16px; line-height: 1.6;">
+          ¡Hola! Te recordamos que el período de prueba de <strong>${restaurantName}</strong> está por terminar.
+        </p>
+        <div style="background: #fffbeb; border-left: 4px solid ${urgencyColor}; padding: 16px; margin: 24px 0;">
+          <p style="margin: 0; color: #92400e; font-size: 14px;">
+            ⚠️ <strong>Quedan ${daysRemaining} ${dayText}</strong> de tu trial del plan ${planName}.
+          </p>
+        </div>
+        <p style="margin: 0 0 16px; color: #475569; font-size: 16px; line-height: 1.6;">
+          Para continuar disfrutando de todas las funcionalidades, agregá un método de pago.
+          El plan ${planName} tiene un costo de <strong>$${formattedAmount}/mes</strong>.
+        </p>
+        <p style="margin: 0; color: #475569; font-size: 16px; line-height: 1.6;">
+          Si decidís no continuar, tu cuenta pasará automáticamente al plan <strong>Starter (gratuito)</strong>.
+        </p>
+      `,
+      ctaText: 'Agregar método de pago',
+      ctaUrl: `${this.frontendUrl}/admin/subscription`,
+    });
+
+    return this.sendEmail({
+      from: `Restoo <${this.fromEmail}>`,
+      to: email,
+      subject: `⏰ Tu trial de ${planName} termina en ${daysRemaining} ${dayText}`,
+      html,
+    });
+  }
+
+  /**
+   * Trial expirado - acción requerida
+   */
+  async sendTrialExpiredEmail(
+    email: string,
+    restaurantName: string,
+    planName: string,
+  ): Promise<boolean> {
+    const html = this.renderSubscriptionEmail({
+      title: '⌛ Tu período de prueba terminó',
+      subtitle: 'Suscribite para seguir usando las funciones premium',
+      content: `
+        <p style="margin: 0 0 16px; color: #475569; font-size: 16px; line-height: 1.6;">
+          El período de prueba del plan <strong>${planName}</strong> para <strong>${restaurantName}</strong> ha terminado.
+        </p>
+        <div style="background: #fef2f2; border-radius: 12px; padding: 20px; margin: 24px 0;">
+          <p style="margin: 0; color: #991b1b; font-size: 14px;">
+            ❌ Ya no tenés acceso a las funcionalidades premium.
+          </p>
+        </div>
+        <p style="margin: 0 0 16px; color: #475569; font-size: 16px; line-height: 1.6;">
+          No te preocupes, tus datos están seguros. Podés suscribirte en cualquier momento para recuperar el acceso completo.
+        </p>
+        <p style="margin: 0; color: #475569; font-size: 16px; line-height: 1.6;">
+          Mientras tanto, podés seguir usando las funciones del plan <strong>Starter (gratuito)</strong>.
+        </p>
+      `,
+      ctaText: 'Suscribirme ahora',
+      ctaUrl: `${this.frontendUrl}/admin/subscription`,
+    });
+
+    return this.sendEmail({
+      from: `Restoo <${this.fromEmail}>`,
+      to: email,
+      subject: `⌛ Tu trial de ${planName} terminó - ${restaurantName}`,
+      html,
+    });
+  }
+
+  /**
+   * Pago exitoso
+   */
+  async sendPaymentSuccessEmail(
+    email: string,
+    restaurantName: string,
+    planName: string,
+    amount: number,
+    nextBillingDate: Date,
+  ): Promise<boolean> {
+    const formattedAmount = this.formatPrice(amount / 100);
+    const formattedDate = this.formatDate(nextBillingDate);
+
+    const html = this.renderSubscriptionEmail({
+      title: '✅ ¡Pago confirmado!',
+      subtitle: `Tu suscripción a ${planName} está activa`,
+      content: `
+        <p style="margin: 0 0 16px; color: #475569; font-size: 16px; line-height: 1.6;">
+          ¡Gracias! Recibimos tu pago correctamente para <strong>${restaurantName}</strong>.
+        </p>
+        <div style="background: #f0fdf4; border-radius: 12px; padding: 20px; margin: 24px 0;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Plan:</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right; font-weight: 600;">${planName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Monto:</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right; font-weight: 600;">$${formattedAmount}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Próxima facturación:</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right; font-weight: 600;">${formattedDate}</td>
+            </tr>
+          </table>
+        </div>
+        <p style="margin: 0; color: #475569; font-size: 16px; line-height: 1.6;">
+          Podés ver el historial de pagos y gestionar tu suscripción desde el dashboard.
+        </p>
+      `,
+      ctaText: 'Ver mi suscripción',
+      ctaUrl: `${this.frontendUrl}/admin/subscription`,
+    });
+
+    return this.sendEmail({
+      from: `Restoo <${this.fromEmail}>`,
+      to: email,
+      subject: `✅ Pago confirmado - Plan ${planName}`,
+      html,
+    });
+  }
+
+  /**
+   * Pago fallido
+   */
+  async sendPaymentFailedEmail(
+    email: string,
+    restaurantName: string,
+    planName: string,
+    amount: number,
+  ): Promise<boolean> {
+    const formattedAmount = this.formatPrice(amount / 100);
+
+    const html = this.renderSubscriptionEmail({
+      title: '❌ Problema con tu pago',
+      subtitle: 'Actualizá tu método de pago para continuar',
+      content: `
+        <p style="margin: 0 0 16px; color: #475569; font-size: 16px; line-height: 1.6;">
+          No pudimos procesar el pago de <strong>$${formattedAmount}</strong> para <strong>${restaurantName}</strong>.
+        </p>
+        <div style="background: #fef2f2; border-radius: 12px; padding: 20px; margin: 24px 0;">
+          <p style="margin: 0; color: #991b1b; font-size: 14px;">
+            ⚠️ <strong>Tu suscripción está en riesgo</strong><br>
+            Tenés 3 días para actualizar tu método de pago antes de perder el acceso.
+          </p>
+        </div>
+        <p style="margin: 0; color: #475569; font-size: 16px; line-height: 1.6;">
+          Verificá que tu tarjeta tenga fondos suficientes o agregá un nuevo método de pago.
+        </p>
+      `,
+      ctaText: 'Actualizar método de pago',
+      ctaUrl: `${this.frontendUrl}/admin/subscription`,
+    });
+
+    return this.sendEmail({
+      from: `Restoo <${this.fromEmail}>`,
+      to: email,
+      subject: `❌ Problema con tu pago - ${restaurantName}`,
+      html,
+    });
+  }
+
+  /**
+   * Suscripción cancelada
+   */
+  async sendSubscriptionCanceledEmail(
+    email: string,
+    restaurantName: string,
+    planName: string,
+    accessEndDate: Date,
+  ): Promise<boolean> {
+    const formattedDate = this.formatDate(accessEndDate);
+
+    const html = this.renderSubscriptionEmail({
+      title: '😢 Suscripción cancelada',
+      subtitle: 'Esperamos verte pronto de nuevo',
+      content: `
+        <p style="margin: 0 0 16px; color: #475569; font-size: 16px; line-height: 1.6;">
+          Tu suscripción al plan <strong>${planName}</strong> para <strong>${restaurantName}</strong> ha sido cancelada.
+        </p>
+        <div style="background: #f8fafc; border-radius: 12px; padding: 20px; margin: 24px 0;">
+          <p style="margin: 0; color: #475569; font-size: 14px;">
+            📅 <strong>Tenés acceso hasta el ${formattedDate}</strong><br>
+            Después de esa fecha, tu cuenta pasará al plan Starter (gratuito).
+          </p>
+        </div>
+        <p style="margin: 0; color: #475569; font-size: 16px; line-height: 1.6;">
+          Si cambiás de opinión, podés reactivar tu suscripción en cualquier momento antes de esa fecha.
+        </p>
+      `,
+      ctaText: 'Reactivar suscripción',
+      ctaUrl: `${this.frontendUrl}/admin/subscription`,
+    });
+
+    return this.sendEmail({
+      from: `Restoo <${this.fromEmail}>`,
+      to: email,
+      subject: `😢 Suscripción cancelada - ${restaurantName}`,
+      html,
+    });
+  }
+
+  /**
+   * Suscripción reactivada
+   */
+  async sendSubscriptionReactivatedEmail(
+    email: string,
+    restaurantName: string,
+    planName: string,
+  ): Promise<boolean> {
+    const html = this.renderSubscriptionEmail({
+      title: '🎉 ¡Bienvenido de nuevo!',
+      subtitle: `Tu suscripción a ${planName} fue reactivada`,
+      content: `
+        <p style="margin: 0 0 16px; color: #475569; font-size: 16px; line-height: 1.6;">
+          ¡Excelente noticia! Tu suscripción al plan <strong>${planName}</strong> para <strong>${restaurantName}</strong> ha sido reactivada.
+        </p>
+        <div style="background: #f0fdf4; border-radius: 12px; padding: 20px; margin: 24px 0;">
+          <p style="margin: 0; color: #166534; font-size: 14px;">
+            ✅ <strong>Todas tus funcionalidades premium están activas nuevamente</strong>
+          </p>
+        </div>
+        <p style="margin: 0; color: #475569; font-size: 16px; line-height: 1.6;">
+          Gracias por seguir confiando en Restoo. ¡Estamos felices de tenerte de vuelta!
+        </p>
+      `,
+      ctaText: 'Ir al Dashboard',
+      ctaUrl: `${this.frontendUrl}/admin`,
+    });
+
+    return this.sendEmail({
+      from: `Restoo <${this.fromEmail}>`,
+      to: email,
+      subject: `🎉 ¡Bienvenido de nuevo! - ${restaurantName}`,
+      html,
+    });
+  }
+
+  /**
+   * Plan mejorado (upgrade)
+   */
+  async sendPlanUpgradedEmail(
+    email: string,
+    restaurantName: string,
+    oldPlanName: string,
+    newPlanName: string,
+  ): Promise<boolean> {
+    const html = this.renderSubscriptionEmail({
+      title: '🚀 ¡Plan mejorado!',
+      subtitle: `Ahora tenés acceso a ${newPlanName}`,
+      content: `
+        <p style="margin: 0 0 16px; color: #475569; font-size: 16px; line-height: 1.6;">
+          ¡Felicitaciones! Actualizaste el plan de <strong>${restaurantName}</strong>.
+        </p>
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; padding: 24px; margin: 24px 0; text-align: center;">
+          <p style="margin: 0 0 8px; color: rgba(255,255,255,0.8); font-size: 14px;">${oldPlanName}</p>
+          <p style="margin: 0 0 8px; color: #fff; font-size: 24px;">⬇️</p>
+          <p style="margin: 0; color: #fff; font-size: 20px; font-weight: 700;">${newPlanName}</p>
+        </div>
+        <p style="margin: 0; color: #475569; font-size: 16px; line-height: 1.6;">
+          Todas las nuevas funcionalidades ya están disponibles. ¡Explorá todo lo que podés hacer ahora!
+        </p>
+      `,
+      ctaText: 'Explorar nuevas funciones',
+      ctaUrl: `${this.frontendUrl}/admin`,
+    });
+
+    return this.sendEmail({
+      from: `Restoo <${this.fromEmail}>`,
+      to: email,
+      subject: `🚀 ¡Bienvenido a ${newPlanName}! - ${restaurantName}`,
+      html,
+    });
+  }
+
+  /**
+   * Plan reducido (downgrade)
+   */
+  async sendPlanDowngradedEmail(
+    email: string,
+    restaurantName: string,
+    oldPlanName: string,
+    newPlanName: string,
+    effectiveDate: Date,
+  ): Promise<boolean> {
+    const formattedDate = this.formatDate(effectiveDate);
+
+    const html = this.renderSubscriptionEmail({
+      title: '📝 Cambio de plan confirmado',
+      subtitle: `Tu plan cambiará a ${newPlanName}`,
+      content: `
+        <p style="margin: 0 0 16px; color: #475569; font-size: 16px; line-height: 1.6;">
+          Confirmamos el cambio de plan para <strong>${restaurantName}</strong>.
+        </p>
+        <div style="background: #f8fafc; border-radius: 12px; padding: 20px; margin: 24px 0;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Plan actual:</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right;">${oldPlanName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Nuevo plan:</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right; font-weight: 600;">${newPlanName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 0; color: #64748b; font-size: 14px;">Fecha de cambio:</td>
+              <td style="padding: 8px 0; color: #1e293b; font-size: 14px; text-align: right;">${formattedDate}</td>
+            </tr>
+          </table>
+        </div>
+        <p style="margin: 0; color: #475569; font-size: 16px; line-height: 1.6;">
+          Hasta esa fecha, seguirás teniendo acceso a todas las funciones de ${oldPlanName}.
+        </p>
+      `,
+      ctaText: 'Ver mi suscripción',
+      ctaUrl: `${this.frontendUrl}/admin/subscription`,
+    });
+
+    return this.sendEmail({
+      from: `Restoo <${this.fromEmail}>`,
+      to: email,
+      subject: `📝 Cambio de plan programado - ${restaurantName}`,
+      html,
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Subscription Email Template
+  // ─────────────────────────────────────────────────────────────
+
+  private renderSubscriptionEmail(params: {
+    title: string;
+    subtitle: string;
+    content: string;
+    ctaText: string;
+    ctaUrl: string;
+  }): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${params.title}</title>
+          ${this.getBaseStyles()}
+        </head>
+        <body style="margin: 0; padding: 0; background-color: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f1f5f9; padding: 40px 20px;">
+            <tr>
+              <td align="center">
+                <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 600px; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);">
+                  
+                  <!-- Header -->
+                  <tr>
+                    <td style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 32px; text-align: center;">
+                      <h1 style="margin: 0 0 8px; color: #ffffff; font-size: 28px; font-weight: 700;">${params.title}</h1>
+                      <p style="margin: 0; color: rgba(255, 255, 255, 0.9); font-size: 16px;">${params.subtitle}</p>
+                    </td>
+                  </tr>
+                  
+                  <!-- Content -->
+                  <tr>
+                    <td style="padding: 40px 32px;">
+                      ${params.content}
+                      
+                      <!-- CTA Button -->
+                      <div style="text-align: center; margin-top: 32px;">
+                        <a href="${params.ctaUrl}" style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; text-decoration: none; padding: 16px 32px; border-radius: 12px; font-weight: 600; font-size: 16px;">
+                          ${params.ctaText}
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                  
+                  <!-- Footer -->
+                  <tr>
+                    <td style="background: #f8fafc; padding: 24px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+                      <p style="margin: 0 0 8px; font-size: 16px; font-weight: 700; color: #1e293b;">Restoo</p>
+                      <p style="margin: 0; font-size: 12px; color: #94a3b8;">
+                        Sistema de gestión para restaurantes
+                      </p>
+                      <div style="width: 60px; height: 3px; background: linear-gradient(90deg, #10b981, #3b82f6); margin: 16px auto; border-radius: 2px;"></div>
+                      <p style="margin: 0; font-size: 12px; color: #94a3b8;">
+                        ¿Necesitás ayuda? <a href="mailto:soporte@restoo.com.ar" style="color: #10b981; text-decoration: none;">soporte@restoo.com.ar</a>
+                      </p>
+                    </td>
+                  </tr>
+                  
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+      </html>
+    `;
+  }
+
+  private formatDate(date: Date): string {
+    return date.toLocaleDateString('es-AR', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+  }
 }

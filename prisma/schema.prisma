@@ -66,6 +66,7 @@ model Restaurant {
   deliveryDrivers DeliveryDriver[]
   mercadoPagoCredential MercadoPagoCredential?
   checkoutSessions CheckoutSession[]
+  subscription    Subscription?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -659,6 +660,105 @@ model User {
   @@index([restaurantId])
   @@index([restaurantId, roleId])
   @@index([isActive])
+}
+
+// ============================================
+// SUBSCRIPTIONS & BILLING
+// ============================================
+
+enum PlanType {
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIALING      // En período de prueba
+  ACTIVE        // Activa y pagando
+  PAST_DUE      // Pago vencido (gracia de 3 días)
+  CANCELED      // Cancelada por el usuario
+  EXPIRED       // Expirada (trial o pago no renovado)
+}
+
+model Subscription {
+  id              String             @id @default(cuid())
+  restaurantId    String             @unique
+  restaurant      Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  
+  planType        PlanType           @default(STARTER)
+  status          SubscriptionStatus @default(TRIALING)
+  
+  // Fechas del período
+  currentPeriodStart DateTime        @default(now())
+  currentPeriodEnd   DateTime
+  
+  // Trial
+  trialStart      DateTime?
+  trialEnd        DateTime?
+  
+  // Cancelación
+  canceledAt      DateTime?
+  cancelAtPeriodEnd Boolean          @default(false)
+  
+  // MercadoPago
+  mpSubscriptionId String?           // ID de suscripción en MP
+  mpCustomerId     String?           // ID de cliente en MP
+  mpPayerId        String?           // Payer ID
+  
+  // Método de pago
+  paymentMethodId  String?
+  lastPaymentDate  DateTime?
+  lastPaymentAmount Int?             // En centavos
+  nextPaymentDate  DateTime?
+  
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  
+  invoices        Invoice[]
+  paymentMethods  SubscriptionPaymentMethod[]
+
+  @@index([restaurantId])
+  @@index([status])
+  @@index([status, currentPeriodEnd])
+}
+
+model Invoice {
+  id              String   @id @default(cuid())
+  subscriptionId  String
+  subscription    Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  
+  amount          Int      // En centavos (ej: 1500000 = $15.000)
+  currency        String   @default("ARS")
+  status          String   @default("draft") // draft, open, paid, void, uncollectible
+  
+  mpPaymentId     String?  // ID de pago en MercadoPago
+  invoiceUrl      String?
+  invoicePdf      String?
+  
+  paidAt          DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([subscriptionId])
+  @@index([subscriptionId, createdAt])
+}
+
+model SubscriptionPaymentMethod {
+  id              String   @id @default(cuid())
+  subscriptionId  String
+  subscription    Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  
+  type            String   // credit_card, debit_card
+  brand           String   // visa, mastercard, amex
+  last4           String
+  expiryMonth     Int
+  expiryYear      Int
+  isDefault       Boolean  @default(false)
+  
+  mpCardId        String?  // ID de tarjeta en MercadoPago
+  
+  createdAt       DateTime @default(now())
+
+  @@index([subscriptionId])
 }
 
 // ============================================
