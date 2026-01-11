@@ -10,6 +10,7 @@ import {
   Res,
   UploadedFile,
   UseInterceptors,
+  Logger,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -28,6 +29,7 @@ import { S3Service } from '../storage/s3.service';
 @ApiTags('Uploads')
 @Controller('api/uploads')
 export class UploadsController {
+  private readonly logger = new Logger(UploadsController.name);
   constructor(private readonly s3: S3Service) {}
 
   @ApiBearerAuth()
@@ -51,8 +53,15 @@ export class UploadsController {
   })
   @Get('*key')
   async proxyGet(@Param('key') keyParam: string, @Res() res: Response) {
+    // El parámetro wildcard puede tener slashes reemplazados por comas, obtener la URL real
+    const originalUrl = res.req.url;
+    const keyFromUrl = originalUrl.replace(/^\/api\/uploads\//, '');
+    const actualKey = keyFromUrl.split('?')[0]; // Remover query params si existen
+
+    this.logger.log(`[proxyGet] Received request for key: ${actualKey}`);
     try {
-      const key = this.normalizeAndValidateKey(keyParam);
+      const key = this.normalizeAndValidateKey(actualKey);
+      this.logger.log(`[proxyGet] Normalized key: ${key}`);
 
       const head = await this.s3.headObject(key);
 
@@ -109,7 +118,10 @@ export class UploadsController {
   @Head('*key')
   async proxyHead(@Param('key') keyParam: string, @Res() res: Response) {
     try {
-      const key = this.normalizeAndValidateKey(keyParam);
+      const originalUrl = res.req.url;
+      const keyFromUrl = originalUrl.replace(/^\/api\/uploads\//, '');
+      const actualKey = keyFromUrl.split('?')[0];
+      const key = this.normalizeAndValidateKey(actualKey);
 
       const head = await this.s3.headObject(key);
 
@@ -194,8 +206,11 @@ export class UploadsController {
     description: 'Object key inside the bucket (supports slashes)',
   })
   @Delete('image/*key')
-  async deleteImage(@Param('key') keyParam: string) {
-    const key = this.normalizeAndValidateKey(keyParam);
+  async deleteImage(@Param('key') keyParam: string, @Res() res: Response) {
+    const originalUrl = res.req.url;
+    const keyFromUrl = originalUrl.replace(/^\/api\/uploads\/image\//, '');
+    const actualKey = keyFromUrl.split('?')[0];
+    const key = this.normalizeAndValidateKey(actualKey);
     await this.s3.deleteObjectByUrl(key);
     return { success: true };
   }
