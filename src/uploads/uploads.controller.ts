@@ -225,6 +225,16 @@ export class UploadsController {
 
     let key = decoded.replace(/^\/+/, '');
 
+    // Reject data URIs - these should be rendered directly, not proxied
+    if (key.startsWith('data:')) {
+      this.logger.warn(
+        `[normalizeAndValidateKey] Rejected data URI: ${key.substring(0, 50)}...`,
+      );
+      throw new BadRequestException(
+        'Data URIs cannot be proxied. Use them directly in the browser.',
+      );
+    }
+
     // Back-compat: si el cliente manda "uploads/..." como key, remover el prefijo.
     if (key.startsWith('uploads/')) {
       key = key.substring('uploads/'.length);
