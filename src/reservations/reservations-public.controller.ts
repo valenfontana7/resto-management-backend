@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { ReservationsService } from './reservations.service';
-import { CreateReservationDto } from './dto/reservation.dto';
+import { CreateReservationDto } from './dto/create-reservation.dto';
 import { Public } from '../auth/decorators/public.decorator';
 
 /**

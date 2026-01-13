@@ -7,11 +7,12 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
 import {
-  CreateReservationDto,
+  CreateReservationDto as CreateReservationDtoOld,
   UpdateReservationDto,
   ReservationFiltersDto,
   ReservationStatus,
 } from './dto/reservation.dto';
+import { CreateReservationDto as CreateReservationDtoPublic } from './dto/create-reservation.dto';
 
 /**
  * Servicio para gestión de reservaciones.
@@ -29,7 +30,10 @@ export class ReservationsService {
   /**
    * Crear reserva (público - no requiere autenticación)
    */
-  async createPublic(restaurantId: string, createDto: CreateReservationDto) {
+  async createPublic(
+    restaurantId: string,
+    createDto: CreateReservationDtoPublic,
+  ) {
     // Verificar que el restaurante existe
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { id: restaurantId },
@@ -76,7 +80,7 @@ export class ReservationsService {
   async create(
     restaurantId: string,
     userId: string,
-    createDto: CreateReservationDto,
+    createDto: CreateReservationDtoOld,
   ) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
