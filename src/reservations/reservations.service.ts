@@ -66,7 +66,7 @@ export class ReservationsService {
         partySize: createDto.partySize,
         notes: createDto.notes || null,
         status: ReservationStatus.PENDING,
-        tableId: createDto.tableId || null,
+        tableId: null, // Las reservas públicas no especifican mesa
       },
     });
 
