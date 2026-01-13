@@ -4,8 +4,10 @@ import {
   Body,
   Query,
   Req,
+  Headers,
   HttpCode,
   Logger,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
@@ -33,6 +35,8 @@ export class WebhooksController {
     @Req() req: any,
     @Body() body: any,
     @Query() query: { type?: string; 'data.id'?: string },
+    @Headers('x-signature') xSignature?: string,
+    @Headers('x-request-id') xRequestId?: string,
   ) {
     const rawBody: Buffer | undefined = req?.rawBody;
     const paymentId = query['data.id'] || body?.data?.id;
@@ -40,6 +44,24 @@ export class WebhooksController {
     this.logger.log(
       `MercadoPago webhook received: type=${query.type}, paymentId=${paymentId}`,
     );
+
+    // Validar firma del webhook (seguridad contra webhooks falsos)
+    const signatureValidation = this.webhookService.validateWebhookSignature(
+      xSignature,
+      xRequestId,
+      paymentId,
+      rawBody,
+    );
+
+    if (!signatureValidation.valid) {
+      this.logger.error(
+        `Webhook signature validation failed: ${signatureValidation.reason}`,
+      );
+      throw new ForbiddenException({
+        error: 'Invalid webhook signature',
+        reason: signatureValidation.reason,
+      });
+    }
 
     // Registrar evento para idempotencia
     const { isNew, eventKey } = await this.webhookService.recordWebhookEvent(
@@ -87,13 +109,34 @@ export class WebhooksController {
     @Req() req: any,
     @Body() body: any,
     @Query() query: { type?: string; 'data.id'?: string },
+    @Headers('x-signature') xSignature?: string,
+    @Headers('x-request-id') xRequestId?: string,
   ) {
     const paymentId = query['data.id'] || body?.data?.id;
     const type = query.type || body?.type;
+    const rawBody: Buffer | undefined = req?.rawBody;
 
     this.logger.log(
       `MercadoPago subscription webhook received: type=${type}, paymentId=${paymentId}`,
     );
+
+    // Validar firma del webhook
+    const signatureValidation = this.webhookService.validateWebhookSignature(
+      xSignature,
+      xRequestId,
+      paymentId,
+      rawBody,
+    );
+
+    if (!signatureValidation.valid) {
+      this.logger.error(
+        `Subscription webhook signature validation failed: ${signatureValidation.reason}`,
+      );
+      throw new ForbiddenException({
+        error: 'Invalid webhook signature',
+        reason: signatureValidation.reason,
+      });
+    }
 
     try {
       // Manejar eventos de pago de suscripción

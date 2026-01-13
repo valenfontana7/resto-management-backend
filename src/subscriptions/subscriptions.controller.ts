@@ -37,8 +37,14 @@ export class SubscriptionsController {
   @ApiParam({ name: 'restaurantId', description: 'ID del restaurante' })
   @ApiResponse({ status: 200, description: 'Suscripción encontrada' })
   @ApiResponse({ status: 404, description: 'No existe suscripción' })
-  async getSubscription(@Param('restaurantId') restaurantId: string) {
-    return this.subscriptionsService.getSubscription(restaurantId);
+  async getSubscription(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user?: RequestUser,
+  ) {
+    return this.subscriptionsService.getSubscription(
+      restaurantId,
+      user?.userId,
+    );
   }
 
   @Get('summary')

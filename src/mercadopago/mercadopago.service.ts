@@ -114,6 +114,13 @@ export class MercadoPagoService {
    * Realiza un cargo usando una tarjeta previamente asociada al customer (card_id)
    * Devuelve la respuesta de MercadoPago en caso de éxito.
    */
+  /**
+   * Realiza un cargo usando una tarjeta previamente asociada al customer (card_id)
+   * @param amount Monto en CENTAVOS (se convierte a pesos internamente)
+   * @param idempotencyKey Clave única para evitar cargos duplicados (ej: subscriptionId_date)
+   * @returns Respuesta de MercadoPago con status del pago
+   * @throws Error si el pago falla o es rechazado
+   */
   async chargeWithSavedCard(
     restaurantId: string,
     mpCustomerId: string,
@@ -122,9 +129,24 @@ export class MercadoPagoService {
     currency = 'ARS',
     description = 'Subscription charge',
     useGlobal = true,
-  ): Promise<any> {
+    idempotencyKey?: string,
+  ): Promise<{
+    id: string;
+    status: string;
+    status_detail: string;
+    transaction_amount: number;
+  }> {
     if (!mpCustomerId || !mpCardId)
       throw new Error('mpCustomerId and mpCardId are required');
+
+    // Validar monto mínimo (MercadoPago rechaza montos muy bajos)
+    const MIN_AMOUNT_CENTS = 100; // $1 ARS mínimo
+    if (amount < MIN_AMOUNT_CENTS) {
+      throw new Error(`Amount must be at least ${MIN_AMOUNT_CENTS} cents`);
+    }
+
+    // Convertir de centavos a pesos para MercadoPago
+    const amountInPesos = amount / 100;
 
     const cred = await this.prisma.mercadoPagoCredential.findUnique({
       where: { restaurantId },
@@ -137,21 +159,31 @@ export class MercadoPagoService {
 
     const url = 'https://api.mercadopago.com/v1/payments';
     const payload: any = {
-      transaction_amount: Number(amount),
+      transaction_amount: amountInPesos,
       currency_id: currency,
       description,
       payer: { id: mpCustomerId },
       card_id: mpCardId,
       // mark that this is a recurring/platform-initiated payment
-      metadata: { reason: 'subscription_renewal' },
+      metadata: {
+        reason: 'subscription_renewal',
+        idempotency_key: idempotencyKey || null,
+      },
     };
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    };
+
+    // Agregar header de idempotencia si se proporciona
+    if (idempotencyKey) {
+      headers['X-Idempotency-Key'] = idempotencyKey;
+    }
 
     const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(payload),
     });
 
@@ -163,7 +195,23 @@ export class MercadoPagoService {
       throw new Error(`MercadoPago charge failed: ${details}`);
     }
 
-    return json;
+    // Validar que el pago fue realmente aprobado
+    const paymentStatus = json?.status;
+    if (paymentStatus !== 'approved') {
+      this.logger.warn(
+        `Payment not approved: status=${paymentStatus}, detail=${json?.status_detail}`,
+      );
+      throw new Error(
+        `Payment not approved: ${paymentStatus} - ${json?.status_detail || 'unknown'}`,
+      );
+    }
+
+    return {
+      id: String(json.id),
+      status: json.status,
+      status_detail: json.status_detail,
+      transaction_amount: json.transaction_amount,
+    };
   }
 
   /**

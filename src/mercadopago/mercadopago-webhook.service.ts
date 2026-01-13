@@ -22,6 +22,79 @@ export class MercadoPagoWebhookService {
     private readonly configService: ConfigService,
   ) {}
 
+  /**
+   * Valida la firma HMAC del webhook de MercadoPago
+   * Retorna true si la firma es válida o si no está configurado el secret (modo desarrollo)
+   * @see https://www.mercadopago.com.ar/developers/es/docs/notifications/webhooks
+   */
+  validateWebhookSignature(
+    xSignature: string | undefined,
+    xRequestId: string | undefined,
+    dataId: string | undefined,
+    rawBody?: Buffer,
+  ): { valid: boolean; reason?: string } {
+    const webhookSecret = this.configService.get<string>(
+      'MERCADOPAGO_WEBHOOK_SECRET',
+    );
+
+    // Si no hay secret configurado, skip validación (desarrollo)
+    if (!webhookSecret) {
+      this.logger.warn(
+        'MERCADOPAGO_WEBHOOK_SECRET not configured - webhook signature validation skipped (unsafe for production)',
+      );
+      return { valid: true, reason: 'no_secret_configured' };
+    }
+
+    if (!xSignature) {
+      return { valid: false, reason: 'missing_x_signature_header' };
+    }
+
+    // Parsear el header x-signature (formato: ts=xxx,v1=xxx)
+    const parts: Record<string, string> = {};
+    xSignature.split(',').forEach((part) => {
+      const [key, value] = part.split('=');
+      if (key && value) parts[key.trim()] = value.trim();
+    });
+
+    const ts = parts['ts'];
+    const v1 = parts['v1'];
+
+    if (!ts || !v1) {
+      return { valid: false, reason: 'invalid_signature_format' };
+    }
+
+    // Construir el manifest para verificar
+    // Formato: id:[data.id];request-id:[x-request-id];ts:[ts];
+    const manifest = `id:${dataId || ''};request-id:${xRequestId || ''};ts:${ts};`;
+
+    // Calcular HMAC-SHA256
+    const hmac = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(manifest)
+      .digest('hex');
+
+    if (hmac !== v1) {
+      this.logger.warn(
+        `Webhook signature mismatch: expected ${hmac.substring(0, 10)}..., got ${v1.substring(0, 10)}...`,
+      );
+      return { valid: false, reason: 'signature_mismatch' };
+    }
+
+    // Validar timestamp (rechazar webhooks muy viejos, > 5 minutos)
+    const webhookTime = parseInt(ts, 10) * 1000; // ts está en segundos
+    const now = Date.now();
+    const MAX_AGE_MS = 5 * 60 * 1000; // 5 minutos
+
+    if (isNaN(webhookTime) || now - webhookTime > MAX_AGE_MS) {
+      this.logger.warn(
+        `Webhook timestamp too old or invalid: ts=${ts}, age=${(now - webhookTime) / 1000}s`,
+      );
+      return { valid: false, reason: 'timestamp_expired' };
+    }
+
+    return { valid: true };
+  }
+
   async handleWebhook(
     query: { type?: string; 'data.id'?: string },
     body: any,

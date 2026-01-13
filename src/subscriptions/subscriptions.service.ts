@@ -167,6 +167,14 @@ export class SubscriptionsService {
       },
     });
 
+    // Si es el método por defecto, actualizar la suscripción
+    if (pm.isDefault) {
+      await this.prisma.subscription.update({
+        where: { id: subscription.id },
+        data: { paymentMethodId: pm.id },
+      });
+    }
+
     // If issuer info missing, try to fetch full card details and update
     try {
       if ((!pm.issuerId || !pm.issuerName) && mpCustomerId && pm.mpCardId) {
@@ -384,7 +392,7 @@ export class SubscriptionsService {
   /**
    * Obtener suscripción actual de un restaurante
    */
-  async getSubscription(restaurantId: string) {
+  async getSubscription(restaurantId: string, userId?: string) {
     const subscription = await this.prisma.subscription.findUnique({
       where: { restaurantId },
       include: {
@@ -393,13 +401,70 @@ export class SubscriptionsService {
           orderBy: { createdAt: 'desc' },
         },
         paymentMethods: {
-          where: { isDefault: true },
-          take: 1,
+          orderBy: { isDefault: 'desc' },
         },
       },
     });
 
-    return { subscription };
+    let allPaymentMethods: any[] =
+      subscription?.paymentMethods.map((pm) => ({
+        id: pm.id,
+        mpCardId: pm.mpCardId,
+        mpCustomerId: subscription.mpCustomerId ?? null,
+        brand: pm.brand,
+        issuerId: pm.issuerId ?? null,
+        issuerName: pm.issuerName ?? null,
+        last4: pm.last4,
+        expMonth: String(pm.expiryMonth).padStart(2, '0'),
+        expYear: String(pm.expiryYear),
+        cardholderName: null,
+        issuer: pm.issuerName
+          ? { name: pm.issuerName, id: pm.issuerId }
+          : pm.brand
+            ? { name: pm.brand, id: null }
+            : null,
+        isDefault: pm.isDefault,
+        createdAt: pm.createdAt,
+        type: 'subscription' as const,
+      })) || [];
+
+    // If userId provided, include user's payment methods
+    if (userId) {
+      const userMethods = await this.prisma.userPaymentMethod.findMany({
+        where: { userId },
+        orderBy: { isDefault: 'desc' },
+      });
+
+      // Map user methods to similar structure
+      const mappedUserMethods = userMethods.map((pm) => ({
+        id: pm.id,
+        mpCardId: pm.mpCardId,
+        mpCustomerId: pm.mpCustomerId,
+        brand: pm.brand,
+        issuerId: pm.issuerId ?? null,
+        issuerName: pm.issuerName ?? null,
+        last4: pm.last4,
+        expMonth: String(pm.expiryMonth).padStart(2, '0'),
+        expYear: String(pm.expiryYear),
+        cardholderName: pm.cardholderName,
+        issuer: pm.issuerName
+          ? { name: pm.issuerName, id: pm.issuerId }
+          : pm.brand
+            ? { name: pm.brand, id: null }
+            : null,
+        isDefault: pm.isDefault,
+        createdAt: pm.createdAt,
+        type: 'user' as const,
+      }));
+
+      allPaymentMethods = [...allPaymentMethods, ...mappedUserMethods];
+    }
+
+    return {
+      subscription: subscription
+        ? { ...subscription, paymentMethods: allPaymentMethods }
+        : null,
+    };
   }
 
   /**
@@ -824,7 +889,9 @@ export class SubscriptionsService {
   }
 
   /**
-   * Procesar pago aprobado de suscripción (llamado desde webhook)
+   * Procesar pago aprobado de suscripción (llamado desde webhook o cron)
+   * Usa transacción atómica para garantizar consistencia entre subscription e invoice
+   * Implementa idempotencia por paymentId para evitar procesar el mismo pago dos veces
    */
   async processPaymentApproved(
     restaurantId: string,
@@ -832,65 +899,95 @@ export class SubscriptionsService {
     paymentId: string,
     amount: number,
   ) {
+    // Idempotencia: verificar si este pago ya fue procesado
+    const existingInvoice = await this.prisma.invoice.findFirst({
+      where: { mpPaymentId: paymentId },
+    });
+
+    if (existingInvoice) {
+      this.logger.warn(
+        `Payment ${paymentId} already processed (invoice ${existingInvoice.id}), skipping`,
+      );
+      // Retornar la suscripción existente
+      const existingSub = await this.prisma.subscription.findUnique({
+        where: { restaurantId },
+      });
+      return existingSub;
+    }
+
     const now = new Date();
     const nextBillingDate = addMonths(now, 1);
 
-    const subscription = await this.prisma.subscription.upsert({
-      where: { restaurantId },
-      create: {
-        restaurant: { connect: { id: restaurantId } },
-        planType,
-        status: SubscriptionStatus.ACTIVE,
-        currentPeriodStart: now,
-        currentPeriodEnd: nextBillingDate,
-        lastPaymentDate: now,
-        lastPaymentAmount: amount,
-        nextPaymentDate: nextBillingDate,
-      },
-      update: {
-        planType,
-        status: SubscriptionStatus.ACTIVE,
-        currentPeriodStart: now,
-        currentPeriodEnd: nextBillingDate,
-        lastPaymentDate: now,
-        lastPaymentAmount: amount,
-        nextPaymentDate: nextBillingDate,
-        trialEnd: null, // Trial terminado
-        cancelAtPeriodEnd: false,
-        canceledAt: null,
-      },
+    // Usar transacción atómica para garantizar consistencia
+    const result = await this.prisma.$transaction(async (tx) => {
+      const subscription = await tx.subscription.upsert({
+        where: { restaurantId },
+        create: {
+          restaurant: { connect: { id: restaurantId } },
+          planType,
+          status: SubscriptionStatus.ACTIVE,
+          currentPeriodStart: now,
+          currentPeriodEnd: nextBillingDate,
+          lastPaymentDate: now,
+          lastPaymentAmount: amount,
+          nextPaymentDate: nextBillingDate,
+        },
+        update: {
+          planType,
+          status: SubscriptionStatus.ACTIVE,
+          currentPeriodStart: now,
+          currentPeriodEnd: nextBillingDate,
+          lastPaymentDate: now,
+          lastPaymentAmount: amount,
+          nextPaymentDate: nextBillingDate,
+          trialEnd: null, // Trial terminado
+          cancelAtPeriodEnd: false,
+          canceledAt: null,
+        },
+      });
+
+      // Crear factura dentro de la misma transacción
+      await tx.invoice.create({
+        data: {
+          subscriptionId: subscription.id,
+          amount,
+          status: 'paid',
+          mpPaymentId: paymentId,
+          paidAt: now,
+        },
+      });
+
+      return subscription;
     });
 
-    // Crear factura
-    await this.prisma.invoice.create({
-      data: {
-        subscriptionId: subscription.id,
-        amount,
-        status: 'paid',
-        mpPaymentId: paymentId,
-        paidAt: now,
-      },
-    });
+    // Enviar email de pago exitoso (fuera de transacción, no crítico)
+    try {
+      const restaurant = await this.prisma.restaurant.findUnique({
+        where: { id: restaurantId },
+        select: { email: true, name: true },
+      });
 
-    // Enviar email de pago exitoso
-    const restaurant = await this.prisma.restaurant.findUnique({
-      where: { id: restaurantId },
-      select: { email: true, name: true },
-    });
-
-    if (restaurant?.email) {
-      await this.emailService.sendPaymentSuccessEmail(
-        restaurant.email,
-        restaurant.name,
-        PLAN_NAMES[planType],
-        amount,
-        nextBillingDate,
+      if (restaurant?.email && amount > 0) {
+        await this.emailService.sendPaymentSuccessEmail(
+          restaurant.email,
+          restaurant.name,
+          PLAN_NAMES[planType],
+          amount,
+          nextBillingDate,
+        );
+      }
+    } catch (emailError: any) {
+      this.logger.error(
+        `Failed to send payment success email for ${restaurantId}: ${emailError.message}`,
       );
+      // No lanzar error, el pago ya fue procesado exitosamente
     }
 
-    this.logger.log(`Pago procesado para suscripción ${subscription.id}`);
+    this.logger.log(
+      `Pago procesado para suscripción ${result.id}, paymentId: ${paymentId}`,
+    );
 
-    return subscription;
+    return result;
   }
 
   /**
