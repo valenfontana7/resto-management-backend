@@ -33,24 +33,6 @@ import type { RequestUser } from '../auth/strategies/jwt.strategy';
 export class ReservationsController {
   constructor(private readonly reservationsService: ReservationsService) {}
 
-  @Post('reservations')
-  @ApiOperation({ summary: 'Create a new reservation' })
-  @ApiResponse({
-    status: 201,
-    description: 'Reservation created successfully',
-  })
-  async create(
-    @Param('restaurantId') restaurantId: string,
-    @CurrentUser() user: RequestUser,
-    @Body() createDto: CreateReservationDto,
-  ) {
-    return this.reservationsService.create(
-      restaurantId,
-      user.userId,
-      createDto,
-    );
-  }
-
   @Get('reservations')
   @ApiOperation({ summary: 'Get all reservations for a restaurant' })
   @ApiResponse({
