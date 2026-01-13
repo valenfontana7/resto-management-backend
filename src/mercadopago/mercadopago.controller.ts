@@ -48,7 +48,12 @@ export class MercadoPagoController {
   @HttpCode(200)
   async setTenantToken(
     @Body()
-    body: { restaurantId?: string; accessToken?: string; isSandbox?: boolean },
+    body: {
+      restaurantId?: string;
+      accessToken?: string;
+      isSandbox?: boolean;
+      publicKey?: string;
+    },
     @CurrentUser() user?: RequestUser,
   ) {
     const restaurantId = (body?.restaurantId ?? '').trim();
@@ -67,6 +72,7 @@ export class MercadoPagoController {
       restaurantId,
       accessToken,
       !!body.isSandbox,
+      (body?.publicKey ?? '').trim() || undefined,
     );
     return { success: true };
   }
@@ -85,6 +91,27 @@ export class MercadoPagoController {
 
     await this.credentialsService.clearToken(restaurantId);
     return { success: true };
+  }
+
+  @Get('public-key')
+  async getPublicKey(
+    @Query('restaurantId') restaurantId?: string,
+    @CurrentUser() user?: RequestUser,
+  ) {
+    const id = (restaurantId ?? '').trim();
+
+    if (id) {
+      assertRestaurantAccess(user, id);
+    } else {
+      // Require authentication even if no restaurantId provided
+      if (!user) throw new BadRequestException('Unauthorized');
+    }
+
+    const key = (await this.credentialsService.getDecryptedToken)
+      ? await this.mercadoPagoService.getPublishableKey(id || undefined)
+      : await this.mercadoPagoService.getPublishableKey(id || undefined);
+
+    return { publicKey: key ?? null };
   }
 
   // B) Preference

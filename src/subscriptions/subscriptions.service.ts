@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { MercadoPagoService } from '../mercadopago/mercadopago.service';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
 import {
   CreateSubscriptionDto,
@@ -34,6 +35,7 @@ export class SubscriptionsService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly emailService: EmailService,
+    private readonly mercadopagoService: MercadoPagoService,
   ) {
     const accessToken = this.configService.get<string>(
       'MERCADOPAGO_ACCESS_TOKEN',
@@ -41,6 +43,342 @@ export class SubscriptionsService {
     if (accessToken) {
       this.mp = new MercadoPagoConfig({ accessToken });
     }
+  }
+
+  /**
+   * Crea (o retorna) el mpCustomerId para la suscripción del restaurante.
+   */
+  async ensureMpCustomer(
+    restaurantId: string,
+    metadata?: { email?: string; description?: string },
+  ): Promise<string> {
+    // Intentar leer suscripción
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { restaurantId },
+      select: { id: true, mpCustomerId: true },
+    });
+
+    if (subscription?.mpCustomerId) return subscription.mpCustomerId;
+
+    if (!this.mercadopagoService) {
+      throw new BadRequestException('MercadoPago no está configurado');
+    }
+
+    // Crear customer en la cuenta GLOBAL de la plataforma para suscripciones
+    const mpCustomerId = await this.mercadopagoService.createCustomer(
+      restaurantId,
+      metadata,
+      true,
+    );
+
+    // Upsert subscription row minimalmente
+    await this.prisma.subscription.upsert({
+      where: { restaurantId },
+      create: {
+        restaurant: { connect: { id: restaurantId } },
+        planType: 'STARTER',
+        status: 'ACTIVE',
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 5),
+        mpCustomerId,
+      } as any,
+      update: { mpCustomerId },
+    });
+
+    return mpCustomerId;
+  }
+
+  /**
+   * Añade un método de pago (tarjeta) usando card token desde frontend.
+   */
+  async addPaymentMethodFromToken(
+    restaurantId: string,
+    token: string,
+  ): Promise<any> {
+    if (!token) throw new BadRequestException('token es requerido');
+
+    if (!this.mercadopagoService) {
+      throw new BadRequestException('MercadoPago no está configurado');
+    }
+
+    // Asegurar mpCustomerId
+    const mpCustomerId = await this.ensureMpCustomer(restaurantId);
+
+    // Asociar tarjeta en MP
+    let cardInfo: any;
+    try {
+      // Asociar la tarjeta en la cuenta GLOBAL de la plataforma (suscripciones)
+      cardInfo = await this.mercadopagoService.createCardForCustomer(
+        restaurantId,
+        mpCustomerId,
+        token,
+        true,
+      );
+    } catch (e: any) {
+      throw new BadRequestException({
+        error: 'Error attaching card to MercadoPago',
+        details: String(e.message ?? e),
+      });
+    }
+
+    // Obtener (o crear) subscription
+    const subscription = await this.prisma.subscription.upsert({
+      where: { restaurantId },
+      create: {
+        restaurant: { connect: { id: restaurantId } },
+        planType: 'STARTER',
+        status: 'ACTIVE',
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 5),
+        mpCustomerId,
+      } as any,
+      update: {},
+    });
+
+    // ¿es default? si no hay otros
+    const existingCount = await this.prisma.subscriptionPaymentMethod.count({
+      where: { subscriptionId: subscription.id },
+    });
+
+    const pm = await this.prisma.subscriptionPaymentMethod.create({
+      data: {
+        subscription: { connect: { id: subscription.id } },
+        type: 'credit_card',
+        brand:
+          cardInfo?.card?.brand ||
+          cardInfo?.card?.issuer?.name?.toLowerCase() ||
+          'card',
+        issuerId: cardInfo?.card?.issuer?.id ?? null,
+        issuerName: cardInfo?.card?.issuer?.name ?? null,
+        last4:
+          cardInfo?.last_four ||
+          cardInfo?.last_four_digits ||
+          cardInfo?.card?.last_four ||
+          cardInfo?.card?.last_four_digits ||
+          '',
+        expiryMonth: Number(
+          cardInfo?.card?.expiration_month || cardInfo?.expiration_month || 0,
+        ),
+        expiryYear: Number(
+          cardInfo?.card?.expiration_year || cardInfo?.expiration_year || 0,
+        ),
+        isDefault: existingCount === 0,
+        mpCardId: String(cardInfo.id ?? cardInfo.card?.id ?? ''),
+      },
+    });
+
+    // If issuer info missing, try to fetch full card details and update
+    try {
+      if ((!pm.issuerId || !pm.issuerName) && mpCustomerId && pm.mpCardId) {
+        const full = await this.mercadopagoService
+          .getCardForCustomer(restaurantId, mpCustomerId, pm.mpCardId, true)
+          .catch(() => null);
+        if (full) {
+          const issuerId = full?.card?.issuer?.id ?? null;
+          const issuerName = full?.card?.issuer?.name ?? null;
+          if (issuerId || issuerName) {
+            const updated = await this.prisma.subscriptionPaymentMethod.update({
+              where: { id: pm.id },
+              data: { issuerId, issuerName },
+            });
+            return {
+              paymentMethod: {
+                id: updated.id,
+                mpCardId: updated.mpCardId,
+                mpCustomerId: mpCustomerId,
+                brand: updated.brand,
+                issuerId: updated.issuerId ?? null,
+                issuerName: updated.issuerName ?? null,
+                last4: updated.last4,
+                expMonth: String(updated.expiryMonth).padStart(2, '0'),
+                expYear: String(updated.expiryYear),
+                cardholderName:
+                  cardInfo?.card?.cardholder?.name ||
+                  cardInfo?.cardholder?.name ||
+                  null,
+                isDefault: updated.isDefault,
+                createdAt: updated.createdAt,
+              },
+            };
+          }
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    return {
+      paymentMethod: {
+        id: pm.id,
+        mpCardId: pm.mpCardId,
+        mpCustomerId: mpCustomerId,
+        brand: pm.brand,
+        issuerId: pm.issuerId ?? null,
+        issuerName: pm.issuerName ?? null,
+        last4: pm.last4,
+        expMonth: String(pm.expiryMonth).padStart(2, '0'),
+        expYear: String(pm.expiryYear),
+        cardholderName:
+          cardInfo?.card?.cardholder?.name ||
+          cardInfo?.cardholder?.name ||
+          null,
+        isDefault: pm.isDefault,
+        createdAt: pm.createdAt,
+      },
+    };
+  }
+
+  async listPaymentMethods(restaurantId: string) {
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { restaurantId },
+      include: { paymentMethods: true },
+    });
+
+    if (!subscription) return { paymentMethods: [] };
+
+    const paymentMethods = subscription.paymentMethods.map((pm) => ({
+      id: pm.id,
+      mpCardId: pm.mpCardId,
+      mpCustomerId: subscription.mpCustomerId ?? null,
+      brand: pm.brand,
+      issuerId: pm.issuerId ?? null,
+      issuerName: pm.issuerName ?? null,
+      last4: pm.last4,
+      expMonth: String(pm.expiryMonth).padStart(2, '0'),
+      expYear: String(pm.expiryYear),
+      cardholderName: null,
+      issuer: pm.issuerName
+        ? { name: pm.issuerName, id: pm.issuerId }
+        : pm.brand
+          ? { name: pm.brand, id: null }
+          : null,
+      isDefault: pm.isDefault,
+      createdAt: pm.createdAt,
+    }));
+
+    // Order: default methods first, then by createdAt
+    paymentMethods.sort((a, b) => {
+      if (a.isDefault === b.isDefault) {
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return ta - tb;
+      }
+      return a.isDefault ? -1 : 1;
+    });
+
+    return { paymentMethods };
+  }
+
+  async removePaymentMethod(restaurantId: string, paymentMethodId: string) {
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { restaurantId },
+      include: { paymentMethods: true },
+    });
+
+    if (!subscription) throw new NotFoundException('Subscription not found');
+
+    const pm = await this.prisma.subscriptionPaymentMethod.findUnique({
+      where: { id: paymentMethodId },
+    });
+
+    if (!pm || pm.subscriptionId !== subscription.id) {
+      throw new NotFoundException('Payment method not found');
+    }
+
+    // Intentar borrar en MP
+    if (subscription.mpCustomerId && pm.mpCardId && this.mercadopagoService) {
+      try {
+        await this.mercadopagoService.deleteCardForCustomer(
+          restaurantId,
+          subscription.mpCustomerId,
+          pm.mpCardId,
+        );
+      } catch (e) {
+        // Propagar como error 502
+        throw new BadRequestException({
+          error: 'Error deleting card in MercadoPago',
+          details: String((e as any).message ?? e),
+        });
+      }
+    }
+
+    await this.prisma.subscriptionPaymentMethod.delete({
+      where: { id: paymentMethodId },
+    });
+  }
+
+  /**
+   * Set preferred payment method for the restaurant's subscription.
+   * Accepts either a subscriptionPaymentMethodId (card stored under subscription)
+   * or a userPaymentMethodId (card stored per user). It updates the subscription
+   * row and marks the selected SubscriptionPaymentMethod as default.
+   */
+  async setPreferredPaymentMethod(
+    restaurantId: string,
+    body: {
+      subscriptionPaymentMethodId?: string;
+      userPaymentMethodId?: string;
+    },
+    userId?: string,
+  ) {
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { restaurantId },
+      include: { paymentMethods: true },
+    });
+    if (!subscription) throw new NotFoundException('Subscription not found');
+
+    const updates: any = {};
+
+    if (body.subscriptionPaymentMethodId) {
+      const pm = await this.prisma.subscriptionPaymentMethod.findUnique({
+        where: { id: body.subscriptionPaymentMethodId },
+      });
+      if (!pm || pm.subscriptionId !== subscription.id)
+        throw new BadRequestException('Invalid subscription payment method');
+
+      updates.paymentMethodId = body.subscriptionPaymentMethodId;
+
+      // Unset other defaults and set this one
+      await this.prisma.subscriptionPaymentMethod.updateMany({
+        where: { subscriptionId: subscription.id },
+        data: { isDefault: false },
+      });
+      await this.prisma.subscriptionPaymentMethod.update({
+        where: { id: body.subscriptionPaymentMethodId },
+        data: { isDefault: true },
+      });
+    }
+
+    let selectedUserPaymentMethod: any = null;
+    if (body.userPaymentMethodId) {
+      if (!userId)
+        throw new BadRequestException(
+          'User context required to set user preferred payment method',
+        );
+      const upm = await this.prisma.userPaymentMethod.findUnique({
+        where: { id: body.userPaymentMethodId },
+      });
+      if (!upm || upm.userId !== userId)
+        throw new BadRequestException('Invalid user payment method');
+
+      // Unset other defaults for this user and set the chosen one
+      await this.prisma.userPaymentMethod.updateMany({
+        where: { userId },
+        data: { isDefault: false },
+      });
+      selectedUserPaymentMethod = await this.prisma.userPaymentMethod.update({
+        where: { id: body.userPaymentMethodId },
+        data: { isDefault: true },
+      });
+
+      // We intentionally do NOT change subscription.userPaymentMethodId here: preference is per-user.
+    }
+
+    const updated = await this.prisma.subscription.update({
+      where: { restaurantId },
+      data: updates,
+    });
+    return { subscription: updated, selectedUserPaymentMethod };
   }
 
   /**

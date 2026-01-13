@@ -33,6 +33,293 @@ export class MercadoPagoService {
     private readonly credentialsService: MercadoPagoCredentialsService,
   ) {}
 
+  /**
+   * Crea un customer en MercadoPago para el restaurante indicado.
+   * Persiste nada aquí; retorna el mpCustomerId.
+   */
+  async createCustomer(
+    restaurantId: string,
+    metadata?: { email?: string; description?: string },
+    useGlobal = false,
+  ): Promise<string> {
+    const isSandbox = !!(
+      await this.prisma.mercadoPagoCredential.findUnique({
+        where: { restaurantId },
+        select: { isSandbox: true },
+      })
+    )?.isSandbox;
+
+    const accessToken = useGlobal
+      ? await this.resolveAccessToken('', false)
+      : await this.resolveAccessToken(restaurantId, isSandbox);
+
+    const body: any = {};
+    if (metadata?.email) body.email = metadata.email;
+    if (metadata?.description) body.description = metadata.description;
+
+    const res = await fetch('https://api.mercadopago.com/v1/customers', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      // Try to parse JSON error body to detect 'customer already exist'
+      const detailsJson = await res.json().catch(() => null);
+      const detailsText = detailsJson
+        ? JSON.stringify(detailsJson)
+        : await res.text().catch(() => '');
+
+      // If the error indicates the customer already exists, attempt to find it by email
+      const causes = detailsJson?.cause ?? null;
+      const alreadyExists = Array.isArray(causes)
+        ? causes.some(
+            (c: any) =>
+              String(c.code) === '101' ||
+              (c.description || '').toLowerCase().includes('customer already'),
+          )
+        : false;
+
+      if (alreadyExists && metadata?.email) {
+        try {
+          const searchUrl = `https://api.mercadopago.com/v1/customers/search?email=${encodeURIComponent(
+            metadata.email,
+          )}`;
+          const searchRes = await fetch(searchUrl, {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (searchRes.ok) {
+            const searchJson = await searchRes.json();
+            // MercadoPago returns { results: [ { id, ... }, ... ] }
+            const found =
+              (searchJson?.results && searchJson.results[0]) || null;
+            if (found?.id) return String(found.id);
+          }
+        } catch (e) {
+          // ignore and fall through to throw original error
+        }
+      }
+
+      throw new Error(`MercadoPago createCustomer failed: ${detailsText}`);
+    }
+
+    const json = await res.json();
+    return String(json.id);
+  }
+
+  /**
+   * Realiza un cargo usando una tarjeta previamente asociada al customer (card_id)
+   * Devuelve la respuesta de MercadoPago en caso de éxito.
+   */
+  async chargeWithSavedCard(
+    restaurantId: string,
+    mpCustomerId: string,
+    mpCardId: string,
+    amount: number,
+    currency = 'ARS',
+    description = 'Subscription charge',
+    useGlobal = true,
+  ): Promise<any> {
+    if (!mpCustomerId || !mpCardId)
+      throw new Error('mpCustomerId and mpCardId are required');
+
+    const cred = await this.prisma.mercadoPagoCredential.findUnique({
+      where: { restaurantId },
+      select: { isSandbox: true },
+    });
+    const isSandbox = !!cred?.isSandbox;
+    const accessToken = useGlobal
+      ? await this.resolveAccessToken('', false)
+      : await this.resolveAccessToken(restaurantId, isSandbox);
+
+    const url = 'https://api.mercadopago.com/v1/payments';
+    const payload: any = {
+      transaction_amount: Number(amount),
+      currency_id: currency,
+      description,
+      payer: { id: mpCustomerId },
+      card_id: mpCardId,
+      // mark that this is a recurring/platform-initiated payment
+      metadata: { reason: 'subscription_renewal' },
+    };
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      const details = json
+        ? JSON.stringify(json)
+        : await res.text().catch(() => '');
+      throw new Error(`MercadoPago charge failed: ${details}`);
+    }
+
+    return json;
+  }
+
+  /**
+   * Asocia una tarjeta al customer usando card_token.
+   */
+  async createCardForCustomer(
+    restaurantId: string,
+    mpCustomerId: string,
+    cardToken: string,
+    useGlobal = false,
+  ): Promise<any> {
+    if (!cardToken) throw new Error('card token required');
+
+    const cred = await this.prisma.mercadoPagoCredential.findUnique({
+      where: { restaurantId },
+      select: { isSandbox: true },
+    });
+    const isSandbox = !!cred?.isSandbox;
+    const accessToken = useGlobal
+      ? await this.resolveAccessToken('', false)
+      : await this.resolveAccessToken(restaurantId, isSandbox);
+
+    const url = `https://api.mercadopago.com/v1/customers/${mpCustomerId}/cards`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ token: cardToken }),
+    });
+
+    if (!res.ok) {
+      const details = await res.text().catch(() => '');
+      throw new Error(`MercadoPago createCard failed: ${details}`);
+    }
+
+    const json = await res.json();
+    // Try to fetch full card details (some MercadoPago responses may omit PAN digits
+    // in the creation response). If available, prefer the GET response which often
+    // includes nested `card` object with last_four / last_four_digits.
+    try {
+      const cardId = String(json.id ?? json.card?.id ?? '');
+      if (cardId) {
+        const getUrl = `https://api.mercadopago.com/v1/customers/${mpCustomerId}/cards/${cardId}`;
+        const getRes = await fetch(getUrl, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (getRes.ok) {
+          const full = await getRes.json();
+          return full;
+        }
+      }
+    } catch (e) {
+      // ignore and fall back to original create response
+    }
+
+    return json;
+  }
+
+  /**
+   * Obtiene los detalles completos de una tarjeta asociada a un customer.
+   */
+  async getCardForCustomer(
+    restaurantId: string,
+    mpCustomerId: string,
+    mpCardId: string,
+    useGlobal = false,
+  ): Promise<any> {
+    if (!mpCustomerId || !mpCardId)
+      throw new Error('mpCustomerId and mpCardId are required');
+
+    const cred = await this.prisma.mercadoPagoCredential.findUnique({
+      where: { restaurantId },
+      select: { isSandbox: true },
+    });
+    const isSandbox = !!cred?.isSandbox;
+    const accessToken = useGlobal
+      ? await this.resolveAccessToken('', false)
+      : await this.resolveAccessToken(restaurantId, isSandbox);
+
+    const getUrl = `https://api.mercadopago.com/v1/customers/${mpCustomerId}/cards/${mpCardId}`;
+    const getRes = await fetch(getUrl, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!getRes.ok) {
+      const details = await getRes.text().catch(() => '');
+      throw new Error(`MercadoPago getCard failed: ${details}`);
+    }
+
+    const full = await getRes.json();
+    return full;
+  }
+
+  /**
+   * Elimina una tarjeta del customer en MP (si la API lo permite).
+   */
+  async deleteCardForCustomer(
+    restaurantId: string,
+    mpCustomerId: string,
+    mpCardId: string,
+  ): Promise<void> {
+    const cred = await this.prisma.mercadoPagoCredential.findUnique({
+      where: { restaurantId },
+      select: { isSandbox: true },
+    });
+    const isSandbox = !!cred?.isSandbox;
+    const accessToken = await this.resolveAccessToken(restaurantId, isSandbox);
+
+    const url = `https://api.mercadopago.com/v1/customers/${mpCustomerId}/cards/${mpCardId}`;
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!res.ok) {
+      const details = await res.text().catch(() => '');
+      throw new Error(`MercadoPago deleteCard failed: ${details}`);
+    }
+  }
+
+  /**
+   * Devuelve la publishable/public key (publishable) para el restaurante o fallback global.
+   */
+  async getPublishableKey(restaurantId?: string): Promise<string | null> {
+    // Prefer tenant publishableKey if present, then sandbox/global env vars.
+    try {
+      if (restaurantId) {
+        const cred = await this.prisma.mercadoPagoCredential.findUnique({
+          where: { restaurantId },
+          select: { isSandbox: true, publishableKey: true },
+        });
+
+        if (cred?.publishableKey) {
+          return cred.publishableKey;
+        }
+
+        const isSandbox = !!cred?.isSandbox;
+        if (isSandbox) {
+          const sandboxKey = (
+            this.configService.get<string>('MERCADOPAGO_SANDBOX_PUBLIC_KEY') ??
+            ''
+          ).trim();
+          if (sandboxKey) return sandboxKey;
+        }
+      }
+
+      const globalKey = (
+        this.configService.get<string>('MERCADOPAGO_PUBLIC_KEY') ?? ''
+      ).trim();
+      return globalKey || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   async createPreference(
     origin: string,
     body: PreferenceRequestBody,

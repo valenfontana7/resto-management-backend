@@ -5,9 +5,15 @@ import { SubscriptionsService } from './subscriptions.service';
 import { SubscriptionTasksService } from './subscriptions-tasks.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
+import { MercadoPagoModule } from '../mercadopago/mercadopago.module';
 
 @Module({
-  imports: [PrismaModule, EmailModule, ScheduleModule.forRoot()],
+  imports: [
+    PrismaModule,
+    EmailModule,
+    ScheduleModule.forRoot(),
+    MercadoPagoModule,
+  ],
   controllers: [SubscriptionsController],
   providers: [SubscriptionsService, SubscriptionTasksService],
   exports: [SubscriptionsService],

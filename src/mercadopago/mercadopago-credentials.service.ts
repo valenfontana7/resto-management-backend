@@ -40,6 +40,7 @@ export class MercadoPagoCredentialsService {
     restaurantId: string,
     accessToken: string,
     isSandbox = false,
+    publishableKey?: string,
   ): Promise<void> {
     const normalizedRestaurantId = (restaurantId ?? '').trim();
     const normalizedToken = (accessToken ?? '').trim();
@@ -62,11 +63,13 @@ export class MercadoPagoCredentialsService {
         restaurantId: normalizedRestaurantId,
         accessTokenCiphertext: ciphertext,
         accessTokenLast4: last4,
+        publishableKey: publishableKey ?? null,
         isSandbox: !!isSandbox,
       },
       update: {
         accessTokenCiphertext: ciphertext,
         accessTokenLast4: last4,
+        publishableKey: publishableKey ?? undefined,
         isSandbox: !!isSandbox,
       },
     });

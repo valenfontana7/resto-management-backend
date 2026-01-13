@@ -7,6 +7,7 @@ import {
   Body,
   HttpCode,
   HttpStatus,
+  Delete,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -16,6 +17,9 @@ import {
   ApiParam,
 } from '@nestjs/swagger';
 import { SubscriptionsService } from './subscriptions.service';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { RequestUser } from '../auth/decorators/current-user.decorator';
+import { assertRestaurantAccess } from '../common/decorators/verify-restaurant-access.decorator';
 import {
   CreateSubscriptionDto,
   CreateCheckoutDto,
@@ -115,5 +119,89 @@ export class SubscriptionsController {
   @ApiResponse({ status: 200, description: 'Lista de facturas' })
   async getInvoices(@Param('restaurantId') restaurantId: string) {
     return this.subscriptionsService.getInvoices(restaurantId);
+  }
+
+  @Post('payment-methods')
+  @HttpCode(HttpStatus.CREATED)
+  async addPaymentMethod(
+    @Param('restaurantId') restaurantId: string,
+    @Body() body: { token?: string },
+    @CurrentUser() user?: RequestUser,
+  ) {
+    assertRestaurantAccess(user, restaurantId);
+
+    const token = (body?.token ?? '').trim();
+    if (!token) {
+      return { error: 'token es requerido' };
+    }
+
+    return this.subscriptionsService.addPaymentMethodFromToken(
+      restaurantId,
+      token,
+    );
+  }
+
+  @Get('payment-methods')
+  async listPaymentMethods(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user?: RequestUser,
+  ) {
+    assertRestaurantAccess(user, restaurantId);
+    return this.subscriptionsService.listPaymentMethods(restaurantId);
+  }
+
+  @Delete('payment-methods/:paymentMethodId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deletePaymentMethod(
+    @Param('restaurantId') restaurantId: string,
+    @Param('paymentMethodId') paymentMethodId: string,
+    @CurrentUser() user?: RequestUser,
+  ) {
+    assertRestaurantAccess(user, restaurantId);
+    await this.subscriptionsService.removePaymentMethod(
+      restaurantId,
+      paymentMethodId,
+    );
+    return;
+  }
+
+  @Post('payment-methods/select')
+  @HttpCode(HttpStatus.OK)
+  async selectPaymentMethod(
+    @Param('restaurantId') restaurantId: string,
+    @Body()
+    body: {
+      subscriptionPaymentMethodId?: string;
+      userPaymentMethodId?: string;
+    },
+    @CurrentUser() user?: RequestUser,
+  ) {
+    assertRestaurantAccess(user, restaurantId);
+    return this.subscriptionsService.setPreferredPaymentMethod(
+      restaurantId,
+      body,
+      user?.userId,
+    );
+  }
+
+  @Post('mercadopago/customer')
+  @HttpCode(HttpStatus.CREATED)
+  async createMpCustomer(
+    @Param('restaurantId') restaurantId: string,
+    @Body() body: { email?: string; name?: string },
+    @CurrentUser() user?: RequestUser,
+  ) {
+    assertRestaurantAccess(user, restaurantId);
+
+    const metadata: any = {};
+    if (body?.email) metadata.email = body.email;
+    if (body?.name) metadata.description = body.name;
+
+    const mpCustomerId = await this.subscriptionsService.ensureMpCustomer(
+      restaurantId,
+      metadata,
+    );
+
+    return { mpCustomerId };
   }
 }

@@ -119,7 +119,7 @@ model Category {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
-
+  
   @@unique([restaurantId, name])
   @@index([restaurantId])
   @@index([restaurantId, isActive])
@@ -322,6 +322,7 @@ model MercadoPagoCredential {
 
   accessTokenCiphertext String
   accessTokenLast4      String?
+  publishableKey        String?
   isSandbox             Boolean @default(false)
 
   createdAt DateTime @default(now())
@@ -656,6 +657,9 @@ model User {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
+  // Métodos de pago guardados por el usuario
+  paymentMethods UserPaymentMethod[]
+
   @@index([email])
   @@index([restaurantId])
   @@index([restaurantId, roleId])
@@ -707,6 +711,7 @@ model Subscription {
   
   // Método de pago
   paymentMethodId  String?
+  userPaymentMethodId String?
   lastPaymentDate  DateTime?
   lastPaymentAmount Int?             // En centavos
   nextPaymentDate  DateTime?
@@ -720,6 +725,29 @@ model Subscription {
   @@index([restaurantId])
   @@index([status])
   @@index([status, currentPeriodEnd])
+}
+
+model UserPaymentMethod {
+  id             String   @id @default(cuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  mpCustomerId   String?  // customer id in MercadoPago (platform account)
+  mpCardId       String?  // card id in MercadoPago
+
+  type           String   // credit_card, debit_card
+  brand          String?
+  issuerId       String?
+  issuerName     String?
+  last4          String?
+  expiryMonth    Int?
+  expiryYear     Int?
+  cardholderName String?
+  isDefault      Boolean  @default(false)
+
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Invoice {
@@ -755,6 +783,8 @@ model SubscriptionPaymentMethod {
   isDefault       Boolean  @default(false)
   
   mpCardId        String?  // ID de tarjeta en MercadoPago
+  issuerId        String?
+  issuerName      String?
   
   createdAt       DateTime @default(now())
 

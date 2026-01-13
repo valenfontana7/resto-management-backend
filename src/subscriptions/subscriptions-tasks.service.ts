@@ -26,33 +26,103 @@ export class SubscriptionTasksService {
     this.logger.log('Checking expired trials...');
 
     try {
-      const expiredTrials = await this.subscriptionsService.getExpiredTrials();
+      // Obtener trials expirados con su método de pago por defecto (si existe)
+      const expiredTrials = await this.prisma.subscription.findMany({
+        where: {
+          status: SubscriptionStatus.TRIALING,
+          trialEnd: { lt: new Date() },
+        },
+        include: {
+          restaurant: { select: { id: true, name: true, email: true } },
+          paymentMethods: { where: { isDefault: true }, take: 1 },
+        },
+      });
 
       for (const subscription of expiredTrials) {
         try {
-          // Si tiene método de pago, podríamos intentar cobrar automáticamente
-          // Por ahora, simplemente marcamos como expirado y notificamos
-          if (subscription.paymentMethodId) {
-            // TODO: Implementar cobro automático con MercadoPago
-            this.logger.log(
-              `Subscription ${subscription.id} has payment method, would attempt charge`,
-            );
+          const pm = (subscription as any).paymentMethods?.[0];
+
+          if (pm && subscription.mpCustomerId) {
+            // Intentar cobrar hasta 3 veces
+            const planType = subscription.planType as PlanType;
+            const amount = PLAN_PRICES[planType] ?? 0;
+            let paid = false;
+            let lastError: any = null;
+
+            for (let attempt = 1; attempt <= 3 && !paid; attempt++) {
+              try {
+                this.logger.log(
+                  `Attempting charge for subscription ${subscription.id} (attempt ${attempt})`,
+                );
+                const resp = (await this.subscriptionsService[
+                  'mercadopagoService'
+                ])
+                  ? await (
+                      this.subscriptionsService as any
+                    ).mercadopagoService.chargeWithSavedCard(
+                      subscription.restaurant?.id ?? '',
+                      subscription.mpCustomerId,
+                      pm.mpCardId,
+                      amount,
+                    )
+                  : null;
+
+                const paymentId = resp
+                  ? String(resp.id ?? resp.payment_id ?? '')
+                  : '';
+                if (paymentId) {
+                  // registrar pago usando processPaymentApproved
+                  await this.subscriptionsService.processPaymentApproved(
+                    subscription.restaurant?.id ?? '',
+                    subscription.planType as PlanType,
+                    paymentId,
+                    amount,
+                  );
+                  paid = true;
+                  this.logger.log(
+                    `Charge successful for subscription ${subscription.id}, payment ${paymentId}`,
+                  );
+                } else {
+                  lastError = new Error('No payment id returned from MP');
+                }
+              } catch (err: any) {
+                lastError = err;
+                this.logger.warn(
+                  `Charge attempt ${attempt} failed for subscription ${subscription.id}: ${err?.message ?? err}`,
+                );
+                // small delay between attempts
+                await new Promise((res) => setTimeout(res, 2000 * attempt));
+              }
+            }
+
+            if (!paid) {
+              // marcar como expirado y notificar
+              this.logger.warn(
+                `All charge attempts failed for ${subscription.id}`,
+              );
+              await this.subscriptionsService.markAsExpired(subscription.id);
+              if (subscription.restaurant?.email) {
+                const planName = PLAN_NAMES[subscription.planType as PlanType];
+                await this.emailService.sendPaymentFailedEmail(
+                  subscription.restaurant.email,
+                  subscription.restaurant.name,
+                  planName,
+                  amount,
+                );
+              }
+            }
+          } else {
+            // No hay método de pago: marcar expirado y notificar
+            await this.subscriptionsService.markAsExpired(subscription.id);
+            if (subscription.restaurant?.email) {
+              const planName = PLAN_NAMES[subscription.planType as PlanType];
+              await this.emailService.sendTrialExpiredEmail(
+                subscription.restaurant.email,
+                subscription.restaurant.name,
+                planName,
+              );
+            }
           }
-
-          // Marcar como expirado
-          await this.subscriptionsService.markAsExpired(subscription.id);
-
-          // Enviar email de trial expirado
-          if (subscription.restaurant?.email) {
-            const planName = PLAN_NAMES[subscription.planType as PlanType];
-            await this.emailService.sendTrialExpiredEmail(
-              subscription.restaurant.email,
-              subscription.restaurant.name,
-              planName,
-            );
-          }
-
-          this.logger.log(`Trial expired for subscription ${subscription.id}`);
         } catch (error: any) {
           this.logger.error(
             `Error processing expired trial ${subscription.id}: ${error.message}`,

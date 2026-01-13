@@ -21,6 +21,7 @@ import { EmailModule } from './email/email.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     WebsocketModule,
     WebhooksModule,
     SubscriptionsModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [
