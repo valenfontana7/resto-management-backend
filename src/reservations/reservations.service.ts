@@ -54,9 +54,9 @@ export class ReservationsService {
     const reservation = await this.prisma.reservation.create({
       data: {
         restaurantId,
-        customerName: createDto.customerName,
-        customerEmail: createDto.customerEmail || '',
-        customerPhone: createDto.customerPhone,
+        customerName: createDto.customer.name,
+        customerEmail: createDto.customer.email || '',
+        customerPhone: createDto.customer.phone,
         date: new Date(createDto.date),
         time: createDto.time,
         partySize: createDto.partySize,
@@ -67,7 +67,7 @@ export class ReservationsService {
     });
 
     this.logger.log(
-      `Reserva creada: ${reservation.id} para ${createDto.customerName} en ${restaurant.name}`,
+      `Reserva creada: ${reservation.id} para ${createDto.customer.name} en ${restaurant.name}`,
     );
 
     return this.formatReservation(reservation);
