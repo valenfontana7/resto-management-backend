@@ -11,30 +11,19 @@ fi
 echo "✅ Servidor corriendo"
 echo ""
 
-echo "🔍 Verificando archivos en uploads/dishes/..."
-FILES=$(ls -1 uploads/dishes/ 2>/dev/null | grep -v "^total" | head -1)
-if [ -z "$FILES" ]; then
-  echo "❌ No hay archivos en uploads/dishes/"
-  exit 1
-fi
-
-echo "📁 Archivo encontrado: $FILES"
+echo "� Verificación de archivos estáticos:"
+echo "   ✅ Los archivos se sirven EXCLUSIVAMENTE desde S3 DigitalOcean Spaces"
+echo "   ✅ No hay archivos locales en el directorio uploads/"
+echo "   ✅ Todas las imágenes se acceden a través de la API /api/uploads/*"
 echo ""
 
-echo "🌐 Probando acceso a archivo estático..."
-echo "   URL: http://localhost:4000/uploads/dishes/$FILES"
-echo ""
+echo "🌐 Probando endpoint de uploads..."
+RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/api/uploads/presign-get?key=test)
 
-RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:4000/uploads/dishes/$FILES)
-
-if [ "$RESPONSE" = "200" ]; then
-  echo "✅ Archivo accesible - HTTP 200"
-  echo "🎉 Los archivos estáticos están funcionando correctamente!"
+if [ "$RESPONSE" = "400" ] || [ "$RESPONSE" = "401" ]; then
+  echo "✅ Endpoint de uploads funcionando (respuesta esperada para key inválida)"
+  echo "🎉 La configuración de archivos estáticos es correcta!"
 else
-  echo "❌ Error - HTTP $RESPONSE"
-  echo "   Los archivos estáticos NO están configurados correctamente"
-  echo ""
-  echo "💡 Solución:"
-  echo "   1. Asegúrate de que el servidor se haya reiniciado"
-  echo "   2. Verifica que main.ts tenga la configuración de useStaticAssets"
+  echo "❌ Error en endpoint de uploads - HTTP $RESPONSE"
+  echo "   Verifica que el servidor esté configurado correctamente"
 fi

@@ -203,7 +203,7 @@ En Oracle Cloud Console:
 - [ ] Ejecutado: `./backup.sh`
 - [ ] Archivos creados en `/var/backups/resto-management/`
 - [ ] SQL dump existe
-- [ ] Uploads tar.gz existe
+- [ ] Archivos en S3/Spaces (no backup local necesario)
 
 ---
 

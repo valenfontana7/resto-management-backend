@@ -55,6 +55,9 @@ pids
 *.seed
 *.pid.lock
 
+# Uploads directory (files stored exclusively in S3/Spaces)
+uploads/
+
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 

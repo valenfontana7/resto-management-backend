@@ -68,13 +68,13 @@
 
 ### 🚀 Scripts
 
-| Archivo              | Propósito                  | Ejecutar Cuándo               |
-| -------------------- | -------------------------- | ----------------------------- |
-| `quickdeploy.sh`     | Deploy automático completo | Primera vez + actualizaciones |
-| `setup-vps.sh`       | Setup inicial de VPS       | Solo primera vez              |
-| `deploy.sh`          | Script de actualización    | Cada actualización            |
-| `optimize-oracle.sh` | Optimizar para 1GB RAM     | Después de setup en Oracle    |
-| `backup.sh`          | Backup de DB y uploads     | Manualmente o cron            |
+| Archivo              | Propósito                     | Ejecutar Cuándo               |
+| -------------------- | ----------------------------- | ----------------------------- |
+| `quickdeploy.sh`     | Deploy automático completo    | Primera vez + actualizaciones |
+| `setup-vps.sh`       | Setup inicial de VPS          | Solo primera vez              |
+| `deploy.sh`          | Script de actualización       | Cada actualización            |
+| `optimize-oracle.sh` | Optimizar para 1GB RAM        | Después de setup en Oracle    |
+| `backup.sh`          | Backup de DB (archivos en S3) | Manualmente o cron            |
 
 ---
 

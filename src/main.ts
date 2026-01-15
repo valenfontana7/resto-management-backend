@@ -83,6 +83,12 @@ async function bootstrap() {
   // HTTPS: Force HTTPS in production
   if (process.env.NODE_ENV === 'production') {
     app.use((req: any, res: any, next: any) => {
+      // Skip HTTPS redirect for localhost/127.0.0.1 (for local development/testing)
+      const host = req.header('host');
+      if (host && (host.includes('localhost') || host.includes('127.0.0.1'))) {
+        return next();
+      }
+
       if (req.header('x-forwarded-proto') !== 'https') {
         res.redirect(`https://${req.header('host')}${req.url}`);
       } else {
@@ -111,7 +117,8 @@ async function bootstrap() {
   );
   app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
-  // Nota: las imágenes se sirven exclusivamente desde S3 (no desde disco local).
+  // ✅ ARCHIVOS: Se sirven EXCLUSIVAMENTE desde S3 DigitalOcean Spaces
+  // ❌ NO hay archivos estáticos locales - todo pasa por /api/uploads/*
 
   // CORS: permitir solicitudes desde el frontend y permitir cookies/credenciales
   const normalizeOrigin = (value: string) => {

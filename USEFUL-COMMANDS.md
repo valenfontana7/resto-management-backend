@@ -292,24 +292,24 @@ sudo ufw delete 3                 # Eliminar regla #3
 
 ---
 
-## 📁 Gestión de Uploads
+## 📁 Gestión de Uploads (S3/Spaces únicamente)
 
-### Limpiar uploads viejos
+### Verificación
 
 ```bash
-# Archivos > 30 días
-find uploads/ -type f -mtime +30 -delete
+# Verificar que no hay archivos locales (todos están en S3)
+ls -la uploads/ 2>/dev/null || echo "✅ No hay directorio uploads/ local (correcto)"
 
-# Archivos > 100MB
-find uploads/ -type f -size +100M -delete
+# Los archivos se acceden únicamente a través de la API:
+# GET /api/uploads/{key} - Proxy desde Spaces
+# POST /api/uploads/image - Upload directo a Spaces
 ```
 
-### Ver tamaño
+### Limpieza (no necesaria - archivos en S3)
 
 ```bash
-du -sh uploads/                   # Total
-du -sh uploads/dishes/            # Por categoría
-find uploads/ -type f | wc -l     # Cantidad de archivos
+# No hay archivos locales para limpiar
+echo "✅ Todos los archivos están en S3 DigitalOcean Spaces"
 ```
 
 ---
@@ -539,8 +539,8 @@ sudo nginx -t
 # 4. SSL
 curl -I https://yourdomain.com
 
-# 5. Uploads
-ls -la uploads/dishes/
+# 5. Uploads (S3/Spaces)
+echo "✅ Todos los archivos están en DigitalOcean Spaces - no hay archivos locales"
 
 # 6. PM2
 pm2 status

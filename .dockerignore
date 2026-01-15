@@ -11,7 +11,5 @@ README.md
 .idea
 coverage
 *.log
-uploads/*
-!uploads/.gitkeep
 logs
 .DS_Store

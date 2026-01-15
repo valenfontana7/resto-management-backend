@@ -30,7 +30,7 @@
 | `quickdeploy.sh`     | 2.3 KB    | Despliegue automático completo           |
 | `deploy.sh`          | 686 bytes | Script de actualización                  |
 | `optimize-oracle.sh` | 1.6 KB    | Optimización para Oracle Cloud (1GB RAM) |
-| `backup.sh`          | 1.1 KB    | Backup de base de datos y uploads        |
+| `backup.sh`          | 1.1 KB    | Backup de base de datos (archivos en S3) |
 
 ### 📚 Documentación
 
@@ -234,9 +234,9 @@ crontab -e
 **Incluye:**
 
 - Base de datos PostgreSQL (SQL dump)
-- Carpeta uploads (imágenes)
+- Archivos en DigitalOcean Spaces (S3)
 - Retención: 7 días
-- Formato: .sql.gz + .tar.gz
+- Formato: .sql.gz
 
 ---
 

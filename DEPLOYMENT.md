@@ -315,13 +315,16 @@ docker stats  # Si usas Docker
 ### Uploads no funcionan
 
 ```bash
-# Verificar permisos
-ls -la uploads/
-chmod -R 755 uploads/
-chown -R $USER:$USER uploads/  # PM2
-# o
-chown -R 1001:1001 uploads/    # Docker
+# Verificar configuración de S3/Spaces
+echo "S3_ENDPOINT: $S3_ENDPOINT"
+echo "S3_BUCKET: $S3_BUCKET"
+echo "S3_REGION: $S3_REGION"
+
+# Probar conectividad con Spaces
+curl -I $S3_ENDPOINT/$S3_BUCKET/
 ```
+
+**Nota**: Los archivos se almacenan exclusivamente en DigitalOcean Spaces, no localmente.
 
 ---
 

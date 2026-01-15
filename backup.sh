@@ -21,14 +21,11 @@ mkdir -p $BACKUP_DIR
 echo "📦 Backing up database..."
 PGPASSWORD=$POSTGRES_PASSWORD pg_dump -U $DB_USER -h localhost $DB_NAME | gzip > $BACKUP_DIR/backup_$DATE.sql.gz
 
-# Backup uploads folder
-echo "📁 Backing up uploads..."
-tar -czf $BACKUP_DIR/uploads_$DATE.tar.gz uploads/
+# Note: Files are stored in S3/Spaces - no local backup needed
 
 # Remove old backups
 echo "🧹 Cleaning old backups (>$RETENTION_DAYS days)..."
 find $BACKUP_DIR -name "backup_*.sql.gz" -mtime +$RETENTION_DAYS -delete
-find $BACKUP_DIR -name "uploads_*.tar.gz" -mtime +$RETENTION_DAYS -delete
 
 # List backups
 echo ""
