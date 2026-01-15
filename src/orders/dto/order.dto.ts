@@ -148,6 +148,10 @@ export class OrderFiltersDto {
 
   @IsOptional()
   @IsString()
+  date?: string;
+
+  @IsOptional()
+  @IsString()
   customerPhone?: string;
 
   @IsOptional()

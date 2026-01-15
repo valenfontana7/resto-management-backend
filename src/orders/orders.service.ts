@@ -548,6 +548,19 @@ export class OrdersService {
       }
     }
 
+    // If date is provided, filter by that specific date (overrides startDate/endDate)
+    if (filters.date) {
+      const date = new Date(filters.date);
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      where.createdAt = {
+        gte: startOfDay,
+        lte: endOfDay,
+      };
+    }
+
     // Pagination
     const page = filters.page || 1;
     const limit = filters.limit || 50;
