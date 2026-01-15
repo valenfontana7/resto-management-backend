@@ -92,7 +92,9 @@ export class SubscriptionsController {
   async updateSubscription(
     @Param('restaurantId') restaurantId: string,
     @Body() dto: UpdateSubscriptionDto,
+    @CurrentUser() user: RequestUser,
   ) {
+    assertRestaurantAccess(user, restaurantId);
     return this.subscriptionsService.updateSubscription(restaurantId, dto);
   }
 
@@ -102,7 +104,11 @@ export class SubscriptionsController {
   @ApiParam({ name: 'restaurantId', description: 'ID del restaurante' })
   @ApiResponse({ status: 200, description: 'Suscripción cancelada' })
   @ApiResponse({ status: 404, description: 'No existe suscripción' })
-  async cancelSubscription(@Param('restaurantId') restaurantId: string) {
+  async cancelSubscription(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    assertRestaurantAccess(user, restaurantId);
     return this.subscriptionsService.cancelSubscription(restaurantId);
   }
 
@@ -115,7 +121,11 @@ export class SubscriptionsController {
     status: 400,
     description: 'La suscripción no puede ser reactivada',
   })
-  async reactivateSubscription(@Param('restaurantId') restaurantId: string) {
+  async reactivateSubscription(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    assertRestaurantAccess(user, restaurantId);
     return this.subscriptionsService.reactivateSubscription(restaurantId);
   }
 
@@ -123,7 +133,11 @@ export class SubscriptionsController {
   @ApiOperation({ summary: 'Obtener facturas de la suscripción' })
   @ApiParam({ name: 'restaurantId', description: 'ID del restaurante' })
   @ApiResponse({ status: 200, description: 'Lista de facturas' })
-  async getInvoices(@Param('restaurantId') restaurantId: string) {
+  async getInvoices(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    assertRestaurantAccess(user, restaurantId);
     return this.subscriptionsService.getInvoices(restaurantId);
   }
 

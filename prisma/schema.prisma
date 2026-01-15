@@ -617,8 +617,8 @@ enum DeliveryStatus {
 
 model Role {
   id           String     @id @default(cuid())
-  restaurantId String
-  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  restaurantId String?
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
   name         String
   permissions  Json // Array of permission strings
