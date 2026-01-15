@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { MercadoPagoService } from '../mercadopago/mercadopago.service';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
+import type { RequestUser } from '../auth/decorators/current-user.decorator';
 import {
   CreateSubscriptionDto,
   CreateCheckoutDto,
@@ -613,9 +614,20 @@ export class SubscriptionsService {
   /**
    * Crear checkout de MercadoPago para suscripción
    */
-  async createCheckout(restaurantId: string, dto: CreateCheckoutDto) {
+  async createCheckout(
+    restaurantId: string,
+    dto: CreateCheckoutDto,
+    user?: RequestUser,
+  ) {
     if (!this.mp) {
       throw new BadRequestException('MercadoPago no está configurado');
+    }
+
+    // Verificar si el usuario es SUPER_ADMIN
+    if (user && user.role === 'SUPER_ADMIN') {
+      throw new BadRequestException(
+        'Los super administradores no requieren suscripción ni pagos',
+      );
     }
 
     const restaurant = await this.prisma.restaurant.findUnique({
@@ -691,7 +703,11 @@ export class SubscriptionsService {
   /**
    * Actualizar plan de suscripción (upgrade/downgrade)
    */
-  async updateSubscription(restaurantId: string, dto: UpdateSubscriptionDto) {
+  async updateSubscription(
+    restaurantId: string,
+    dto: UpdateSubscriptionDto,
+    user?: RequestUser,
+  ) {
     const subscription = await this.prisma.subscription.findUnique({
       where: { restaurantId },
     });
@@ -721,14 +737,28 @@ export class SubscriptionsService {
 
     if (isUpgrade) {
       // Upgrade: aplicar inmediatamente
+      const updateData: any = {
+        planType: newPlan,
+      };
+
+      if (subscription.status === SubscriptionStatus.TRIALING) {
+        // Si está en trial y adquiere un plan superior, activar suscripción
+        updateData.status = SubscriptionStatus.ACTIVE;
+        updateData.trialEnd = null;
+        updateData.currentPeriodStart = new Date();
+        updateData.currentPeriodEnd = addMonths(new Date(), 1);
+        updateData.nextPaymentDate = addMonths(new Date(), 1);
+        message =
+          'Plan adquirido. La suscripción ahora está activa y el período de prueba ha terminado.';
+      } else {
+        updateData.nextPaymentDate = subscription.currentPeriodEnd;
+        message = 'Plan actualizado. El cambio se aplicó inmediatamente.';
+      }
+
       await this.prisma.subscription.update({
         where: { restaurantId },
-        data: {
-          planType: newPlan,
-          nextPaymentDate: subscription.currentPeriodEnd,
-        },
+        data: updateData,
       });
-      message = 'Plan actualizado. El cambio se aplicó inmediatamente.';
     } else {
       // Downgrade a Starter o plan inferior: aplicar al final del período
       await this.prisma.subscription.update({
@@ -899,6 +929,27 @@ export class SubscriptionsService {
     paymentId: string,
     amount: number,
   ) {
+    // Verificar si hay un usuario SUPER_ADMIN en el restaurante
+    const superAdminUser = await this.prisma.user.findFirst({
+      where: {
+        restaurantId,
+        role: {
+          name: 'SUPER_ADMIN',
+        },
+      },
+    });
+
+    if (superAdminUser) {
+      this.logger.warn(
+        `Payment ${paymentId} skipped for restaurant ${restaurantId} because it has a SUPER_ADMIN user`,
+      );
+      // Retornar la suscripción existente sin procesar pago
+      const existingSub = await this.prisma.subscription.findUnique({
+        where: { restaurantId },
+      });
+      return existingSub;
+    }
+
     // Idempotencia: verificar si este pago ya fue procesado
     const existingInvoice = await this.prisma.invoice.findFirst({
       where: { mpPaymentId: paymentId },

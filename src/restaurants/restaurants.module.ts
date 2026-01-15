@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { RestaurantsController } from './restaurants.controller';
+import { RestaurantsPublicController } from './restaurants-public.controller';
 import { RestaurantsService } from './restaurants.service';
 import { RestaurantUsersService } from './services/restaurant-users.service';
 import { RestaurantBrandingService } from './services/restaurant-branding.service';
@@ -9,7 +10,7 @@ import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [StorageModule, AuthModule],
-  controllers: [RestaurantsController],
+  controllers: [RestaurantsController, RestaurantsPublicController],
   providers: [
     RestaurantsService,
     RestaurantUsersService,

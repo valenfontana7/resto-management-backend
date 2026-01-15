@@ -4,9 +4,91 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import * as bodyParser from 'body-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { ValidationPipe, Logger } from '@nestjs/common';
+import helmet from 'helmet';
+import * as compression from 'compression';
+import * as winston from 'winston';
+import timeout = require('express-timeout-handler');
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Configure Winston logger
+  const winstonLogger = winston.createLogger({
+    level: process.env.LOG_LEVEL || 'info',
+    format: winston.format.combine(
+      winston.format.timestamp(),
+      winston.format.errors({ stack: true }),
+      winston.format.json(),
+    ),
+    defaultMeta: { service: 'resto-management-backend' },
+    transports: [
+      new winston.transports.Console({
+        format: winston.format.combine(
+          winston.format.colorize(),
+          winston.format.simple(),
+        ),
+      }),
+      // In production, add file transport
+      ...(process.env.NODE_ENV === 'production'
+        ? [
+            new winston.transports.File({
+              filename: 'logs/error.log',
+              level: 'error',
+            }),
+            new winston.transports.File({
+              filename: 'logs/combined.log',
+            }),
+          ]
+        : []),
+    ],
+  });
+
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    logger: winstonLogger,
+  });
+
+  // Trust proxy for accurate IP addresses behind load balancers
+  app.set('trust proxy', 1);
+
+  // Security: Helmet for HTTP headers
+  app.use(helmet());
+
+  // Compression: Enable gzip compression
+  app.use(compression());
+
+  // Timeout: Set request timeout (30 seconds)
+  app.use(
+    timeout.handler({
+      timeout: 30000, // 30 seconds
+      onTimeout: (req: any, res: any) => {
+        winstonLogger.warn(`Request timeout: ${req.method} ${req.url}`);
+        res.status(408).json({
+          statusCode: 408,
+          message: 'Request timeout',
+          error: 'Request Timeout',
+        });
+      },
+    }),
+  );
+
+  // HTTPS: Force HTTPS in production
+  if (process.env.NODE_ENV === 'production') {
+    app.use((req: any, res: any, next: any) => {
+      if (req.header('x-forwarded-proto') !== 'https') {
+        res.redirect(`https://${req.header('host')}${req.url}`);
+      } else {
+        next();
+      }
+    });
+  }
+
+  // Validation: Global validation pipe
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true, // Remove properties not in DTO
+      forbidNonWhitelisted: true, // Throw error if non-whitelisted properties
+      transform: true, // Transform payloads to DTO instances
+    }),
+  );
 
   // Increase body size limit for image uploads (10MB)
   app.use(
@@ -120,14 +202,28 @@ async function bootstrap() {
     ],
   });
 
-  const config = new DocumentBuilder()
-    .setTitle('Resto Management API')
-    .setDescription('The Resto Management API description')
-    .setVersion('1.0')
-    .build();
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  // Swagger documentation (only in development)
+  if (process.env.NODE_ENV !== 'production') {
+    const config = new DocumentBuilder()
+      .setTitle('Resto Management API')
+      .setDescription('The Resto Management API description')
+      .setVersion('1.0')
+      .build();
+    const document = SwaggerModule.createDocument(app, config);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   await app.listen(process.env.PORT ?? 4000);
+
+  // Graceful shutdown
+  process.on('SIGTERM', async () => {
+    winstonLogger.info('SIGTERM received, shutting down gracefully');
+    await app.close();
+  });
+
+  process.on('SIGINT', async () => {
+    winstonLogger.info('SIGINT received, shutting down gracefully');
+    await app.close();
+  });
 }
 bootstrap().catch((err) => console.error('Error starting server:', err));

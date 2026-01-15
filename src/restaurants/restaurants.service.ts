@@ -17,6 +17,7 @@ import { S3Service } from '../storage/s3.service';
 import { RestaurantUsersService } from './services/restaurant-users.service';
 import { RestaurantBrandingService } from './services/restaurant-branding.service';
 import { RestaurantSettingsService } from './services/restaurant-settings.service';
+import { RestaurantStatus } from '@prisma/client';
 
 @Injectable()
 export class RestaurantsService {
@@ -1143,5 +1144,31 @@ export class RestaurantsService {
    */
   async saveUploadedAsset(id: string, file: Express.Multer.File, type: string) {
     return this.brandingService.saveUploadedAsset(id, file, type);
+  }
+
+  /**
+   * Obtener lista de restaurantes públicos para sitemap
+   */
+  async getPublicRestaurants() {
+    return this.prisma.restaurant.findMany({
+      where: {
+        status: RestaurantStatus.ACTIVE, // Solo restaurantes activos
+      },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        description: true,
+        cuisineTypes: true,
+        city: true,
+        country: true,
+        logo: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    });
   }
 }

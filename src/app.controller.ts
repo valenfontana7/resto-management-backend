@@ -19,25 +19,15 @@ export class AppController {
   @ApiOperation({ summary: 'Health Check' })
   @ApiResponse({ status: 200, description: 'Service health status' })
   @Get('health')
-  healthCheck() {
-    return {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      environment: process.env.NODE_ENV || 'development',
-    };
+  async healthCheck() {
+    return this.appService.healthCheck();
   }
 
   @Public()
   @ApiOperation({ summary: 'API Health Check' })
   @ApiResponse({ status: 200, description: 'API health status' })
   @Get('api/health')
-  apiHealthCheck() {
-    return {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      environment: process.env.NODE_ENV || 'development',
-    };
+  async apiHealthCheck() {
+    return this.appService.healthCheck();
   }
 }

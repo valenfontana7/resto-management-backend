@@ -80,8 +80,10 @@ export class SubscriptionsController {
   async createCheckout(
     @Param('restaurantId') restaurantId: string,
     @Body() dto: CreateCheckoutDto,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.subscriptionsService.createCheckout(restaurantId, dto);
+    assertRestaurantAccess(user, restaurantId);
+    return this.subscriptionsService.createCheckout(restaurantId, dto, user);
   }
 
   @Patch()
@@ -95,7 +97,11 @@ export class SubscriptionsController {
     @CurrentUser() user: RequestUser,
   ) {
     assertRestaurantAccess(user, restaurantId);
-    return this.subscriptionsService.updateSubscription(restaurantId, dto);
+    return this.subscriptionsService.updateSubscription(
+      restaurantId,
+      dto,
+      user,
+    );
   }
 
   @Post('cancel')

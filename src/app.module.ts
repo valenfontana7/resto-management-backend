@@ -1,7 +1,8 @@
-import { Module } from '@nestjs/common';
+import { APP_GUARD, APP_FILTER } from '@nestjs/core';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
 import { Reflector } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -23,12 +24,21 @@ import { WebsocketModule } from './websocket/websocket.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { UsersModule } from './users/users.module';
+import { KitchenModule } from './kitchen/kitchen.module';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { RequestLoggingMiddleware } from './common/middleware/request-logging.middleware';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 1 minuto
+        limit: 100, // 100 requests por minuto por IP
+      },
+    ]),
     PrismaModule,
     CommonModule, // Servicios compartidos (ownership, image processing)
     AuthModule,
@@ -47,10 +57,19 @@ import { UsersModule } from './users/users.module';
     WebhooksModule,
     SubscriptionsModule,
     UsersModule,
+    KitchenModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
+    {
+      provide: APP_FILTER,
+      useClass: GlobalExceptionFilter,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useFactory: (reflector: Reflector) => new JwtAuthGuard(reflector),
@@ -58,4 +77,8 @@ import { UsersModule } from './users/users.module';
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestLoggingMiddleware).forRoutes('*');
+  }
+}

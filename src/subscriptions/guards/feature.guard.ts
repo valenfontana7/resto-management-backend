@@ -48,6 +48,13 @@ export class FeatureGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
+    const user = request.user;
+
+    // SUPER_ADMIN tiene acceso ilimitado a todas las features
+    if (user && user.role === 'SUPER_ADMIN') {
+      return true;
+    }
+
     const restaurantId = request.params.restaurantId || request.params.id;
 
     if (!restaurantId) {
