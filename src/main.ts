@@ -6,7 +6,7 @@ import * as bodyParser from 'body-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import helmet from 'helmet';
-import * as compression from 'compression';
+import compression from 'compression';
 import * as winston from 'winston';
 import timeout = require('express-timeout-handler');
 
@@ -14,6 +14,16 @@ async function bootstrap() {
   // Configure Winston logger
   const winstonLogger = winston.createLogger({
     level: process.env.LOG_LEVEL || 'info',
+    levels: {
+      error: 0,
+      warn: 1,
+      info: 2,
+      http: 3,
+      verbose: 4,
+      debug: 5,
+      silly: 6,
+      log: 2, // Map NestJS "log" to "info"
+    },
     format: winston.format.combine(
       winston.format.timestamp(),
       winston.format.errors({ stack: true }),
