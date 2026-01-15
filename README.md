@@ -61,12 +61,6 @@ npx prisma migrate deploy
 npx prisma generate
 ```
 
-5. (Optional) Seed database
-
-```bash
-npx ts-node prisma/seed.ts
-```
-
 ## 🔧 Running the Application
 
 ```bash

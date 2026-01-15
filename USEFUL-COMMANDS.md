@@ -29,7 +29,7 @@ nano .env
 ```bash
 docker-compose up -d
 docker-compose exec app npx prisma migrate deploy
-docker-compose exec app npx prisma db seed
+# Seed vacío - no ejecutar en producción
 ```
 
 ---
@@ -196,10 +196,10 @@ docker-compose exec app npx prisma studio
 # Luego: ssh -L 5555:localhost:5555 ubuntu@YOUR_VPS_IP
 ```
 
-### Seed
+### Seed (Vacío - No inserta datos mock)
 
 ```bash
-npm run prisma:seed               # Cargar datos de prueba
+npm run prisma:seed               # Seed vacío (no datos de prueba)
 
 # Docker
 docker-compose exec app npm run prisma:seed

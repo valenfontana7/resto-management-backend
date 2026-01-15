@@ -95,9 +95,6 @@ docker-compose logs -f app
 
 # Aplicar migraciones
 docker-compose exec app npx prisma migrate deploy
-
-# (Opcional) Seed inicial
-docker-compose exec app npx prisma db seed
 ```
 
 ### 5. Verificar
@@ -156,9 +153,6 @@ npx prisma generate
 
 # Aplicar migraciones
 npx prisma migrate deploy
-
-# (Opcional) Seed
-npm run seed
 
 # Build
 npm run build
