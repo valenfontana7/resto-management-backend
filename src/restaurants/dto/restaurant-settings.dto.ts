@@ -59,6 +59,15 @@ export class UpdateBusinessInfoDto {
 
   @IsOptional()
   @IsString()
+  type?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  cuisineTypes?: string[];
+
+  @IsOptional()
+  @IsString()
   description?: string;
 
   @IsOptional()

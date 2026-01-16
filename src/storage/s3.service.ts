@@ -202,11 +202,59 @@ export class S3Service {
     }
   }
 
+  async headObjectRaw(key: string): Promise<{
+    contentType?: string;
+    contentLength?: number;
+    etag?: string;
+    lastModified?: Date;
+  }> {
+    try {
+      const head = await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+
+      return {
+        contentType: head.ContentType,
+        contentLength:
+          typeof head.ContentLength === 'number'
+            ? head.ContentLength
+            : undefined,
+        etag: head.ETag,
+        lastModified: head.LastModified,
+      };
+    } catch (err: any) {
+      if (this.isNotFound(err)) {
+        throw new NotFoundException('Object not found');
+      }
+      throw err;
+    }
+  }
+
   async getObjectStream(key: string): Promise<{ body: Readable }> {
     try {
       const physicalKey = this.normalizeKey(key);
       const obj = await this.client.send(
         new GetObjectCommand({ Bucket: this.bucket, Key: physicalKey }),
+      );
+
+      const body = obj.Body as any;
+      if (!body || typeof body.pipe !== 'function') {
+        throw new InternalServerErrorException('Invalid object body');
+      }
+
+      return { body };
+    } catch (err: any) {
+      if (this.isNotFound(err)) {
+        throw new NotFoundException('Object not found');
+      }
+      throw err;
+    }
+  }
+
+  async getObjectStreamRaw(key: string): Promise<{ body: Readable }> {
+    try {
+      const obj = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
       );
 
       const body = obj.Body as any;

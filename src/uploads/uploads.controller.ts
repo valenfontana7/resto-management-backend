@@ -7,6 +7,7 @@ import {
   Post,
   Param,
   Query,
+  Req,
   Res,
   UploadedFile,
   UseInterceptors,
@@ -25,12 +26,15 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Public } from '../auth/decorators/public.decorator';
 import { S3Service } from '../storage/s3.service';
+import { HeadObjectCommand } from '@aws-sdk/client-s3';
 
 @ApiTags('Uploads')
 @Controller('api/uploads')
 export class UploadsController {
   private readonly logger = new Logger(UploadsController.name);
-  constructor(private readonly s3: S3Service) {}
+  constructor(private readonly s3: S3Service) {
+    console.log('[DEBUG] UploadsController constructor called');
+  }
 
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a presigned GET URL (optional)' })
@@ -51,19 +55,44 @@ export class UploadsController {
     name: 'key',
     description: 'Object key inside the bucket (supports slashes)',
   })
-  @Get('*key')
-  async proxyGet(@Param('key') keyParam: string, @Res() res: Response) {
+  @Get('*')
+  async proxyGet(@Req() req, @Res() res: Response) {
+    console.log(`[DEBUG] proxyGet called`);
+    console.log(`[DEBUG] req.url: ${req.url}`);
+    console.log(`[DEBUG] req.originalUrl: ${(req as any).originalUrl}`);
     // El parámetro wildcard puede tener slashes reemplazados por comas, obtener la URL real
-    const originalUrl = res.req.url;
+    const originalUrl = req.url;
     const keyFromUrl = originalUrl.replace(/^\/api\/uploads\//, '');
     const actualKey = keyFromUrl.split('?')[0]; // Remover query params si existen
 
-    this.logger.log(`[proxyGet] Received request for key: ${actualKey}`);
+    console.log(`[DEBUG] Received request for key: ${actualKey}`);
     try {
       const key = this.normalizeAndValidateKey(actualKey);
-      this.logger.log(`[proxyGet] Normalized key: ${key}`);
+      this.logger.debug(`Normalized key: ${key}`);
 
-      const head = await this.s3.headObject(key);
+      let head;
+      let finalKey = key;
+      let usedFallback = false;
+
+      try {
+        // Try with normalized key (with prefix)
+        head = await this.s3.headObject(key);
+      } catch (error) {
+        if (error.message?.includes('NotFound') || error.name === 'NotFoundException') {
+          // Try without prefix for backward compatibility
+          const keyWithoutPrefix = actualKey; // actualKey is already cleaned
+          try {
+            head = await this.s3.headObjectRaw(keyWithoutPrefix);
+            finalKey = keyWithoutPrefix;
+            usedFallback = true;
+          } catch (fallbackError) {
+            // Re-throw the original error
+            throw error;
+          }
+        } else {
+          throw error;
+        }
+      }
 
       const ifNoneMatch = res.req.headers['if-none-match']?.trim();
       if (ifNoneMatch && head.etag && ifNoneMatch === head.etag) {
@@ -72,7 +101,9 @@ export class UploadsController {
         return res.end();
       }
 
-      const object = await this.s3.getObjectStream(key);
+      const object = usedFallback
+        ? await this.s3.getObjectStreamRaw(finalKey)
+        : await this.s3.getObjectStream(finalKey);
 
       this.applyCacheHeaders(res, head);
       res.status(200);
@@ -115,15 +146,36 @@ export class UploadsController {
     name: 'key',
     description: 'Object key inside the bucket (supports slashes)',
   })
-  @Head('*key')
-  async proxyHead(@Param('key') keyParam: string, @Res() res: Response) {
+  @Head('*')
+  async proxyHead(@Req() req, @Res() res: Response) {
     try {
       const originalUrl = res.req.url;
       const keyFromUrl = originalUrl.replace(/^\/api\/uploads\//, '');
       const actualKey = keyFromUrl.split('?')[0];
       const key = this.normalizeAndValidateKey(actualKey);
 
-      const head = await this.s3.headObject(key);
+      let head;
+      let finalKey = key;
+
+      try {
+        // Try with normalized key (with prefix)
+        head = await this.s3.headObject(key);
+      } catch (error) {
+        if (error.message?.includes('NotFound') || error.name === 'NotFoundException') {
+          // Try without prefix for backward compatibility
+          const keyWithoutPrefix = actualKey; // actualKey is already cleaned
+          this.logger.debug(`Key with prefix not found, trying without prefix: ${keyWithoutPrefix}`);
+          try {
+            head = await this.s3.headObjectRaw(keyWithoutPrefix);
+            finalKey = keyWithoutPrefix;
+          } catch (fallbackError) {
+            // Re-throw the original error
+            throw error;
+          }
+        } else {
+          throw error;
+        }
+      }
 
       res.status(200);
       this.applyCacheHeaders(res, head);

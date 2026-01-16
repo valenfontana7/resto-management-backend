@@ -176,6 +176,131 @@ export class BrandingSectionColorDto {
   @IsString()
   @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
   textColor?: string;
+
+  @ApiPropertyOptional({ example: '#0b1220' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  titleColor?: string;
+
+  @ApiPropertyOptional({ example: '#0b1220' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  descriptionColor?: string;
+
+  @ApiPropertyOptional({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  metaTextColor?: string;
+
+  @ApiPropertyOptional({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  cardBackgroundColor?: string;
+
+  @ApiPropertyOptional({ example: '#e2e8f0' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  cardBorderColor?: string;
+
+  @ApiPropertyOptional({ example: '#64748b' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  categoryTabColor?: string;
+
+  @ApiPropertyOptional({ example: '#0b1220' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  categoryTabActiveColor?: string;
+
+  @ApiPropertyOptional({ example: '#0b1220' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  linkColor?: string;
+
+  @ApiPropertyOptional({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  linkHoverColor?: string;
+
+  @ApiPropertyOptional({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  formBackgroundColor?: string;
+
+  @ApiPropertyOptional({ example: '#f8fafc' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  sidebarBackgroundColor?: string;
+
+  @ApiPropertyOptional({ example: '#f8fafc' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  summaryBackgroundColor?: string;
+
+  @ApiPropertyOptional({ example: '#0b1220' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  summaryTextColor?: string;
+
+  @ApiPropertyOptional({ example: '#10b981' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  successIconColor?: string;
+
+  @ApiPropertyOptional({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  logoSize?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  showOpenStatus?: boolean;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  showContactButton?: boolean;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  showOrderNotes?: boolean;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  showDeliveryEstimate?: boolean;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  showTrackingInfo?: boolean;
+
+  @ApiPropertyOptional({ example: '' })
+  @IsOptional()
+  @IsString()
+  emptyStateTitle?: string;
+
+  @ApiPropertyOptional({ example: '' })
+  @IsOptional()
+  @IsString()
+  emptyStateMessage?: string;
 }
 
 export class BrandingSectionsDto {
@@ -196,6 +321,36 @@ export class BrandingSectionsDto {
   @ValidateNested()
   @Type(() => BrandingSectionColorDto)
   footer?: BrandingSectionColorDto;
+
+  @ApiPropertyOptional({ type: BrandingSectionColorDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingSectionColorDto)
+  nav?: BrandingSectionColorDto;
+
+  @ApiPropertyOptional({ type: BrandingSectionColorDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingSectionColorDto)
+  cart?: BrandingSectionColorDto;
+
+  @ApiPropertyOptional({ type: BrandingSectionColorDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingSectionColorDto)
+  checkout?: BrandingSectionColorDto;
+
+  @ApiPropertyOptional({ type: BrandingSectionColorDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingSectionColorDto)
+  orderConfirmation?: BrandingSectionColorDto;
+
+  @ApiPropertyOptional({ type: BrandingSectionColorDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingSectionColorDto)
+  reservations?: BrandingSectionColorDto;
 }
 
 export class MobileMenuItemDto {
@@ -260,17 +415,22 @@ export class BrandingDto {
   @Type(() => BrandingTypographyDto)
   typography?: BrandingTypographyDto;
 
-  @ApiPropertyOptional({ example: 'data:image/png;base64,...' })
+  @ApiPropertyOptional({ example: 'http://localhost:4000/api/uploads/...' })
   @IsOptional()
-  @IsString()
+  @IsUrl()
   logo?: string;
 
-  @ApiPropertyOptional({ example: 'data:image/png;base64,...' })
+  @ApiPropertyOptional({ example: 'http://localhost:4000/api/uploads/...' })
   @IsOptional()
-  @IsString()
+  @IsUrl()
   bannerImage?: string;
 
-  @ApiPropertyOptional({ example: 'data:image/png;base64,...' })
+  @ApiPropertyOptional({ example: 'http://localhost:4000/api/uploads/...' })
+  @IsOptional()
+  @IsUrl()
+  coverImage?: string;
+
+  @ApiPropertyOptional({ example: 'restaurants/id/favicon.ico' })
   @IsOptional()
   @IsString()
   favicon?: string;
