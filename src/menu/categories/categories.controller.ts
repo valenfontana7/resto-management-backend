@@ -76,25 +76,13 @@ export class CategoriesController {
       orderBy: { order: 'asc' },
     });
 
-    // Convert dish images to signed URLs
-    const imagePromises: Promise<string>[] = [];
-    const dishRefs: any[] = [];
+    // Convert dish images to proxy URLs
     for (const category of categories) {
       for (const dish of category.dishes) {
         if (dish.image) {
-          imagePromises.push(
-            this.s3.createPresignedGetUrl({
-              key: dish.image,
-              expiresInSeconds: 3600, // 1 hour
-            }),
-          );
-          dishRefs.push(dish);
+          dish.image = this.s3.buildProxyUrl(dish.image);
         }
       }
-    }
-    const signedUrls = await Promise.all(imagePromises);
-    for (let i = 0; i < dishRefs.length; i++) {
-      dishRefs[i].image = signedUrls[i];
     }
 
     return { menu: categories };
