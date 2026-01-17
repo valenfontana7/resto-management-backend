@@ -19,6 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CategoriesService } from './categories.service';
+import { S3Service } from '../../storage/s3.service';
 import { Public } from '../../auth/decorators/public.decorator';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../../auth/decorators/current-user.decorator';
@@ -34,6 +35,7 @@ export class CategoriesController {
   constructor(
     private prisma: PrismaService,
     private categoriesService: CategoriesService,
+    private s3: S3Service,
   ) {}
 
   // ========== ENDPOINT PÚBLICO ==========
@@ -73,6 +75,18 @@ export class CategoriesController {
       },
       orderBy: { order: 'asc' },
     });
+
+    // Convert dish images to signed URLs
+    for (const category of categories) {
+      for (const dish of category.dishes) {
+        if (dish.image) {
+          dish.image = await this.s3.createPresignedGetUrl({
+            key: dish.image,
+            expiresInSeconds: 3600, // 1 hour
+          });
+        }
+      }
+    }
 
     return { menu: categories };
   }
