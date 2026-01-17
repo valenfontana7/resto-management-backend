@@ -77,15 +77,24 @@ export class CategoriesController {
     });
 
     // Convert dish images to signed URLs
+    const imagePromises: Promise<string>[] = [];
+    const dishRefs: any[] = [];
     for (const category of categories) {
       for (const dish of category.dishes) {
         if (dish.image) {
-          dish.image = await this.s3.createPresignedGetUrl({
-            key: dish.image,
-            expiresInSeconds: 3600, // 1 hour
-          });
+          imagePromises.push(
+            this.s3.createPresignedGetUrl({
+              key: dish.image,
+              expiresInSeconds: 3600, // 1 hour
+            }),
+          );
+          dishRefs.push(dish);
         }
       }
+    }
+    const signedUrls = await Promise.all(imagePromises);
+    for (let i = 0; i < dishRefs.length; i++) {
+      dishRefs[i].image = signedUrls[i];
     }
 
     return { menu: categories };
