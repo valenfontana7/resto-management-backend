@@ -78,7 +78,10 @@ export class UploadsController {
         // Try with normalized key (with prefix)
         head = await this.s3.headObject(key);
       } catch (error) {
-        if (error.message?.includes('NotFound') || error.name === 'NotFoundException') {
+        if (
+          error.message?.includes('NotFound') ||
+          error.name === 'NotFoundException'
+        ) {
           // Try without prefix for backward compatibility
           const keyWithoutPrefix = actualKey; // actualKey is already cleaned
           try {
@@ -161,10 +164,15 @@ export class UploadsController {
         // Try with normalized key (with prefix)
         head = await this.s3.headObject(key);
       } catch (error) {
-        if (error.message?.includes('NotFound') || error.name === 'NotFoundException') {
+        if (
+          error.message?.includes('NotFound') ||
+          error.name === 'NotFoundException'
+        ) {
           // Try without prefix for backward compatibility
           const keyWithoutPrefix = actualKey; // actualKey is already cleaned
-          this.logger.debug(`Key with prefix not found, trying without prefix: ${keyWithoutPrefix}`);
+          this.logger.debug(
+            `Key with prefix not found, trying without prefix: ${keyWithoutPrefix}`,
+          );
           try {
             head = await this.s3.headObjectRaw(keyWithoutPrefix);
             finalKey = keyWithoutPrefix;
