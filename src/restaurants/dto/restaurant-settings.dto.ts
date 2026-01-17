@@ -71,11 +71,11 @@ export class UpdateBusinessInfoDto {
   description?: string;
 
   @IsOptional()
-  @IsUrl()
+  @IsString()
   logo?: string;
 
   @IsOptional()
-  @IsUrl()
+  @IsString()
   coverImage?: string;
 }
 

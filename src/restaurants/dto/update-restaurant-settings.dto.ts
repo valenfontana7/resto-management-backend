@@ -417,17 +417,17 @@ export class BrandingDto {
 
   @ApiPropertyOptional({ example: 'http://localhost:4000/api/uploads/...' })
   @IsOptional()
-  @IsUrl()
+  @IsString()
   logo?: string;
 
   @ApiPropertyOptional({ example: 'http://localhost:4000/api/uploads/...' })
   @IsOptional()
-  @IsUrl()
+  @IsString()
   bannerImage?: string;
 
   @ApiPropertyOptional({ example: 'http://localhost:4000/api/uploads/...' })
   @IsOptional()
-  @IsUrl()
+  @IsString()
   coverImage?: string;
 
   @ApiPropertyOptional({ example: 'restaurants/id/favicon.ico' })
