@@ -1,8 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   UpdateDeliveryZonesDto,
   UpdatePaymentMethodsDto,
+  BusinessHourDto,
 } from '../dto/restaurant-settings.dto';
 
 /**
@@ -17,24 +22,54 @@ export class RestaurantSettingsService {
   /**
    * Actualizar horarios del restaurante
    */
-  async updateHours(id: string, hours: any[]) {
+  async updateHours(id: string, hours: BusinessHourDto[]) {
     return this.prisma.$transaction(async () => {
       // Eliminar horarios existentes
       await this.prisma.businessHour.deleteMany({
         where: { restaurantId: id },
       });
 
-      // Solo crear registros para días abiertos
-      const openHours = hours.filter((h) => h.isOpen === true);
+      // Validar y preparar datos
+      const groupedHours: Record<number, BusinessHourDto[]> = hours.reduce(
+        (acc, h) => {
+          if (!acc[h.dayOfWeek]) acc[h.dayOfWeek] = [];
+          acc[h.dayOfWeek].push(h);
+          return acc;
+        },
+        {} as Record<number, BusinessHourDto[]>,
+      );
 
-      if (openHours && openHours.length > 0) {
+      const validHours: BusinessHourDto[] = [];
+
+      for (const day in groupedHours) {
+        const dayHours = groupedHours[day];
+        const hasClosed = dayHours.some((h) => h.isOpen === false);
+        const hasOpen = dayHours.some((h) => h.isOpen === true);
+
+        if (hasClosed && hasOpen) {
+          throw new BadRequestException(
+            `Día ${day}: No se puede mezclar horarios abiertos y cerrados.`,
+          );
+        }
+
+        if (hasClosed && dayHours.length > 1) {
+          throw new BadRequestException(
+            `Día ${day}: Solo se permite un registro cuando el día está cerrado.`,
+          );
+        }
+
+        validHours.push(...dayHours);
+      }
+
+      // Crear registros válidos
+      if (validHours.length > 0) {
         await this.prisma.businessHour.createMany({
-          data: openHours.map((h) => ({
+          data: validHours.map((h) => ({
             restaurantId: id,
             dayOfWeek: h.dayOfWeek,
-            openTime: h.openTime,
-            closeTime: h.closeTime,
-            isOpen: true,
+            openTime: h.openTime || '00:00',
+            closeTime: h.closeTime || '00:00',
+            isOpen: h.isOpen,
           })),
         });
       }
@@ -44,18 +79,22 @@ export class RestaurantSettingsService {
         where: { restaurantId: id },
       });
 
-      // Crear estructura de semana completa (0-6)
+      // Crear estructura de semana completa (0-6), con arrays por día
       const allDays = Array.from({ length: 7 }, (_, dayOfWeek) => {
-        const existingHour = savedHours.find((h) => h.dayOfWeek === dayOfWeek);
-        if (existingHour) {
-          return existingHour;
+        const existingHours = savedHours.filter(
+          (h) => h.dayOfWeek === dayOfWeek,
+        );
+        if (existingHours.length > 0) {
+          return existingHours;
         }
-        return {
-          dayOfWeek,
-          isOpen: false,
-          openTime: null,
-          closeTime: null,
-        };
+        return [
+          {
+            dayOfWeek,
+            isOpen: false,
+            openTime: null,
+            closeTime: null,
+          },
+        ];
       });
 
       return allDays;

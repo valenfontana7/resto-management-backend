@@ -96,7 +96,7 @@ model BusinessHour {
   openTime  String // "09:00"
   closeTime String // "22:00"
 
-  @@unique([restaurantId, dayOfWeek])
+  @@index([restaurantId, dayOfWeek])
 }
 
 // ============================================
