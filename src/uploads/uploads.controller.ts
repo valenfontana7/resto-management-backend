@@ -221,6 +221,9 @@ export class UploadsController {
         .replace(/[^a-z0-9-_/]/gi, '')
         .replace(/^\/+|\/+$/g, '') || 'images';
 
+    // Map dishes to images for consistency
+    const finalFolder = safeFolder === 'dishes' ? 'images' : safeFolder;
+
     const extFromName = (file.originalname || '')
       .toLowerCase()
       .match(/\.(jpg|jpeg|png|webp|gif|svg)$/)?.[0];
@@ -236,7 +239,7 @@ export class UploadsController {
 
     const ext = extFromName || extFromType || '.jpg';
     const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const key = `${safeFolder}/${unique}${ext}`;
+    const key = `${finalFolder}/${unique}${ext}`;
 
     const uploaded = await this.s3.uploadObject({
       key,
@@ -294,6 +297,11 @@ export class UploadsController {
 
     // Back-compat: si el cliente manda accidentalmente "api/uploads/..."
     key = key.replace(/^api\/uploads\//, '');
+
+    // Map dishes/ to images/ for consistency
+    if (key.startsWith('dishes/')) {
+      key = key.replace('dishes/', 'images/');
+    }
 
     if (!key || key.length > 2048) {
       throw new BadRequestException('Invalid key');

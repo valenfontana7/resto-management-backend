@@ -9,6 +9,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  CreateBucketCommand,
   S3Client,
   type ObjectCannedACL,
 } from '@aws-sdk/client-s3';
@@ -90,6 +91,14 @@ export class S3Service {
           ? { accessKeyId, secretAccessKey }
           : undefined,
     });
+
+    console.log('S3Service initialized:', {
+      bucket: this.bucket,
+      region: this.region,
+      endpoint: this.endpoint,
+      keyPrefix: this.keyPrefix,
+      hasCredentials: !!(accessKeyId && secretAccessKey),
+    });
   }
 
   async uploadObject(params: {
@@ -99,6 +108,13 @@ export class S3Service {
     cacheControl?: string;
   }): Promise<{ key: string; url: string }> {
     const physicalKey = this.normalizeKey(params.key);
+
+    // Try to create bucket if not exists (for dev with MinIO)
+    try {
+      await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
+    } catch (error) {
+      // Ignore if bucket already exists
+    }
 
     await this.client.send(
       new PutObjectCommand({
