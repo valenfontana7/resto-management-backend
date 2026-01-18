@@ -792,6 +792,65 @@ model SubscriptionPaymentMethod {
 }
 
 // ============================================
+// COUPONS SYSTEM
+// ============================================
+
+model Coupon {
+  id           String     @id @default(cuid())
+  restaurantId String
+
+  code        String
+  name        String
+  description String?
+
+  type CouponType
+
+  value               Decimal
+  minOrderAmount      Decimal?
+  maxDiscountAmount   Decimal?
+  usageLimit          Int?
+  usageCount          Int      @default(0)
+
+  validFrom   DateTime
+  validUntil  DateTime
+  isActive    Boolean  @default(true)
+
+  applicableProducts  String[] // Array of product IDs
+  applicableCategories String[] // Array of category IDs
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usages CouponUsage[]
+
+  @@unique([restaurantId, code])
+  @@index([restaurantId])
+  @@index([restaurantId, isActive])
+  @@index([restaurantId, validUntil])
+}
+
+model CouponUsage {
+  id        String   @id @default(cuid())
+  couponId  String
+  orderId   String? // Reference to order when used
+  customerId String?
+
+  discountAmount Decimal
+  usedAt        DateTime @default(now())
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  @@index([couponId])
+  @@index([customerId])
+  @@index([usedAt])
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED
+}
+
+// ============================================
 // ANALYTICS (opcional, para tracking)
 // ============================================
 

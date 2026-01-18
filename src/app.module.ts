@@ -25,6 +25,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { UsersModule } from './users/users.module';
 import { KitchenModule } from './kitchen/kitchen.module';
+import { CouponsModule } from './coupons/coupons.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { RequestLoggingMiddleware } from './common/middleware/request-logging.middleware';
 
@@ -58,6 +59,7 @@ import { RequestLoggingMiddleware } from './common/middleware/request-logging.mi
     SubscriptionsModule,
     UsersModule,
     KitchenModule,
+    CouponsModule,
   ],
   controllers: [AppController],
   providers: [
