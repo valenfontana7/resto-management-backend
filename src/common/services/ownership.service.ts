@@ -58,8 +58,15 @@ export class OwnershipService {
   ): Promise<void> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { restaurantId: true },
+      include: {
+        role: { select: { name: true } },
+      },
     });
+
+    // SUPER_ADMIN can access any restaurant
+    if (user?.role?.name === 'SUPER_ADMIN') {
+      return;
+    }
 
     if (!user || user.restaurantId !== restaurantId) {
       throw new ForbiddenException('You do not have access to this restaurant');
