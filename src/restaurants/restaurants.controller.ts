@@ -551,7 +551,14 @@ export class RestaurantsController {
     @Res({ passthrough: true }) res: Response,
   ) {
     // Only owner or admin allowed
-    const allowedRoles = ['OWNER', 'Owner', 'owner', 'Admin', 'admin'];
+    const allowedRoles = [
+      'OWNER',
+      'Owner',
+      'owner',
+      'Admin',
+      'admin',
+      'SUPER_ADMIN',
+    ];
     if (!user.role || !allowedRoles.includes(user.role)) {
       throw new ForbiddenException(
         'Only the owner or admin can delete the restaurant',
