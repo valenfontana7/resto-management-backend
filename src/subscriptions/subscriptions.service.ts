@@ -625,9 +625,17 @@ export class SubscriptionsService {
 
     // Verificar si el usuario es SUPER_ADMIN
     if (user && user.role === 'SUPER_ADMIN') {
-      throw new BadRequestException(
-        'Los super administradores no requieren suscripción ni pagos',
+      // Para SUPER_ADMIN, actualizar la suscripción directamente sin pago
+      const updateResult = await this.updateSubscription(
+        restaurantId,
+        { planType: dto.planType },
+        user,
       );
+      return {
+        checkoutUrl: null,
+        subscription: updateResult.subscription,
+        message: updateResult.message,
+      };
     }
 
     const restaurant = await this.prisma.restaurant.findUnique({

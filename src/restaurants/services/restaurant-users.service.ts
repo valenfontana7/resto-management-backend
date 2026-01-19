@@ -36,7 +36,7 @@ export class RestaurantUsersService {
    * Obtener todos los usuarios de un restaurante
    */
   async getRestaurantUsers(restaurantId: string) {
-    return this.prisma.user.findMany({
+    const users = await this.prisma.user.findMany({
       where: { restaurantId },
       select: {
         id: true,
@@ -56,6 +56,12 @@ export class RestaurantUsersService {
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    // Aplanar roleName para el frontend
+    return users.map((user) => ({
+      ...user,
+      roleName: user.role?.name || null,
+    }));
   }
 
   /**

@@ -156,6 +156,8 @@ export class RestaurantsService {
       if ('layout' in out) {
         out.layout = this.normalizeLayout(out.layout);
       }
+      // Add normalization for new sections if needed
+      // For now, they pass through as-is since they don't have complex validation
     } catch {
       // swallow - be permissive on read
       out.hero = out.hero || null;
@@ -215,16 +217,59 @@ export class RestaurantsService {
     const contact = data.contact || {};
     const branding = data.branding || {
       colors: {
-        primary: '#4f46e5',
-        secondary: '#9333ea',
-        accent: '#ec4899',
-        text: '#1f2937',
+        primary: '#000000',
+        secondary: '#6b7280',
+        accent: '#9ca3af',
+        text: '#000000',
         background: '#ffffff',
       },
       layout: {
         menuStyle: 'grid',
         categoryDisplay: 'tabs',
         showHeroSection: true,
+      },
+      typography: {
+        fontFamily: 'Inter',
+        fontSize: 'md',
+      },
+      hero: {
+        minHeight: 'md',
+        textAlign: 'center',
+        textShadow: false,
+        overlayColor: '#000000',
+        overlayOpacity: 0,
+        metaTextColor: '#0f172a',
+        descriptionColor: '#0f172a',
+        titleColor: '#0f172a',
+      },
+      cart: {
+        backgroundColor: '#ffffff',
+        textColor: '#000000',
+        borderRadius: 'md',
+        shadow: false,
+      },
+      menu: {
+        backgroundColor: '#ffffff',
+        textColor: '#000000',
+        cardShadow: false,
+        borderRadius: 'md',
+      },
+      footer: {
+        backgroundColor: '#f9fafb',
+        textColor: '#000000',
+        showSocialLinks: false,
+      },
+      checkout: {
+        backgroundColor: '#ffffff',
+        textColor: '#000000',
+        buttonStyle: 'solid',
+        shadow: false,
+      },
+      reservations: {
+        backgroundColor: '#ffffff',
+        textColor: '#000000',
+        formStyle: 'minimal',
+        shadow: false,
       },
     };
     const businessRules = data.businessRules || {
@@ -299,10 +344,10 @@ export class RestaurantsService {
 
           branding: {
             colors: branding.colors || {
-              primary: '#4f46e5',
-              secondary: '#9333ea',
-              accent: '#ec4899',
-              text: '#1f2937',
+              primary: '#000000',
+              secondary: '#6b7280',
+              accent: '#9ca3af',
+              text: '#000000',
               background: '#ffffff',
             },
             layout: branding.layout || {
@@ -313,6 +358,45 @@ export class RestaurantsService {
             typography: branding.typography || {
               fontFamily: 'Inter',
               fontSize: 'md',
+            },
+            hero: branding.hero || {
+              minHeight: 'md',
+              textAlign: 'center',
+              textShadow: false,
+              overlayColor: '#000000',
+              overlayOpacity: 0,
+              metaTextColor: '#0f172a',
+              descriptionColor: '#0f172a',
+              titleColor: '#0f172a',
+            },
+            cart: branding.cart || {
+              backgroundColor: '#ffffff',
+              textColor: '#000000',
+              borderRadius: 'md',
+              shadow: false,
+            },
+            menu: branding.menu || {
+              backgroundColor: '#ffffff',
+              textColor: '#000000',
+              cardShadow: false,
+              borderRadius: 'md',
+            },
+            footer: branding.footer || {
+              backgroundColor: '#f9fafb',
+              textColor: '#000000',
+              showSocialLinks: false,
+            },
+            checkout: branding.checkout || {
+              backgroundColor: '#ffffff',
+              textColor: '#000000',
+              buttonStyle: 'solid',
+              shadow: false,
+            },
+            reservations: branding.reservations || {
+              backgroundColor: '#ffffff',
+              textColor: '#000000',
+              formStyle: 'minimal',
+              shadow: false,
             },
           },
 
@@ -563,6 +647,16 @@ export class RestaurantsService {
 
     if (businessInfo) {
       if (businessInfo.name) updateData.name = businessInfo.name;
+      if (businessInfo.slug) {
+        // Validate slug uniqueness
+        const existing = await this.prisma.restaurant.findFirst({
+          where: { slug: businessInfo.slug, id: { not: id } },
+        });
+        if (existing) {
+          throw new BadRequestException('Slug already in use');
+        }
+        updateData.slug = businessInfo.slug;
+      }
       if (businessInfo.type) updateData.type = businessInfo.type;
       if (businessInfo.cuisineTypes)
         updateData.cuisineTypes = businessInfo.cuisineTypes;

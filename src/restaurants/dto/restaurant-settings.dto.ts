@@ -57,6 +57,14 @@ export class UpdateBusinessInfoDto {
   @IsString()
   name?: string;
 
+  @ApiPropertyOptional({ example: 'mi-restaurante' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-z0-9-]+$/, {
+    message: 'Slug must contain only lowercase letters, numbers, and hyphens',
+  })
+  slug?: string;
+
   @IsOptional()
   @IsString()
   type?: string;
@@ -237,6 +245,142 @@ export class MobileMenuConfigDto {
   items?: MobileMenuItemDto[];
 }
 
+export class HeroSectionDto {
+  @IsOptional()
+  @IsEnum(['sm', 'md', 'lg', 'xl'])
+  minHeight?: string;
+
+  @IsOptional()
+  @IsEnum(['left', 'center', 'right'])
+  textAlign?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  textShadow?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  overlayColor?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  overlayOpacity?: number;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  metaTextColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  descriptionColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  titleColor?: string;
+}
+
+export class CartSectionDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  backgroundColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  textColor?: string;
+
+  @IsOptional()
+  @IsEnum(['none', 'sm', 'md', 'lg', 'xl'])
+  borderRadius?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  shadow?: boolean;
+}
+
+export class MenuSectionDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  backgroundColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  textColor?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  cardShadow?: boolean;
+
+  @IsOptional()
+  @IsEnum(['none', 'sm', 'md', 'lg', 'xl'])
+  borderRadius?: string;
+}
+
+export class FooterSectionDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  backgroundColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  textColor?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  showSocialLinks?: boolean;
+}
+
+export class CheckoutSectionDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  backgroundColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  textColor?: string;
+
+  @IsOptional()
+  @IsEnum(['solid', 'outline', 'ghost'])
+  buttonStyle?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  shadow?: boolean;
+}
+
+export class ReservationsSectionDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  backgroundColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  textColor?: string;
+
+  @IsOptional()
+  @IsEnum(['minimal', 'card', 'full'])
+  formStyle?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  shadow?: boolean;
+}
+
 export class UpdateBrandingDto {
   @IsOptional()
   @ValidateNested()
@@ -264,6 +408,36 @@ export class UpdateBrandingDto {
   @ValidateNested()
   @Type(() => MobileMenuConfigDto)
   mobileMenu?: MobileMenuConfigDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => HeroSectionDto)
+  hero?: HeroSectionDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CartSectionDto)
+  cart?: CartSectionDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => MenuSectionDto)
+  menu?: MenuSectionDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FooterSectionDto)
+  footer?: FooterSectionDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CheckoutSectionDto)
+  checkout?: CheckoutSectionDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ReservationsSectionDto)
+  reservations?: ReservationsSectionDto;
 }
 
 // ==================== Payment Methods ====================

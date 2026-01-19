@@ -72,7 +72,11 @@ export class SubscriptionsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Crear checkout de MercadoPago para suscripción' })
   @ApiParam({ name: 'restaurantId', description: 'ID del restaurante' })
-  @ApiResponse({ status: 200, description: 'URL de checkout generada' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'URL de checkout generada o suscripción actualizada para SUPER_ADMIN',
+  })
   @ApiResponse({
     status: 400,
     description: 'Plan gratuito no requiere checkout',

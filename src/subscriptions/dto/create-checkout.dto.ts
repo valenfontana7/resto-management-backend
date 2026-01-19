@@ -17,7 +17,7 @@ export class CreateCheckoutDto {
     required: false,
   })
   @IsOptional()
-  @IsUrl()
+  @IsUrl({ require_tld: false })
   successUrl?: string;
 
   @ApiProperty({
@@ -26,6 +26,6 @@ export class CreateCheckoutDto {
     required: false,
   })
   @IsOptional()
-  @IsUrl()
+  @IsUrl({ require_tld: false })
   cancelUrl?: string;
 }
