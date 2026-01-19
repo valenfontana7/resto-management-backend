@@ -48,6 +48,9 @@ model Restaurant {
   // Social Media (JSON object)
   socialMedia Json?
 
+  // Business Rules (JSON object)
+  businessRules Json?
+
   // Business Rules
   minOrderAmount Int @default(1000)
   orderLeadTime  Int @default(30)

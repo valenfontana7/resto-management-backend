@@ -614,6 +614,26 @@ export class RestaurantsService {
           ...(currentBranding.sections || {}),
           ...(sanitized.sections || {}),
         },
+        cart: {
+          ...(currentBranding.cart || {}),
+          ...(sanitized.cart || {}),
+        },
+        menu: {
+          ...(currentBranding.menu || {}),
+          ...(sanitized.menu || {}),
+        },
+        footer: {
+          ...(currentBranding.footer || {}),
+          ...(sanitized.footer || {}),
+        },
+        checkout: {
+          ...(currentBranding.checkout || {}),
+          ...(sanitized.checkout || {}),
+        },
+        reservations: {
+          ...(currentBranding.reservations || {}),
+          ...(sanitized.reservations || {}),
+        },
         mobileMenu: {
           ...(currentBranding.mobileMenu || {}),
           ...(sanitized.mobileMenu || {}),
@@ -640,6 +660,20 @@ export class RestaurantsService {
         typeof payload.socialMedia === 'string'
           ? JSON.parse(payload.socialMedia)
           : payload.socialMedia;
+    }
+
+    if (payload.businessRules !== undefined) {
+      updateData.businessRules =
+        typeof payload.businessRules === 'string'
+          ? JSON.parse(payload.businessRules)
+          : payload.businessRules;
+    }
+
+    if (payload.hours !== undefined) {
+      // Handle hours update - convert object format to array format expected by settings service
+      const hoursData = this.convertHoursObjectToArray(payload.hours);
+      await this.settingsService.updateHours(id, hoursData);
+      // Don't include hours in updateData since it's handled separately
     }
 
     // Handle legacy fields for backwards compatibility
@@ -764,6 +798,34 @@ export class RestaurantsService {
    */
   async updateHours(id: string, hours: any[]) {
     return this.settingsService.updateHours(id, hours);
+  }
+
+  private convertHoursObjectToArray(hours: any): any[] {
+    const hoursData: any[] = [];
+    const daysMap = {
+      sunday: 0,
+      monday: 1,
+      tuesday: 2,
+      wednesday: 3,
+      thursday: 4,
+      friday: 5,
+      saturday: 6,
+    };
+
+    if (hours && Object.keys(hours).length > 0) {
+      for (const [day, schedule] of Object.entries(hours)) {
+        if (daysMap[day] !== undefined) {
+          hoursData.push({
+            dayOfWeek: daysMap[day],
+            openTime: (schedule as any).openTime || '09:00',
+            closeTime: (schedule as any).closeTime || '22:00',
+            isOpen: (schedule as any).isOpen !== false,
+          });
+        }
+      }
+    }
+
+    return hoursData;
   }
 
   private generateSlug(name: string): string {

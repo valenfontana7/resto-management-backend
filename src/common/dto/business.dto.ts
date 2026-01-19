@@ -5,6 +5,7 @@ import {
   IsBoolean,
   IsNumber,
   IsArray,
+  IsEnum,
   ValidateNested,
   Min,
   Matches,
@@ -231,6 +232,61 @@ export class DeliveryRulesDto {
   estimatedTime?: number;
 }
 
+export class ReservationRulesDto {
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @ApiPropertyOptional({ example: 10 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  maxPartySize?: number;
+
+  @ApiPropertyOptional({ example: 2 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minAdvanceBookingHours?: number;
+
+  @ApiPropertyOptional({ example: 30 })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  maxAdvanceBookingDays?: number;
+
+  @ApiPropertyOptional({ example: 30 })
+  @IsOptional()
+  @IsNumber()
+  @Min(15)
+  timeSlotInterval?: number;
+}
+
+export class PaymentRulesDto {
+  @ApiPropertyOptional({
+    example: ['cash', 'debit-card', 'credit-card'],
+    enum: [
+      'cash',
+      'debit-card',
+      'credit-card',
+      'bank-transfer',
+      'digital-wallet',
+    ],
+  })
+  @IsOptional()
+  @IsEnum(
+    ['cash', 'debit-card', 'credit-card', 'bank-transfer', 'digital-wallet'],
+    { each: true },
+  )
+  acceptedMethods?: string[];
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  requirePaymentForReservation?: boolean;
+}
+
 export class BusinessRulesDto {
   @ApiPropertyOptional({ type: OrderRulesDto })
   @IsOptional()
@@ -243,6 +299,18 @@ export class BusinessRulesDto {
   @ValidateNested()
   @Type(() => DeliveryRulesDto)
   delivery?: DeliveryRulesDto;
+
+  @ApiPropertyOptional({ type: ReservationRulesDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ReservationRulesDto)
+  reservations?: ReservationRulesDto;
+
+  @ApiPropertyOptional({ type: PaymentRulesDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PaymentRulesDto)
+  payments?: PaymentRulesDto;
 }
 
 // ==================== Features ====================

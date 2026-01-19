@@ -16,6 +16,10 @@ import {
   UpdateBusinessInfoDto,
   UpdateContactDto,
 } from './restaurant-settings.dto';
+import {
+  BusinessRulesDto,
+  BusinessHoursDto,
+} from '../../common/dto/business.dto';
 
 // ==================== Branding DTOs ====================
 
@@ -353,6 +357,133 @@ export class BrandingSectionsDto {
   reservations?: BrandingSectionColorDto;
 }
 
+export class BrandingCartDto {
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  shadow?: boolean;
+
+  @ApiPropertyOptional({ example: '#000000' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  textColor?: string;
+
+  @ApiPropertyOptional({
+    example: 'md',
+    enum: ['none', 'sm', 'md', 'lg', 'xl'],
+  })
+  @IsOptional()
+  @IsEnum(['none', 'sm', 'md', 'lg', 'xl'])
+  borderRadius?: string;
+
+  @ApiPropertyOptional({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  backgroundColor?: string;
+}
+
+export class BrandingMenuDto {
+  @ApiPropertyOptional({ example: '#000000' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  textColor?: string;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  cardShadow?: boolean;
+
+  @ApiPropertyOptional({
+    example: 'md',
+    enum: ['none', 'sm', 'md', 'lg', 'xl'],
+  })
+  @IsOptional()
+  @IsEnum(['none', 'sm', 'md', 'lg', 'xl'])
+  borderRadius?: string;
+
+  @ApiPropertyOptional({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  backgroundColor?: string;
+}
+
+export class BrandingFooterDto {
+  @ApiPropertyOptional({ example: '#000000' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  textColor?: string;
+
+  @ApiPropertyOptional({ example: '#f9fafb' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  backgroundColor?: string;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  showSocialLinks?: boolean;
+}
+
+export class BrandingCheckoutDto {
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  shadow?: boolean;
+
+  @ApiPropertyOptional({ example: '#000000' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  textColor?: string;
+
+  @ApiPropertyOptional({
+    example: 'solid',
+    enum: ['solid', 'outline', 'ghost'],
+  })
+  @IsOptional()
+  @IsEnum(['solid', 'outline', 'ghost'])
+  buttonStyle?: string;
+
+  @ApiPropertyOptional({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  backgroundColor?: string;
+}
+
+export class BrandingReservationsDto {
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  shadow?: boolean;
+
+  @ApiPropertyOptional({
+    example: 'minimal',
+    enum: ['minimal', 'card', 'full'],
+  })
+  @IsOptional()
+  @IsEnum(['minimal', 'card', 'full'])
+  formStyle?: string;
+
+  @ApiPropertyOptional({ example: '#000000' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  textColor?: string;
+
+  @ApiPropertyOptional({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  backgroundColor?: string;
+}
+
 export class MobileMenuItemDto {
   @ApiPropertyOptional({ example: 'Inicio' })
   @IsString()
@@ -453,6 +584,36 @@ export class BrandingDto {
   @Type(() => BrandingSectionsDto)
   sections?: BrandingSectionsDto;
 
+  @ApiPropertyOptional({ type: BrandingCartDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingCartDto)
+  cart?: BrandingCartDto;
+
+  @ApiPropertyOptional({ type: BrandingMenuDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingMenuDto)
+  menu?: BrandingMenuDto;
+
+  @ApiPropertyOptional({ type: BrandingFooterDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingFooterDto)
+  footer?: BrandingFooterDto;
+
+  @ApiPropertyOptional({ type: BrandingCheckoutDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingCheckoutDto)
+  checkout?: BrandingCheckoutDto;
+
+  @ApiPropertyOptional({ type: BrandingReservationsDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BrandingReservationsDto)
+  reservations?: BrandingReservationsDto;
+
   @ApiPropertyOptional({ type: MobileMenuConfigDto })
   @IsOptional()
   @ValidateNested()
@@ -552,6 +713,18 @@ export class UpdateRestaurantSettingsDto {
   @ValidateNested()
   @Type(() => FeaturesDto)
   features?: FeaturesDto;
+
+  @ApiPropertyOptional({ type: BusinessRulesDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BusinessRulesDto)
+  businessRules?: BusinessRulesDto;
+
+  @ApiPropertyOptional({ type: BusinessHoursDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BusinessHoursDto)
+  hours?: BusinessHoursDto;
 
   @ApiPropertyOptional({ type: SocialMediaDto })
   @IsOptional()
