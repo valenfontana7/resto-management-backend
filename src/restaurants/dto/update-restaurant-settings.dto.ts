@@ -115,36 +115,6 @@ export class BrandingLayoutDto {
   compactMode?: boolean;
 }
 
-export class BrandingHeroDto {
-  @ApiPropertyOptional({ example: 60, minimum: 0, maximum: 100 })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(100)
-  overlayOpacity?: number;
-
-  @ApiPropertyOptional({ example: '#000000' })
-  @IsOptional()
-  @IsString()
-  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
-  overlayColor?: string;
-
-  @ApiPropertyOptional({ example: 'center', enum: ['left', 'center', 'right'] })
-  @IsOptional()
-  @IsEnum(['left', 'center', 'right'])
-  textAlign?: string;
-
-  @ApiPropertyOptional({ example: true })
-  @IsOptional()
-  @IsBoolean()
-  textShadow?: boolean;
-
-  @ApiPropertyOptional({ example: 'md', enum: ['sm', 'md', 'lg', 'xl'] })
-  @IsOptional()
-  @IsEnum(['sm', 'md', 'lg', 'xl'])
-  minHeight?: string;
-}
-
 export class BrandingVisualDto {
   @ApiPropertyOptional({
     example: 'md',
@@ -305,6 +275,34 @@ export class BrandingSectionColorDto {
   @IsOptional()
   @IsString()
   emptyStateMessage?: string;
+
+  @ApiPropertyOptional({ example: 60, minimum: 0, maximum: 100 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  overlayOpacity?: number;
+
+  @ApiPropertyOptional({ example: '#000000' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  overlayColor?: string;
+
+  @ApiPropertyOptional({ example: 'center', enum: ['left', 'center', 'right'] })
+  @IsOptional()
+  @IsEnum(['left', 'center', 'right'])
+  textAlign?: string;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  textShadow?: boolean;
+
+  @ApiPropertyOptional({ example: 'md', enum: ['sm', 'md', 'lg', 'xl'] })
+  @IsOptional()
+  @IsEnum(['sm', 'md', 'lg', 'xl'])
+  minHeight?: string;
 }
 
 export class BrandingSectionsDto {
@@ -565,12 +563,6 @@ export class BrandingDto {
   @IsOptional()
   @IsString()
   favicon?: string;
-
-  @ApiPropertyOptional({ type: BrandingHeroDto })
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => BrandingHeroDto)
-  hero?: BrandingHeroDto;
 
   @ApiPropertyOptional({ type: BrandingVisualDto })
   @IsOptional()

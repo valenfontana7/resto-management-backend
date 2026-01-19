@@ -359,15 +359,19 @@ export class RestaurantsService {
               fontFamily: 'Inter',
               fontSize: 'md',
             },
-            hero: branding.hero || {
-              minHeight: 'md',
-              textAlign: 'center',
-              textShadow: false,
-              overlayColor: '#000000',
-              overlayOpacity: 0,
-              metaTextColor: '#0f172a',
-              descriptionColor: '#0f172a',
-              titleColor: '#0f172a',
+            sections: {
+              hero: {
+                backgroundColor: '#ffffff',
+                textColor: '#0f172a',
+                titleColor: '#0f172a',
+                descriptionColor: '#0f172a',
+                metaTextColor: '#0f172a',
+                minHeight: 'md',
+                textAlign: 'center',
+                textShadow: false,
+                overlayColor: '#000000',
+                overlayOpacity: 0,
+              },
             },
             cart: branding.cart || {
               backgroundColor: '#ffffff',
@@ -516,16 +520,16 @@ export class RestaurantsService {
         const out = { ...b };
 
         const map: Record<string, string[]> = {
-          hero_overlayOpacity: ['hero', 'overlayOpacity'],
-          hero_overlay_opacity: ['hero', 'overlayOpacity'],
-          hero_overlayColor: ['hero', 'overlayColor'],
-          hero_overlay_color: ['hero', 'overlayColor'],
-          hero_textShadow: ['hero', 'textShadow'],
-          hero_text_shadow: ['hero', 'textShadow'],
-          hero_textAlign: ['hero', 'textAlign'],
-          hero_text_align: ['hero', 'textAlign'],
-          hero_minHeight: ['hero', 'minHeight'],
-          hero_min_height: ['hero', 'minHeight'],
+          hero_overlayOpacity: ['sections', 'hero', 'overlayOpacity'],
+          hero_overlay_opacity: ['sections', 'hero', 'overlayOpacity'],
+          hero_overlayColor: ['sections', 'hero', 'overlayColor'],
+          hero_overlay_color: ['sections', 'hero', 'overlayColor'],
+          hero_textShadow: ['sections', 'hero', 'textShadow'],
+          hero_text_shadow: ['sections', 'hero', 'textShadow'],
+          hero_textAlign: ['sections', 'hero', 'textAlign'],
+          hero_text_align: ['sections', 'hero', 'textAlign'],
+          hero_minHeight: ['sections', 'hero', 'minHeight'],
+          hero_min_height: ['sections', 'hero', 'minHeight'],
           sections_hero_titleColor: ['sections', 'hero', 'titleColor'],
           sections_hero_title_color: ['sections', 'hero', 'titleColor'],
           sections_hero_descriptionColor: [
@@ -539,8 +543,8 @@ export class RestaurantsService {
             'descriptionColor',
           ],
           // single flag for meta text (rating, min delivery, location, hours)
-          hero_metaTextColor: ['hero', 'metaTextColor'],
-          hero_meta_text_color: ['hero', 'metaTextColor'],
+          hero_metaTextColor: ['sections', 'hero', 'metaTextColor'],
+          hero_meta_text_color: ['sections', 'hero', 'metaTextColor'],
           sections_hero_metaTextColor: ['sections', 'hero', 'metaTextColor'],
           sections_hero_meta_text_color: ['sections', 'hero', 'metaTextColor'],
         };
@@ -589,10 +593,6 @@ export class RestaurantsService {
         typography: {
           ...(currentBranding.typography || {}),
           ...(sanitized.typography || {}),
-        },
-        hero: {
-          ...(currentBranding.hero || {}),
-          ...(sanitized.hero || {}),
         },
         visual: {
           ...(currentBranding.visual || {}),
@@ -724,9 +724,6 @@ export class RestaurantsService {
     // Process embedded base64 assets in branding (hero, sections, etc.)
     // Normalize/validate hero and layout primitives before asset processing
     if (updateData.branding) {
-      if (updateData.branding.hero !== undefined) {
-        updateData.branding.hero = this.normalizeHero(updateData.branding.hero);
-      }
       if (updateData.branding.layout !== undefined) {
         updateData.branding.layout = this.normalizeLayout(
           updateData.branding.layout,
