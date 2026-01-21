@@ -7,6 +7,7 @@ import { CommonModule } from '../common/common.module';
 import { MercadoPagoModule } from '../mercadopago/mercadopago.module';
 import { EmailModule } from '../email/email.module';
 import { WebsocketModule } from '../websocket/websocket.module';
+import { KitchenModule } from '../kitchen/kitchen.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { WebsocketModule } from '../websocket/websocket.module';
     MercadoPagoModule,
     EmailModule,
     WebsocketModule,
+    KitchenModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

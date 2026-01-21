@@ -14,6 +14,7 @@ import {
   RestaurantData,
 } from '../email/email.service';
 import { OrdersGateway, OrderUpdatePayload } from '../websocket/orders.gateway';
+import { KitchenNotificationsService } from '../kitchen/kitchen-notifications.service';
 import * as crypto from 'crypto';
 import {
   CreateOrderDto,
@@ -36,6 +37,7 @@ export class OrdersService {
     private readonly emailService: EmailService,
     private readonly ordersGateway: OrdersGateway,
     private readonly configService: ConfigService,
+    private readonly kitchenNotifications: KitchenNotificationsService,
   ) {}
 
   async create(
@@ -590,7 +592,7 @@ export class OrdersService {
         take: limit,
       }),
       this.prisma.order.count({ where }),
-      this.getOrderStats(restaurantId),
+      this.getOrderStats(restaurantId, { restaurantId }),
     ]);
 
     return {
@@ -605,7 +607,7 @@ export class OrdersService {
     };
   }
 
-  private async getOrderStats(restaurantId: string) {
+  private async getOrderStats(restaurantId: string, baseWhere?: any) {
     const statuses = [
       'PENDING',
       'PAID',
@@ -616,10 +618,14 @@ export class OrdersService {
       'CANCELLED',
     ];
 
+    // Si hay filtros aplicados (como fecha, tipo, etc), usar baseWhere
+    // Si solo se está filtrando por status, mostrar stats globales
+    const whereBase = baseWhere || { restaurantId };
+
     const counts = await Promise.all(
       statuses.map((status) =>
         this.prisma.order.count({
-          where: { restaurantId, status: status as any },
+          where: { ...whereBase, status: status as any },
         }),
       ),
     );
@@ -803,6 +809,9 @@ export class OrdersService {
     // Emitir WebSocket
     const wsPayload = this.mapOrderToWebSocketPayload(updatedOrder);
     this.ordersGateway.emitOrderUpdate(restaurantId, wsPayload);
+
+    // Emitir notificación SSE para cocina
+    this.emitKitchenNotification(updatedOrder, parsed.status);
 
     return updatedOrder;
   }
@@ -1080,20 +1089,62 @@ export class OrdersService {
     currentStatus: OrderStatus,
     newStatus: OrderStatus,
   ) {
+    // Transiciones relajadas para manejar imprevistos en cocina
+    // Reglas básicas:
+    // 1. DELIVERED y CANCELLED son estados finales (no se pueden cambiar)
+    // 2. Desde cualquier estado activo se puede cancelar
+    // 3. Permite retroceder entre estados de cocina (PREPARING ↔ CONFIRMED ↔ READY)
+    // 4. Permite avanzar y retroceder en el flujo de trabajo
+
     const validTransitions: Record<OrderStatus, OrderStatus[]> = {
-      [OrderStatus.PENDING]: [OrderStatus.PAID, OrderStatus.CANCELLED],
-      [OrderStatus.PAID]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
-      [OrderStatus.CONFIRMED]: [OrderStatus.PREPARING, OrderStatus.CANCELLED],
-      [OrderStatus.PREPARING]: [OrderStatus.READY, OrderStatus.CANCELLED],
-      [OrderStatus.READY]: [OrderStatus.DELIVERED, OrderStatus.CANCELLED],
+      // PENDING: puede avanzar a PAID o cancelarse
+      [OrderStatus.PENDING]: [
+        OrderStatus.PAID,
+        OrderStatus.CONFIRMED, // Skip directo si ya pagado externamente
+        OrderStatus.CANCELLED,
+      ],
+
+      // PAID: puede confirmar, volver a pending si hubo error, o cancelarse
+      [OrderStatus.PAID]: [
+        OrderStatus.PENDING, // Retroceder si hubo error en pago
+        OrderStatus.CONFIRMED,
+        OrderStatus.CANCELLED,
+      ],
+
+      // CONFIRMED: máxima flexibilidad para cocina
+      [OrderStatus.CONFIRMED]: [
+        OrderStatus.PAID, // Volver si necesita reprocesar
+        OrderStatus.PREPARING,
+        OrderStatus.READY, // Skip directo si ya está listo
+        OrderStatus.CANCELLED,
+      ],
+
+      // PREPARING: puede retroceder a CONFIRMED, avanzar a READY, o cancelarse
+      [OrderStatus.PREPARING]: [
+        OrderStatus.CONFIRMED, // Volver si hubo error o falta ingrediente
+        OrderStatus.READY,
+        OrderStatus.CANCELLED,
+      ],
+
+      // READY: puede retroceder a PREPARING, avanzar a DELIVERED, o cancelarse
+      [OrderStatus.READY]: [
+        OrderStatus.PREPARING, // Volver si necesita recalentarse o ajustes
+        OrderStatus.CONFIRMED, // Volver más atrás si hay problema mayor
+        OrderStatus.DELIVERED,
+        OrderStatus.CANCELLED,
+      ],
+
+      // DELIVERED: estado final, no se puede cambiar
       [OrderStatus.DELIVERED]: [],
+
+      // CANCELLED: estado final, no se puede cambiar
       [OrderStatus.CANCELLED]: [],
     };
 
     const allowed = validTransitions[currentStatus];
     if (!allowed || !allowed.includes(newStatus)) {
       throw new BadRequestException(
-        `Cannot transition from ${currentStatus} to ${newStatus}`,
+        `Cannot transition from ${currentStatus} to ${newStatus}. Allowed: ${allowed.join(', ')}`,
       );
     }
   }
@@ -1304,5 +1355,59 @@ export class OrdersService {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
     };
+  }
+
+  /**
+   * Emite notificaciones SSE para la cocina basadas en cambios de estado de pedidos
+   */
+  private emitKitchenNotification(order: any, newStatus: OrderStatus) {
+    let notificationType:
+      | 'order_created'
+      | 'order_updated'
+      | 'order_cancelled'
+      | 'order_ready';
+
+    switch (newStatus) {
+      case OrderStatus.CONFIRMED:
+        notificationType = 'order_created';
+        break;
+      case OrderStatus.PREPARING:
+      case OrderStatus.READY:
+        notificationType = 'order_updated';
+        break;
+      case OrderStatus.CANCELLED:
+        notificationType = 'order_cancelled';
+        break;
+      default:
+        // No emitir notificación para otros estados
+        return;
+    }
+
+    // Solo emitir para pedidos que requieren preparación en cocina
+    if (
+      order.type === OrderType.DINE_IN ||
+      order.type === OrderType.PICKUP ||
+      order.type === OrderType.DELIVERY
+    ) {
+      this.kitchenNotifications.emitNotification(order.restaurantId, {
+        type: notificationType,
+        orderId: order.id,
+        data: {
+          orderNumber: order.orderNumber,
+          status: newStatus,
+          customerName: order.customerName,
+          type: order.type,
+          items:
+            order.items?.map((item: any) => ({
+              name: item.dish?.name || item.name || 'Item',
+              quantity: item.quantity,
+              notes: item.notes,
+            })) || [],
+          total: order.total,
+          createdAt: order.createdAt,
+          updatedAt: order.updatedAt,
+        },
+      });
+    }
   }
 }

@@ -17,6 +17,7 @@ export interface OrderData {
   deliveryAddress?: string | null;
   deliveryNotes?: string | null;
   publicTrackingToken?: string | null;
+  notes?: string | null;
   items: Array<{
     name: string;
     quantity: number;
@@ -43,6 +44,8 @@ const STATUS_CONFIG: Record<
     color: string;
     bgColor: string;
     step: number;
+    customerMessage: string;
+    actionTip: string;
   }
 > = {
   PENDING: {
@@ -52,6 +55,10 @@ const STATUS_CONFIG: Record<
     color: '#f59e0b',
     bgColor: '#fef3c7',
     step: 1,
+    customerMessage:
+      'Estamos esperando la confirmación de tu pago para procesar tu pedido.',
+    actionTip:
+      '💡 Si ya realizaste el pago, aguardá unos minutos mientras lo verificamos.',
   },
   PAID: {
     emoji: '💳',
@@ -60,6 +67,9 @@ const STATUS_CONFIG: Record<
     color: '#10b981',
     bgColor: '#d1fae5',
     step: 2,
+    customerMessage:
+      'Recibimos tu pago exitosamente. El restaurante recibirá tu pedido en instantes.',
+    actionTip: '💡 Te notificaremos cuando el restaurante confirme tu pedido.',
   },
   CONFIRMED: {
     emoji: '👨‍🍳',
@@ -68,6 +78,10 @@ const STATUS_CONFIG: Record<
     color: '#3b82f6',
     bgColor: '#dbeafe',
     step: 3,
+    customerMessage:
+      'El restaurante confirmó tu pedido y pronto comenzará a prepararlo.',
+    actionTip:
+      '💡 El tiempo estimado de preparación depende del volumen de pedidos.',
   },
   PREPARING: {
     emoji: '🔥',
@@ -76,6 +90,9 @@ const STATUS_CONFIG: Record<
     color: '#f97316',
     bgColor: '#ffedd5',
     step: 4,
+    customerMessage:
+      '¡Nuestros cocineros están preparando tu pedido con el mayor cuidado!',
+    actionTip: '💡 Pronto estará listo. Te avisaremos cuando esté terminado.',
   },
   READY: {
     emoji: '✅',
@@ -84,6 +101,9 @@ const STATUS_CONFIG: Record<
     color: '#22c55e',
     bgColor: '#dcfce7',
     step: 5,
+    customerMessage: '¡Tu pedido está listo y esperándote!',
+    actionTip:
+      '💡 Si es delivery, el repartidor está en camino. Si es retiro, acercate al local.',
   },
   DELIVERED: {
     emoji: '🎉',
@@ -92,6 +112,9 @@ const STATUS_CONFIG: Record<
     color: '#8b5cf6',
     bgColor: '#ede9fe',
     step: 6,
+    customerMessage:
+      '¡Esperamos que disfrutes tu pedido! Gracias por elegirnos.',
+    actionTip: '💜 Si te gustó, contales a tus amigos. ¡Nos ayuda mucho!',
   },
   CANCELLED: {
     emoji: '❌',
@@ -100,6 +123,8 @@ const STATUS_CONFIG: Record<
     color: '#ef4444',
     bgColor: '#fee2e2',
     step: -1,
+    customerMessage: 'Lamentamos informarte que tu pedido ha sido cancelado.',
+    actionTip: '📞 Si tenés dudas, contactanos y te ayudaremos.',
   },
 };
 
@@ -244,11 +269,10 @@ export class EmailService {
   private getBaseStyles(): string {
     return `
       <style>
-        /* Reset */
+        /* Reset & Base */
         body, table, td, p, a, li { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
         body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
         
-        /* Base */
         body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
           background-color: #f8fafc;
@@ -256,12 +280,50 @@ export class EmailService {
           line-height: 1.6;
         }
         
+        /* Links */
+        a { color: #10b981; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        
+        /* Buttons */
+        .btn-primary {
+          display: inline-block;
+          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+          color: #ffffff !important;
+          text-decoration: none;
+          padding: 18px 40px;
+          border-radius: 12px;
+          font-weight: 700;
+          font-size: 16px;
+          box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+          transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        /* Cards */
+        .card {
+          background: #ffffff;
+          border-radius: 12px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        
         /* Responsive */
         @media screen and (max-width: 600px) {
-          .email-content { padding: 20px !important; }
-          .email-header { padding: 30px 20px !important; }
-          .email-header h1 { font-size: 24px !important; }
-          .btn-primary { padding: 14px 24px !important; font-size: 15px !important; }
+          .email-wrapper { padding: 16px !important; }
+          .email-content { padding: 24px !important; }
+          .email-header { padding: 32px 24px !important; }
+          .email-header h1 { font-size: 22px !important; }
+          .btn-primary { padding: 16px 28px !important; font-size: 15px !important; width: 100% !important; box-sizing: border-box !important; text-align: center !important; }
+          .order-item-row { display: block !important; }
+          .order-item-price { text-align: left !important; padding-top: 8px !important; }
+          .progress-step { width: 50% !important; margin-bottom: 16px !important; }
+          .hide-mobile { display: none !important; }
+        }
+        
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+          .email-body { background-color: #1e293b !important; }
+          .email-card { background-color: #334155 !important; }
+          .text-primary { color: #f1f5f9 !important; }
+          .text-secondary { color: #cbd5e1 !important; }
         }
       </style>
     `;
@@ -276,19 +338,33 @@ export class EmailService {
     restaurant: RestaurantData,
     trackingUrl: string,
   ): string {
+    const orderTime = new Date().toLocaleTimeString('es-AR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const orderDate = new Date().toLocaleDateString('es-AR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    });
+
     const itemsHtml = order.items
       .map(
         (item) => `
-        <tr>
-          <td style="padding: 16px 0; border-bottom: 1px solid #e2e8f0;">
+        <tr class="order-item-row">
+          <td style="padding: 16px 0; border-bottom: 1px solid #f1f5f9;">
             <table cellpadding="0" cellspacing="0" width="100%">
               <tr>
-                <td>
-                  <span style="display: inline-block; background: #10b981; color: white; padding: 3px 10px; border-radius: 6px; font-size: 13px; font-weight: 700; margin-right: 10px;">${item.quantity}x</span>
-                  <span style="font-weight: 600; color: #1e293b; font-size: 15px;">${item.name}</span>
-                  ${item.notes ? `<p style="margin: 6px 0 0; font-size: 13px; color: #64748b;">📝 ${item.notes}</p>` : ''}
+                <td style="vertical-align: top;">
+                  <div style="display: flex; align-items: flex-start;">
+                    <span style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 4px 10px; border-radius: 8px; font-size: 13px; font-weight: 700; min-width: 28px; text-align: center;">${item.quantity}</span>
+                    <div style="margin-left: 12px;">
+                      <p style="margin: 0; font-weight: 600; color: #1e293b; font-size: 15px; line-height: 1.4;">${item.name}</p>
+                      ${item.notes ? `<p style="margin: 6px 0 0; font-size: 13px; color: #64748b; background: #f8fafc; padding: 6px 10px; border-radius: 6px; border-left: 3px solid #10b981;">📝 ${item.notes}</p>` : ''}
+                    </div>
+                  </div>
                 </td>
-                <td style="text-align: right; font-weight: 600; color: #1e293b; white-space: nowrap;">
+                <td class="order-item-price" style="text-align: right; font-weight: 600; color: #1e293b; white-space: nowrap; vertical-align: top; padding-left: 16px;">
                   $${this.formatPrice(item.unitPrice * item.quantity)}
                 </td>
               </tr>
@@ -300,6 +376,7 @@ export class EmailService {
       .join('');
 
     const deliveryTypeHtml = this.getDeliveryTypeHtml(order);
+    const estimatedTime = this.getEstimatedTime(order);
 
     return `
 <!DOCTYPE html>
@@ -311,130 +388,152 @@ export class EmailService {
   <title>Pedido Confirmado - ${order.orderNumber}</title>
   ${this.getBaseStyles()}
 </head>
-<body style="margin: 0; padding: 0; background-color: #f8fafc;">
-  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc;">
+<body style="margin: 0; padding: 0; background-color: #f1f5f9;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f1f5f9;">
     <tr>
-      <td style="padding: 40px 20px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08);">
+      <td class="email-wrapper" style="padding: 40px 20px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
           
-          <!-- Header -->
+          <!-- Header con gradiente mejorado -->
           <tr>
-            <td style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 48px 40px; text-align: center;">
-              <div style="font-size: 56px; margin-bottom: 16px;">✅</div>
-              <h1 style="margin: 0 0 8px; font-size: 28px; font-weight: 700; color: #ffffff;">¡Pedido Confirmado!</h1>
-              <p style="margin: 0; font-size: 16px; color: rgba(255,255,255,0.9);">Tu pago se procesó exitosamente</p>
-              <div style="margin-top: 20px; background: rgba(255,255,255,0.2); display: inline-block; padding: 10px 24px; border-radius: 30px;">
-                <span style="color: white; font-weight: 700; font-size: 18px;">Pedido #${order.orderNumber}</span>
+            <td class="email-header" style="background: linear-gradient(135deg, #10b981 0%, #059669 50%, #047857 100%); padding: 52px 40px; text-align: center;">
+              <div style="width: 80px; height: 80px; background: rgba(255,255,255,0.2); border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;">
+                <span style="font-size: 44px; line-height: 80px;">✅</span>
+              </div>
+              <h1 style="margin: 0 0 8px; font-size: 30px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">¡Pedido Confirmado!</h1>
+              <p style="margin: 0 0 20px; font-size: 16px; color: rgba(255,255,255,0.9);">Tu pago se procesó exitosamente</p>
+              <div style="background: rgba(255,255,255,0.25); backdrop-filter: blur(10px); display: inline-block; padding: 12px 28px; border-radius: 50px; border: 1px solid rgba(255,255,255,0.3);">
+                <span style="color: white; font-weight: 700; font-size: 18px; letter-spacing: 0.5px;">🧾 Pedido #${order.orderNumber}</span>
+              </div>
+            </td>
+          </tr>
+          
+          <!-- Barra de tiempo -->
+          <tr>
+            <td style="padding: 0 32px;">
+              <div style="background: linear-gradient(90deg, #f0fdf4, #dcfce7); margin-top: -20px; border-radius: 12px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #bbf7d0;">
+                <table cellpadding="0" cellspacing="0" width="100%">
+                  <tr>
+                    <td style="color: #166534; font-size: 14px;">
+                      📅 <strong>${orderDate}</strong> a las <strong>${orderTime}</strong>
+                    </td>
+                    ${estimatedTime ? `<td style="text-align: right; color: #166534; font-size: 14px;">⏱️ <strong>${estimatedTime}</strong></td>` : ''}
+                  </tr>
+                </table>
               </div>
             </td>
           </tr>
           
           <!-- Content -->
           <tr>
-            <td style="padding: 40px;">
+            <td class="email-content" style="padding: 36px 40px 40px;">
               
-              <!-- Greeting -->
-              <p style="font-size: 17px; color: #1e293b; margin: 0 0 8px;">
-                ¡Hola <strong>${order.customerName}</strong>! 👋
-              </p>
-              <p style="font-size: 15px; color: #64748b; margin: 0 0 32px; line-height: 1.6;">
-                Gracias por tu pedido en <strong style="color: #1e293b;">${restaurant.name}</strong>. 
-                Te avisaremos cada vez que el estado de tu pedido cambie.
-              </p>
+              <!-- Saludo personalizado -->
+              <div style="margin-bottom: 28px;">
+                <p style="font-size: 18px; color: #1e293b; margin: 0 0 8px;">
+                  ¡Hola <strong>${order.customerName}</strong>! 👋
+                </p>
+                <p style="font-size: 15px; color: #64748b; margin: 0; line-height: 1.7;">
+                  Gracias por tu pedido en <strong style="color: #1e293b;">${restaurant.name}</strong>. 
+                  Te mantendremos informado sobre cada actualización de tu pedido.
+                </p>
+              </div>
               
-              <!-- Order Status Progress -->
-              <table cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 32px;">
-                <tr>
-                  <td style="background: #f0fdf4; border-radius: 12px; padding: 24px;">
-                    <table cellpadding="0" cellspacing="0" width="100%">
-                      <tr>
-                        ${this.renderProgressSteps(2)}
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
+              <!-- Progress Steps mejorado -->
+              <div style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-radius: 16px; padding: 24px; margin-bottom: 28px; border: 1px solid #e2e8f0;">
+                <h3 style="margin: 0 0 20px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #64748b; text-align: center;">
+                  Estado de tu pedido
+                </h3>
+                <table cellpadding="0" cellspacing="0" width="100%">
+                  <tr>
+                    ${this.renderProgressSteps(2)}
+                  </tr>
+                </table>
+              </div>
               
-              <!-- Order Items -->
-              <table cellpadding="0" cellspacing="0" width="100%" style="background: #f8fafc; border-radius: 12px; overflow: hidden;">
-                <tr>
-                  <td style="padding: 20px;">
-                    <h3 style="margin: 0 0 16px; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">
-                      📦 Tu Pedido
-                    </h3>
-                    <table cellpadding="0" cellspacing="0" width="100%">
-                      ${itemsHtml}
-                    </table>
-                  </td>
-                </tr>
-              </table>
+              <!-- Detalle del pedido -->
+              <div style="background: #ffffff; border: 2px solid #e2e8f0; border-radius: 16px; overflow: hidden; margin-bottom: 24px;">
+                <div style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); padding: 16px 20px; border-bottom: 2px solid #e2e8f0;">
+                  <h3 style="margin: 0; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #475569;">
+                    📦 Detalle de tu pedido
+                  </h3>
+                </div>
+                <div style="padding: 8px 20px;">
+                  <table cellpadding="0" cellspacing="0" width="100%">
+                    ${itemsHtml}
+                  </table>
+                </div>
+              </div>
               
-              <!-- Totals -->
-              <table cellpadding="0" cellspacing="0" width="100%" style="margin-top: 24px;">
-                <tr>
-                  <td style="padding: 16px 0; border-bottom: 1px solid #e2e8f0;">
-                    <table cellpadding="0" cellspacing="0" width="100%">
-                      <tr>
-                        <td style="color: #64748b; font-size: 15px;">Subtotal</td>
-                        <td style="text-align: right; color: #1e293b; font-size: 15px;">$${this.formatPrice(order.subtotal)}</td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-                ${
-                  order.deliveryFee > 0
-                    ? `
-                <tr>
-                  <td style="padding: 16px 0; border-bottom: 1px solid #e2e8f0;">
-                    <table cellpadding="0" cellspacing="0" width="100%">
-                      <tr>
-                        <td style="color: #64748b; font-size: 15px;">🚚 Envío</td>
-                        <td style="text-align: right; color: #1e293b; font-size: 15px;">$${this.formatPrice(order.deliveryFee)}</td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-                `
-                    : ''
-                }
-                ${
-                  order.tip > 0
-                    ? `
-                <tr>
-                  <td style="padding: 16px 0; border-bottom: 1px solid #e2e8f0;">
-                    <table cellpadding="0" cellspacing="0" width="100%">
-                      <tr>
-                        <td style="color: #64748b; font-size: 15px;">💝 Propina</td>
-                        <td style="text-align: right; color: #1e293b; font-size: 15px;">$${this.formatPrice(order.tip)}</td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-                `
-                    : ''
-                }
-                <tr>
-                  <td style="padding: 20px 0;">
-                    <table cellpadding="0" cellspacing="0" width="100%">
-                      <tr>
-                        <td style="color: #1e293b; font-size: 20px; font-weight: 700;">Total</td>
-                        <td style="text-align: right; color: #10b981; font-size: 24px; font-weight: 700;">$${this.formatPrice(order.total)}</td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
+              ${
+                order.notes
+                  ? `
+              <!-- Notas del pedido -->
+              <div style="background: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 0 12px 12px 0; padding: 16px 20px; margin-bottom: 24px;">
+                <p style="margin: 0; font-size: 14px; color: #92400e;">
+                  <strong>📝 Notas:</strong> ${order.notes}
+                </p>
+              </div>
+              `
+                  : ''
+              }
               
-              <!-- Delivery Info -->
+              <!-- Totales con diseño mejorado -->
+              <div style="background: #f8fafc; border-radius: 16px; padding: 20px; margin-bottom: 24px;">
+                <table cellpadding="0" cellspacing="0" width="100%">
+                  <tr>
+                    <td style="padding: 10px 0; color: #64748b; font-size: 15px;">Subtotal</td>
+                    <td style="text-align: right; color: #1e293b; font-size: 15px; font-weight: 500;">$${this.formatPrice(order.subtotal)}</td>
+                  </tr>
+                  ${
+                    order.deliveryFee > 0
+                      ? `
+                  <tr>
+                    <td style="padding: 10px 0; color: #64748b; font-size: 15px;">🚚 Costo de envío</td>
+                    <td style="text-align: right; color: #1e293b; font-size: 15px; font-weight: 500;">$${this.formatPrice(order.deliveryFee)}</td>
+                  </tr>
+                  `
+                      : ''
+                  }
+                  ${
+                    order.tip > 0
+                      ? `
+                  <tr>
+                    <td style="padding: 10px 0; color: #64748b; font-size: 15px;">💜 Propina</td>
+                    <td style="text-align: right; color: #1e293b; font-size: 15px; font-weight: 500;">$${this.formatPrice(order.tip)}</td>
+                  </tr>
+                  `
+                      : ''
+                  }
+                  <tr>
+                    <td colspan="2" style="padding-top: 16px; border-top: 2px dashed #e2e8f0;"></td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 8px 0; color: #1e293b; font-size: 18px; font-weight: 700;">Total pagado</td>
+                    <td style="text-align: right; font-size: 24px; font-weight: 800;">
+                      <span style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">$${this.formatPrice(order.total)}</span>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+              
+              <!-- Información de entrega -->
               ${deliveryTypeHtml}
               
-              <!-- CTA Button -->
+              <!-- CTA Button mejorado -->
               <table cellpadding="0" cellspacing="0" width="100%" style="margin-top: 32px;">
                 <tr>
                   <td style="text-align: center;">
-                    <a href="${trackingUrl}" style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; text-decoration: none; padding: 18px 40px; border-radius: 12px; font-weight: 700; font-size: 16px; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);">
+                    <a href="${trackingUrl}" class="btn-primary" style="display: inline-block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff; text-decoration: none; padding: 20px 48px; border-radius: 14px; font-weight: 700; font-size: 16px; box-shadow: 0 8px 24px rgba(16, 185, 129, 0.4);">
                       📍 Seguir mi pedido en vivo
                     </a>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="text-align: center; padding-top: 16px;">
+                    <p style="margin: 0; font-size: 13px; color: #94a3b8;">
+                      O copiá este enlace: <a href="${trackingUrl}" style="color: #10b981;">${trackingUrl.substring(0, 50)}...</a>
+                    </p>
                   </td>
                 </tr>
               </table>
@@ -442,10 +541,23 @@ export class EmailService {
             </td>
           </tr>
           
-          <!-- Footer -->
+          <!-- Footer mejorado -->
           ${this.renderFooter(restaurant)}
           
         </table>
+        
+        <!-- Mini footer con disclaimer -->
+        <table cellpadding="0" cellspacing="0" width="600" style="max-width: 600px; margin: 24px auto 0;">
+          <tr>
+            <td style="text-align: center; padding: 0 20px;">
+              <p style="margin: 0; font-size: 12px; color: #94a3b8; line-height: 1.6;">
+                Este email fue enviado porque realizaste un pedido en ${restaurant.name}.<br>
+                Si no realizaste este pedido, por favor contactanos inmediatamente.
+              </p>
+            </td>
+          </tr>
+        </table>
+        
       </td>
     </tr>
   </table>
@@ -463,19 +575,37 @@ export class EmailService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _restaurant: RestaurantData,
   ): string {
+    const orderTime = new Date().toLocaleTimeString('es-AR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const orderDate = new Date().toLocaleDateString('es-AR', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    });
+
     const itemsHtml = order.items
       .map(
         (item) => `
         <tr>
-          <td style="padding: 14px 0; border-bottom: 1px solid #e2e8f0;">
+          <td style="padding: 16px 0; border-bottom: 1px solid #f1f5f9;">
             <table cellpadding="0" cellspacing="0" width="100%">
               <tr>
-                <td>
-                  <span style="display: inline-block; background: #f59e0b; color: white; padding: 4px 12px; border-radius: 6px; font-size: 14px; font-weight: 700; margin-right: 10px;">${item.quantity}x</span>
-                  <span style="font-weight: 600; color: #1e293b; font-size: 16px;">${item.name}</span>
-                  ${item.notes ? `<p style="margin: 8px 0 0; padding: 8px 12px; background: #fef3c7; border-radius: 6px; font-size: 13px; color: #92400e; border-left: 3px solid #f59e0b;">📝 <strong>Nota:</strong> ${item.notes}</p>` : ''}
+                <td style="vertical-align: top;">
+                  <div style="display: inline-block; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 6px 14px; border-radius: 8px; font-size: 15px; font-weight: 800; margin-right: 12px;">×${item.quantity}</div>
+                  <span style="font-weight: 700; color: #1e293b; font-size: 16px;">${item.name}</span>
+                  ${
+                    item.notes
+                      ? `
+                    <div style="margin-top: 10px; padding: 12px 14px; background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 8px; font-size: 14px; color: #78350f; border-left: 4px solid #f59e0b;">
+                      <strong>⚠️ NOTA:</strong> ${item.notes}
+                    </div>
+                  `
+                      : ''
+                  }
                 </td>
-                <td style="text-align: right; font-weight: 700; color: #1e293b; font-size: 16px; white-space: nowrap; vertical-align: top;">
+                <td style="text-align: right; font-weight: 700; color: #1e293b; font-size: 16px; white-space: nowrap; vertical-align: top; padding-left: 16px;">
                   $${this.formatPrice(item.unitPrice * item.quantity)}
                 </td>
               </tr>
@@ -486,113 +616,149 @@ export class EmailService {
       )
       .join('');
 
+    const orderTypeConfig = {
+      DELIVERY: {
+        icon: '🚚',
+        label: 'DELIVERY',
+        color: '#3b82f6',
+        bg: '#dbeafe',
+      },
+      PICKUP: { icon: '🏃', label: 'RETIRO', color: '#10b981', bg: '#d1fae5' },
+      DINE_IN: {
+        icon: '🍽️',
+        label: 'EN LOCAL',
+        color: '#8b5cf6',
+        bg: '#ede9fe',
+      },
+    };
+    const typeInfo =
+      orderTypeConfig[order.type as keyof typeof orderTypeConfig] ||
+      orderTypeConfig.PICKUP;
+
     return `
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nuevo Pedido - ${order.orderNumber}</title>
+  <title>🔔 NUEVO PEDIDO - ${order.orderNumber}</title>
   ${this.getBaseStyles()}
 </head>
-<body style="margin: 0; padding: 0; background-color: #f8fafc;">
-  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc;">
+<body style="margin: 0; padding: 0; background-color: #fef3c7;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #fef3c7;">
     <tr>
-      <td style="padding: 40px 20px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08);">
+      <td class="email-wrapper" style="padding: 32px 20px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 50px rgba(245, 158, 11, 0.3);">
           
-          <!-- Header -->
+          <!-- Header con diseño de urgencia -->
           <tr>
-            <td style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); padding: 40px; text-align: center;">
-              <div style="font-size: 48px; margin-bottom: 12px;">🔔</div>
-              <h1 style="margin: 0 0 8px; font-size: 26px; font-weight: 700; color: #ffffff;">¡Nuevo Pedido!</h1>
-              <div style="margin-top: 16px; background: rgba(255,255,255,0.2); display: inline-block; padding: 10px 24px; border-radius: 30px;">
-                <span style="color: white; font-weight: 700; font-size: 18px;">#${order.orderNumber}</span>
+            <td style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 50%, #b45309 100%); padding: 36px 40px; text-align: center;">
+              <div style="background: rgba(255,255,255,0.2); width: 72px; height: 72px; border-radius: 50%; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center;">
+                <span style="font-size: 40px; line-height: 72px;">🔔</span>
+              </div>
+              <h1 style="margin: 0 0 6px; font-size: 28px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">¡NUEVO PEDIDO!</h1>
+              <p style="margin: 0 0 16px; font-size: 15px; color: rgba(255,255,255,0.9);">Recibido ${orderDate} a las ${orderTime}</p>
+              <div style="display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center;">
+                <span style="background: rgba(255,255,255,0.25); color: white; font-weight: 700; font-size: 18px; padding: 10px 24px; border-radius: 50px; border: 1px solid rgba(255,255,255,0.3);">
+                  #${order.orderNumber}
+                </span>
+                <span style="background: ${typeInfo.bg}; color: ${typeInfo.color}; font-weight: 700; font-size: 14px; padding: 10px 20px; border-radius: 50px;">
+                  ${typeInfo.icon} ${typeInfo.label}
+                </span>
               </div>
             </td>
           </tr>
           
-          <!-- Urgent Banner -->
+          <!-- Banner de acción urgente -->
           <tr>
-            <td style="padding: 0 32px;">
-              <table cellpadding="0" cellspacing="0" width="100%" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; margin-top: -20px; position: relative; z-index: 1;">
-                <tr>
-                  <td style="padding: 20px; text-align: center;">
-                    <span style="font-size: 24px;">⚡</span>
-                    <strong style="color: #92400e; font-size: 16px; margin-left: 8px;">Pedido pagado - Confirmar y preparar</strong>
-                  </td>
-                </tr>
-              </table>
+            <td style="padding: 0 24px;">
+              <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); margin-top: -16px; border-radius: 12px; padding: 16px 20px; text-align: center; border: 2px dashed #f59e0b; position: relative;">
+                <span style="font-size: 20px; vertical-align: middle;">⚡</span>
+                <strong style="color: #78350f; font-size: 15px; margin-left: 8px; vertical-align: middle;">PAGO CONFIRMADO - PREPARAR INMEDIATAMENTE</strong>
+              </div>
             </td>
           </tr>
           
           <!-- Content -->
           <tr>
-            <td style="padding: 32px 40px 40px;">
+            <td class="email-content" style="padding: 28px 32px 36px;">
               
-              <!-- Customer Info -->
-              <table cellpadding="0" cellspacing="0" width="100%" style="background: #f8fafc; border-radius: 12px; margin-bottom: 24px;">
+              <!-- Info del cliente y tipo de orden en grid -->
+              <table cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 20px;">
                 <tr>
-                  <td style="padding: 20px;">
-                    <h3 style="margin: 0 0 16px; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">
-                      👤 Cliente
-                    </h3>
-                    <p style="margin: 0 0 8px; font-size: 18px; font-weight: 700; color: #1e293b;">${order.customerName}</p>
-                    <p style="margin: 0; font-size: 15px; color: #64748b;">
-                      📱 <a href="tel:${order.customerPhone}" style="color: #3b82f6; text-decoration: none;">${order.customerPhone}</a>
-                      ${order.customerEmail ? `<br>📧 <a href="mailto:${order.customerEmail}" style="color: #3b82f6; text-decoration: none;">${order.customerEmail}</a>` : ''}
-                    </p>
+                  <td style="width: 48%; vertical-align: top; padding-right: 8px;">
+                    <div style="background: #f8fafc; border-radius: 14px; padding: 18px; height: 100%; border: 1px solid #e2e8f0;">
+                      <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8;">👤 Cliente</p>
+                      <p style="margin: 0 0 10px; font-size: 17px; font-weight: 700; color: #1e293b;">${order.customerName}</p>
+                      <p style="margin: 0; font-size: 14px; color: #64748b;">
+                        <a href="tel:${order.customerPhone}" style="color: #3b82f6; text-decoration: none; font-weight: 600;">📱 ${order.customerPhone}</a>
+                      </p>
+                      ${order.customerEmail ? `<p style="margin: 4px 0 0; font-size: 13px; color: #64748b;">${order.customerEmail}</p>` : ''}
+                    </div>
+                  </td>
+                  <td style="width: 48%; vertical-align: top; padding-left: 8px;">
+                    <div style="background: ${typeInfo.bg}; border-radius: 14px; padding: 18px; height: 100%; border: 1px solid ${typeInfo.color}20;">
+                      <p style="margin: 0 0 4px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: ${typeInfo.color};">${typeInfo.icon} ${typeInfo.label}</p>
+                      ${
+                        order.type === 'DELIVERY'
+                          ? `
+                        <p style="margin: 0 0 6px; font-size: 15px; font-weight: 600; color: #1e293b; line-height: 1.4;">📍 ${order.deliveryAddress}</p>
+                        ${order.deliveryNotes ? `<p style="margin: 0; font-size: 13px; color: #64748b; padding: 8px; background: rgba(255,255,255,0.6); border-radius: 6px;">📝 ${order.deliveryNotes}</p>` : ''}
+                      `
+                          : `
+                        <p style="margin: 0; font-size: 15px; font-weight: 600; color: #1e293b;">
+                          ${order.type === 'PICKUP' ? 'El cliente retira en el local' : 'Servir en mesa'}
+                        </p>
+                      `
+                      }
+                    </div>
                   </td>
                 </tr>
               </table>
               
-              <!-- Delivery Type -->
-              <table cellpadding="0" cellspacing="0" width="100%" style="background: ${order.type === 'DELIVERY' ? '#dbeafe' : order.type === 'PICKUP' ? '#d1fae5' : '#f3e8ff'}; border-radius: 12px; margin-bottom: 24px;">
-                <tr>
-                  <td style="padding: 20px;">
-                    <h3 style="margin: 0 0 12px; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">
-                      ${order.type === 'DELIVERY' ? '🚚 Delivery' : order.type === 'PICKUP' ? '🏃 Retiro en local' : '🍽️ Consumo en local'}
-                    </h3>
-                    ${
-                      order.type === 'DELIVERY'
-                        ? `
-                      <p style="margin: 0 0 8px; font-size: 16px; font-weight: 600; color: #1e293b;">📍 ${order.deliveryAddress}</p>
-                      ${order.deliveryNotes ? `<p style="margin: 0; font-size: 14px; color: #64748b; padding: 10px; background: rgba(255,255,255,0.5); border-radius: 6px;">📝 ${order.deliveryNotes}</p>` : ''}
-                    `
-                        : ''
-                    }
-                  </td>
-                </tr>
-              </table>
+              ${
+                order.notes
+                  ? `
+              <!-- Notas generales del pedido -->
+              <div style="background: #fef2f2; border-left: 4px solid #ef4444; border-radius: 0 12px 12px 0; padding: 14px 18px; margin-bottom: 20px;">
+                <p style="margin: 0; font-size: 14px; color: #991b1b;">
+                  <strong>⚠️ NOTA DEL CLIENTE:</strong> ${order.notes}
+                </p>
+              </div>
+              `
+                  : ''
+              }
               
-              <!-- Order Items -->
-              <table cellpadding="0" cellspacing="0" width="100%" style="background: #ffffff; border: 2px solid #e2e8f0; border-radius: 12px;">
-                <tr>
-                  <td style="padding: 20px;">
-                    <h3 style="margin: 0 0 16px; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b;">
-                      📦 Items del Pedido
-                    </h3>
-                    <table cellpadding="0" cellspacing="0" width="100%">
-                      ${itemsHtml}
-                    </table>
-                  </td>
-                </tr>
-              </table>
+              <!-- Items del pedido con diseño destacado -->
+              <div style="background: #ffffff; border: 2px solid #1e293b; border-radius: 16px; overflow: hidden; margin-bottom: 20px;">
+                <div style="background: #1e293b; padding: 14px 20px;">
+                  <h3 style="margin: 0; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #ffffff;">
+                    📦 ITEMS DEL PEDIDO (${order.items.reduce((sum, i) => sum + i.quantity, 0)} items)
+                  </h3>
+                </div>
+                <div style="padding: 8px 20px 16px;">
+                  <table cellpadding="0" cellspacing="0" width="100%">
+                    ${itemsHtml}
+                  </table>
+                </div>
+              </div>
               
-              <!-- Total -->
-              <table cellpadding="0" cellspacing="0" width="100%" style="margin-top: 24px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 12px;">
-                <tr>
-                  <td style="padding: 24px;">
-                    <table cellpadding="0" cellspacing="0" width="100%">
-                      <tr>
-                        <td style="color: rgba(255,255,255,0.9); font-size: 16px;">💰 Total del pedido</td>
-                        <td style="text-align: right; color: #ffffff; font-size: 28px; font-weight: 700;">$${this.formatPrice(order.total)}</td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
+              <!-- Total destacado -->
+              <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); border-radius: 16px; padding: 24px; text-align: center;">
+                <p style="margin: 0 0 8px; font-size: 14px; color: rgba(255,255,255,0.9); text-transform: uppercase; letter-spacing: 1px;">💰 Total del Pedido</p>
+                <p style="margin: 0; font-size: 36px; font-weight: 800; color: #ffffff; letter-spacing: -1px;">$${this.formatPrice(order.total)}</p>
+                ${order.tip > 0 ? `<p style="margin: 8px 0 0; font-size: 14px; color: rgba(255,255,255,0.9);">Incluye propina de $${this.formatPrice(order.tip)} 💜</p>` : ''}
+              </div>
               
+            </td>
+          </tr>
+          
+          <!-- Footer para restaurante -->
+          <tr>
+            <td style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+              <p style="margin: 0; font-size: 13px; color: #64748b;">
+                Recibido automáticamente por el sistema de pedidos • ${orderDate} ${orderTime}
+              </p>
             </td>
           </tr>
           
@@ -615,6 +781,13 @@ export class EmailService {
     trackingUrl: string,
   ): string {
     const config = STATUS_CONFIG[order.status] || STATUS_CONFIG.PENDING;
+    const updateTime = new Date().toLocaleTimeString('es-AR', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    // Generar gradiente dinámico basado en el color del estado
+    const gradientColor = this.adjustColor(config.color, -20);
 
     return `
 <!DOCTYPE html>
@@ -622,75 +795,89 @@ export class EmailService {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${config.title} - ${order.orderNumber}</title>
+  <title>${config.title} - Pedido #${order.orderNumber}</title>
   ${this.getBaseStyles()}
 </head>
-<body style="margin: 0; padding: 0; background-color: #f8fafc;">
-  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc;">
+<body style="margin: 0; padding: 0; background-color: #f1f5f9;">
+  <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f1f5f9;">
     <tr>
-      <td style="padding: 40px 20px;">
-        <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08);">
+      <td class="email-wrapper" style="padding: 40px 20px;">
+        <table role="presentation" cellpadding="0" cellspacing="0" width="600" style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.1);">
           
-          <!-- Header with status color -->
+          <!-- Header con color del estado -->
           <tr>
-            <td style="background: ${config.color}; padding: 48px 40px; text-align: center;">
-              <div style="font-size: 72px; margin-bottom: 16px;">${config.emoji}</div>
-              <h1 style="margin: 0 0 8px; font-size: 28px; font-weight: 700; color: #ffffff;">${config.title}</h1>
-              <p style="margin: 0; font-size: 16px; color: rgba(255,255,255,0.9);">${config.subtitle}</p>
+            <td class="email-header" style="background: linear-gradient(135deg, ${config.color} 0%, ${gradientColor} 100%); padding: 52px 40px; text-align: center;">
+              <div style="width: 100px; height: 100px; background: rgba(255,255,255,0.2); border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px);">
+                <span style="font-size: 56px; line-height: 100px;">${config.emoji}</span>
+              </div>
+              <h1 style="margin: 0 0 10px; font-size: 32px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">${config.title}</h1>
+              <p style="margin: 0; font-size: 17px; color: rgba(255,255,255,0.95);">${config.subtitle}</p>
             </td>
           </tr>
           
           <!-- Content -->
           <tr>
-            <td style="padding: 40px;">
+            <td class="email-content" style="padding: 40px;">
               
-              <!-- Order Number Badge -->
-              <table cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 32px;">
-                <tr>
-                  <td style="text-align: center;">
-                    <span style="display: inline-block; background: ${config.bgColor}; color: ${config.color}; padding: 12px 24px; border-radius: 30px; font-weight: 700; font-size: 16px;">
-                      Pedido #${order.orderNumber}
-                    </span>
-                  </td>
-                </tr>
-              </table>
+              <!-- Badge del pedido -->
+              <div style="text-align: center; margin-bottom: 28px;">
+                <span style="display: inline-block; background: ${config.bgColor}; color: ${config.color}; padding: 14px 28px; border-radius: 50px; font-weight: 700; font-size: 16px; border: 2px solid ${config.color}20;">
+                  🧾 Pedido #${order.orderNumber}
+                </span>
+                <p style="margin: 12px 0 0; font-size: 13px; color: #94a3b8;">Actualizado a las ${updateTime}</p>
+              </div>
               
-              <!-- Progress Tracker -->
+              <!-- Progress Tracker mejorado -->
               ${
                 order.status !== 'CANCELLED'
                   ? `
-              <table cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 32px;">
-                <tr>
-                  <td style="background: #f8fafc; border-radius: 12px; padding: 24px;">
-                    <table cellpadding="0" cellspacing="0" width="100%">
-                      <tr>
-                        ${this.renderProgressSteps(config.step)}
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
+              <div style="background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); border-radius: 16px; padding: 28px 24px; margin-bottom: 28px; border: 1px solid #e2e8f0;">
+                <h3 style="margin: 0 0 24px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #64748b; text-align: center;">
+                  Progreso de tu pedido
+                </h3>
+                <table cellpadding="0" cellspacing="0" width="100%">
+                  <tr>
+                    ${this.renderProgressSteps(config.step)}
+                  </tr>
+                </table>
+              </div>
               `
                   : ''
               }
               
-              <!-- Status Message -->
-              <table cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 32px;">
-                <tr>
-                  <td style="text-align: center; padding: 24px; background: ${config.bgColor}; border-radius: 12px;">
-                    <p style="margin: 0; font-size: 16px; color: #1e293b; line-height: 1.6;">
-                      ${this.getStatusDetailedMessage(order.status, order.type, restaurant.name)}
-                    </p>
-                  </td>
-                </tr>
-              </table>
+              <!-- Mensaje personalizado del estado -->
+              <div style="background: ${config.bgColor}; border-radius: 16px; padding: 24px; margin-bottom: 28px; border-left: 5px solid ${config.color};">
+                <p style="margin: 0 0 12px; font-size: 16px; color: #1e293b; line-height: 1.7;">
+                  ${config.customerMessage}
+                </p>
+                <p style="margin: 0; font-size: 14px; color: #64748b; font-style: italic;">
+                  ${config.actionTip}
+                </p>
+              </div>
+              
+              <!-- Información del restaurante -->
+              <div style="background: #f8fafc; border-radius: 12px; padding: 20px; margin-bottom: 28px;">
+                <table cellpadding="0" cellspacing="0" width="100%">
+                  <tr>
+                    <td>
+                      <p style="margin: 0 0 4px; font-size: 14px; font-weight: 700; color: #1e293b;">${restaurant.name}</p>
+                      <p style="margin: 0; font-size: 13px; color: #64748b;">📍 ${restaurant.address}</p>
+                    </td>
+                    <td style="text-align: right;">
+                      <a href="tel:${restaurant.phone}" style="display: inline-block; background: #10b981; color: white; text-decoration: none; padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 600;">
+                        📞 Llamar
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+              </div>
               
               <!-- CTA Button -->
-              <table cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 16px;">
+              <table cellpadding="0" cellspacing="0" width="100%">
                 <tr>
                   <td style="text-align: center;">
-                    <a href="${trackingUrl}" style="display: inline-block; background: ${config.color}; color: #ffffff; text-decoration: none; padding: 18px 40px; border-radius: 12px; font-weight: 700; font-size: 16px;">
-                      📍 Ver estado del pedido
+                    <a href="${trackingUrl}" class="btn-primary" style="display: inline-block; background: linear-gradient(135deg, ${config.color} 0%, ${gradientColor} 100%); color: #ffffff; text-decoration: none; padding: 20px 48px; border-radius: 14px; font-weight: 700; font-size: 16px; box-shadow: 0 8px 24px ${config.color}40;">
+                      📍 Ver estado en tiempo real
                     </a>
                   </td>
                 </tr>
@@ -703,6 +890,18 @@ export class EmailService {
           ${this.renderFooter(restaurant)}
           
         </table>
+        
+        <!-- Mini footer -->
+        <table cellpadding="0" cellspacing="0" width="600" style="max-width: 600px; margin: 24px auto 0;">
+          <tr>
+            <td style="text-align: center; padding: 0 20px;">
+              <p style="margin: 0; font-size: 12px; color: #94a3b8; line-height: 1.6;">
+                Recibís este email porque tenés un pedido activo en ${restaurant.name}.
+              </p>
+            </td>
+          </tr>
+        </table>
+        
       </td>
     </tr>
   </table>
@@ -714,6 +913,34 @@ export class EmailService {
   // ─────────────────────────────────────────────────────────────
   // Helper Methods
   // ─────────────────────────────────────────────────────────────
+
+  /**
+   * Ajusta el brillo de un color hex
+   */
+  private adjustColor(hex: string, percent: number): string {
+    const num = parseInt(hex.replace('#', ''), 16);
+    const amt = Math.round(2.55 * percent);
+    const R = Math.max(0, Math.min(255, (num >> 16) + amt));
+    const G = Math.max(0, Math.min(255, ((num >> 8) & 0x00ff) + amt));
+    const B = Math.max(0, Math.min(255, (num & 0x0000ff) + amt));
+    return `#${(0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1)}`;
+  }
+
+  /**
+   * Calcula tiempo estimado basado en tipo de orden y items
+   */
+  private getEstimatedTime(order: OrderData): string | null {
+    const totalItems = order.items.reduce((sum, i) => sum + i.quantity, 0);
+    let baseMinutes = 15 + totalItems * 3; // Base + 3 min por item
+
+    if (order.type === 'DELIVERY') {
+      baseMinutes += 20; // Tiempo de entrega
+      return `Estimado: ${baseMinutes}-${baseMinutes + 15} min`;
+    } else if (order.type === 'PICKUP') {
+      return `Listo en: ~${baseMinutes} min`;
+    }
+    return null;
+  }
 
   private renderProgressSteps(currentStep: number): string {
     const steps = [
@@ -730,27 +957,27 @@ export class EmailService {
         const isLast = index === steps.length - 1;
 
         const circleStyle = isCompleted
-          ? 'background: #10b981; color: white;'
+          ? 'background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);'
           : 'background: #e2e8f0; color: #94a3b8;';
 
         const labelStyle = isActive
-          ? 'color: #10b981; font-weight: 600;'
+          ? 'color: #10b981; font-weight: 700;'
           : isCompleted
-            ? 'color: #64748b;'
+            ? 'color: #475569; font-weight: 500;'
             : 'color: #94a3b8;';
 
         const lineStyle =
           isCompleted && !isLast
-            ? 'background: #10b981;'
+            ? 'background: linear-gradient(90deg, #10b981, #059669);'
             : 'background: #e2e8f0;';
 
         return `
-          <td style="width: 25%; text-align: center; vertical-align: top; position: relative;">
-            <div style="display: inline-block; width: 36px; height: 36px; border-radius: 50%; ${circleStyle} line-height: 36px; font-size: 16px;">
+          <td class="progress-step" style="width: 25%; text-align: center; vertical-align: top; position: relative; padding: 0 4px;">
+            <div style="display: inline-block; width: 44px; height: 44px; border-radius: 50%; ${circleStyle} line-height: 44px; font-size: 18px; border: 3px solid ${isCompleted ? '#10b981' : '#e2e8f0'};">
               ${isCompleted ? '✓' : step.icon}
             </div>
-            <p style="margin: 8px 0 0; font-size: 11px; ${labelStyle}">${step.label}</p>
-            ${!isLast ? `<div style="position: absolute; top: 18px; left: 60%; width: 80%; height: 3px; ${lineStyle}"></div>` : ''}
+            <p style="margin: 10px 0 0; font-size: 12px; ${labelStyle}">${step.label}</p>
+            ${!isLast ? `<div style="position: absolute; top: 22px; left: 62%; width: 76%; height: 4px; ${lineStyle} border-radius: 2px;"></div>` : ''}
           </td>
         `;
       })
@@ -761,21 +988,27 @@ export class EmailService {
     const typeConfig = {
       DELIVERY: {
         icon: '🚚',
-        title: 'Delivery',
+        title: 'Entrega a domicilio',
+        subtitle: 'Te lo llevamos a tu puerta',
         color: '#3b82f6',
         bgColor: '#dbeafe',
+        borderColor: '#93c5fd',
       },
       PICKUP: {
         icon: '🏃',
         title: 'Retiro en local',
+        subtitle: 'Pasá a buscarlo cuando esté listo',
         color: '#10b981',
         bgColor: '#d1fae5',
+        borderColor: '#6ee7b7',
       },
       DINE_IN: {
         icon: '🍽️',
         title: 'Consumo en local',
+        subtitle: 'Te lo llevamos a tu mesa',
         color: '#8b5cf6',
         bgColor: '#ede9fe',
+        borderColor: '#c4b5fd',
       },
     };
 
@@ -783,23 +1016,27 @@ export class EmailService {
       typeConfig[order.type as keyof typeof typeConfig] || typeConfig.PICKUP;
 
     return `
-      <table cellpadding="0" cellspacing="0" width="100%" style="margin-top: 24px; background: ${config.bgColor}; border-radius: 12px;">
-        <tr>
-          <td style="padding: 20px;">
-            <h3 style="margin: 0 0 12px; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: ${config.color};">
-              ${config.icon} ${config.title}
-            </h3>
-            ${
-              order.type === 'DELIVERY' && order.deliveryAddress
-                ? `
-              <p style="margin: 0 0 8px; font-size: 15px; color: #1e293b;">📍 ${order.deliveryAddress}</p>
+      <div style="background: ${config.bgColor}; border-radius: 16px; border: 2px solid ${config.borderColor}; overflow: hidden; margin-top: 24px;">
+        <div style="padding: 20px;">
+          <div style="display: flex; align-items: center; margin-bottom: 12px;">
+            <span style="font-size: 28px; margin-right: 12px;">${config.icon}</span>
+            <div>
+              <p style="margin: 0; font-size: 16px; font-weight: 700; color: ${config.color};">${config.title}</p>
+              <p style="margin: 4px 0 0; font-size: 13px; color: #64748b;">${config.subtitle}</p>
+            </div>
+          </div>
+          ${
+            order.type === 'DELIVERY' && order.deliveryAddress
+              ? `
+            <div style="background: rgba(255,255,255,0.6); border-radius: 10px; padding: 14px; margin-top: 12px;">
+              <p style="margin: 0 0 6px; font-size: 15px; font-weight: 600; color: #1e293b;">📍 ${order.deliveryAddress}</p>
               ${order.deliveryNotes ? `<p style="margin: 0; font-size: 14px; color: #64748b;">📝 ${order.deliveryNotes}</p>` : ''}
-            `
-                : ''
-            }
-          </td>
-        </tr>
-      </table>
+            </div>
+          `
+              : ''
+          }
+        </div>
+      </div>
     `;
   }
 
@@ -836,13 +1073,37 @@ export class EmailService {
   private renderFooter(restaurant: RestaurantData): string {
     return `
       <tr>
-        <td style="background: #f1f5f9; padding: 32px; text-align: center;">
-          <p style="margin: 0 0 8px; font-size: 18px; font-weight: 700; color: #1e293b;">${restaurant.name}</p>
-          <p style="margin: 0 0 4px; font-size: 14px; color: #64748b;">📍 ${restaurant.address}</p>
-          <p style="margin: 0; font-size: 14px; color: #64748b;">📞 ${restaurant.phone}</p>
-          <div style="width: 60px; height: 3px; background: linear-gradient(90deg, #10b981, #3b82f6); margin: 20px auto; border-radius: 2px;"></div>
+        <td style="background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%); padding: 36px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+          <!-- Logo/nombre del restaurante -->
+          <div style="margin-bottom: 16px;">
+            <p style="margin: 0; font-size: 20px; font-weight: 800; color: #1e293b; letter-spacing: -0.5px;">${restaurant.name}</p>
+          </div>
+          
+          <!-- Info de contacto -->
+          <table cellpadding="0" cellspacing="0" style="margin: 0 auto 20px;">
+            <tr>
+              <td style="padding: 0 16px;">
+                <a href="https://maps.google.com/?q=${encodeURIComponent(restaurant.address)}" style="color: #64748b; text-decoration: none; font-size: 13px;">
+                  📍 ${restaurant.address}
+                </a>
+              </td>
+              <td style="padding: 0 16px; border-left: 1px solid #e2e8f0;">
+                <a href="tel:${restaurant.phone}" style="color: #64748b; text-decoration: none; font-size: 13px;">
+                  📞 ${restaurant.phone}
+                </a>
+              </td>
+            </tr>
+          </table>
+          
+          <!-- Separador decorativo -->
+          <div style="width: 80px; height: 4px; background: linear-gradient(90deg, #10b981, #3b82f6, #8b5cf6); margin: 0 auto 20px; border-radius: 2px;"></div>
+          
+          <!-- Help text -->
+          <p style="margin: 0 0 8px; font-size: 13px; color: #64748b;">
+            ¿Tenés alguna pregunta sobre tu pedido?
+          </p>
           <p style="margin: 0; font-size: 12px; color: #94a3b8;">
-            ¿Necesitás ayuda? Respondé este email o llamanos.
+            Respondé este email o llamanos, estamos para ayudarte 💚
           </p>
         </td>
       </tr>

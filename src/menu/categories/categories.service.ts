@@ -149,12 +149,17 @@ export class CategoriesService {
 
     let imagePath: string | null | undefined;
     if (dto.image) {
-      // Eliminar imagen anterior si existe
-      await this.imageProcessing.deleteImage(category.image);
-      imagePath = await this.imageProcessing.processImage(
-        dto.image,
-        this.imageType,
-      );
+      // Si la imagen no cambió, no la reprocesar
+      if (dto.image === category.image) {
+        imagePath = undefined; // Mantener la imagen existente
+      } else {
+        // Eliminar imagen anterior si existe
+        await this.imageProcessing.deleteImage(category.image);
+        imagePath = await this.imageProcessing.processImage(
+          dto.image,
+          this.imageType,
+        );
+      }
     }
 
     const updated = await this.prisma.category.update({

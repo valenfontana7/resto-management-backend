@@ -8,6 +8,7 @@ import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
+import { JwtModule, JwtService } from '@nestjs/jwt';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RestaurantsModule } from './restaurants/restaurants.module';
 import { MenuModule } from './menu/menu.module';
@@ -40,6 +41,11 @@ import { RequestLoggingMiddleware } from './common/middleware/request-logging.mi
         limit: 100, // 100 requests por minuto por IP
       },
     ]),
+    JwtModule.register({
+      global: true,
+      secret: process.env.JWT_SECRET || 'fallback-secret',
+      signOptions: { expiresIn: '24h' },
+    }),
     PrismaModule,
     CommonModule, // Servicios compartidos (ownership, image processing)
     AuthModule,
@@ -74,8 +80,7 @@ import { RequestLoggingMiddleware } from './common/middleware/request-logging.mi
     },
     {
       provide: APP_GUARD,
-      useFactory: (reflector: Reflector) => new JwtAuthGuard(reflector),
-      inject: [Reflector],
+      useClass: JwtAuthGuard,
     },
   ],
 })

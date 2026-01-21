@@ -325,6 +325,21 @@ export class S3Service {
     if (value == null) return value;
     const trimmed = String(value).trim();
     if (!trimmed) return value;
+
+    // Fix: Decodificar URLs mal codificadas (ej: /api/uploads/https%3A//images.unsplash.com/...)
+    if (trimmed.startsWith('/api/uploads/http')) {
+      try {
+        const decoded = decodeURIComponent(
+          trimmed.replace('/api/uploads/', ''),
+        );
+        if (/^https?:\/\//i.test(decoded)) {
+          return decoded; // Devolver la URL externa decodificada
+        }
+      } catch (e) {
+        // Si falla la decodificación, continuar con la lógica normal
+      }
+    }
+
     if (/^https?:\/\//i.test(trimmed)) {
       // If it's a localhost URL, replace with current proxy base
       if (trimmed.includes('localhost') || trimmed.includes('127.0.0.1')) {

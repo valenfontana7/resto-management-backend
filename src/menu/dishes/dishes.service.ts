@@ -162,6 +162,9 @@ export class DishesService {
         // Eliminar imagen existente
         await this.imageProcessing.deleteImage(dish.image);
         imagePath = null;
+      } else if (dto.image === dish.image) {
+        // La imagen no cambió, mantener la actual
+        imagePath = undefined; // No actualizar el campo
       } else {
         // Procesar nueva imagen
         const isBase64 = /^data:image\//i.test(dto.image);

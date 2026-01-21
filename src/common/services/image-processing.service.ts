@@ -53,11 +53,10 @@ export class ImageProcessingService {
       return this.extractKeyFromProxyUrl(imageInput);
     }
 
-    // Si es una URL absoluta legacy, rechazar
+    // Si es una URL externa (https://..., http://...), aceptarla tal cual
+    // Ejemplos: Unsplash, imgbb, imgur, Cloudinary, etc.
     if (/^https?:\/\//i.test(imageInput)) {
-      throw new BadRequestException(
-        'Legacy external URLs are not supported. Please upload the image to /api/uploads/image and send the returned key.',
-      );
+      return imageInput; // Devolver la URL externa sin procesar
     }
 
     // Si es base64, subir a S3

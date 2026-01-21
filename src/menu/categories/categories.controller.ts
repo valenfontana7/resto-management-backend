@@ -76,11 +76,11 @@ export class CategoriesController {
       orderBy: { order: 'asc' },
     });
 
-    // Convert dish images to proxy URLs
+    // Convert dish images to client URLs (handles external URLs)
     for (const category of categories) {
       for (const dish of category.dishes) {
         if (dish.image) {
-          dish.image = this.s3.buildProxyUrl(dish.image);
+          dish.image = this.s3.toClientUrl(dish.image) as string;
         }
       }
     }
@@ -123,6 +123,15 @@ export class CategoriesController {
       },
       orderBy: { order: 'asc' },
     });
+
+    // Convert dish images to client URLs (handles external URLs)
+    for (const category of categories) {
+      for (const dish of category.dishes) {
+        if (dish.image) {
+          dish.image = this.s3.toClientUrl(dish.image) as string;
+        }
+      }
+    }
 
     return { categories };
   }

@@ -1,0 +1,518 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kitchen SSE - Test Dashboard</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
+          Cantarell, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+
+      .header {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .header h1 {
+        color: #1a202c;
+        margin-bottom: 8px;
+      }
+
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: 600;
+        margin-top: 12px;
+      }
+
+      .status.connected {
+        background: #d4edda;
+        color: #155724;
+      }
+
+      .status.disconnected {
+        background: #f8d7da;
+        color: #721c24;
+      }
+
+      .controls {
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .form-group {
+        margin-bottom: 16px;
+      }
+
+      .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        color: #4a5568;
+        font-weight: 600;
+      }
+
+      .form-group input {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #e2e8f0;
+        border-radius: 8px;
+        font-size: 14px;
+        transition: border-color 0.2s;
+      }
+
+      .form-group input:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+
+      .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .btn-primary {
+        background: #667eea;
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: #5568d3;
+      }
+
+      .btn-danger {
+        background: #f56565;
+        color: white;
+      }
+
+      .btn-danger:hover {
+        background: #e53e3e;
+      }
+
+      .btn-success {
+        background: #48bb78;
+        color: white;
+      }
+
+      .btn-success:hover {
+        background: #38a169;
+      }
+
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .notifications {
+        display: grid;
+        gap: 16px;
+      }
+
+      .notification {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        animation: slideIn 0.3s ease-out;
+        border-left: 4px solid #667eea;
+      }
+
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateX(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      .notification.order_created {
+        border-left-color: #48bb78;
+      }
+
+      .notification.order_updated {
+        border-left-color: #ed8936;
+      }
+
+      .notification.order_cancelled {
+        border-left-color: #f56565;
+      }
+
+      .notification-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+
+      .notification-type {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .notification-type.order_created {
+        background: #c6f6d5;
+        color: #22543d;
+      }
+
+      .notification-type.order_updated {
+        background: #fbd38d;
+        color: #7c2d12;
+      }
+
+      .notification-type.order_cancelled {
+        background: #fed7d7;
+        color: #742a2a;
+      }
+
+      .notification-time {
+        color: #a0aec0;
+        font-size: 12px;
+      }
+
+      .order-number {
+        font-size: 20px;
+        font-weight: 700;
+        color: #2d3748;
+        margin-bottom: 8px;
+      }
+
+      .order-status {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 12px;
+      }
+
+      .order-status.CONFIRMED {
+        background: #bee3f8;
+        color: #2c5282;
+      }
+
+      .order-status.PREPARING {
+        background: #fbd38d;
+        color: #7c2d12;
+      }
+
+      .order-status.READY {
+        background: #c6f6d5;
+        color: #22543d;
+      }
+
+      .order-status.CANCELLED {
+        background: #fed7d7;
+        color: #742a2a;
+      }
+
+      .order-details {
+        color: #4a5568;
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      .order-items {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid #e2e8f0;
+      }
+
+      .order-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 0;
+      }
+
+      .empty-state {
+        background: white;
+        border-radius: 12px;
+        padding: 48px;
+        text-align: center;
+        color: #a0aec0;
+      }
+
+      .empty-state svg {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 16px;
+        opacity: 0.3;
+      }
+
+      .button-group {
+        display: flex;
+        gap: 12px;
+        margin-top: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🍳 Kitchen Dashboard - SSE Test</h1>
+        <div id="connectionStatus" class="status disconnected">
+          <span>⚫</span>
+          <span>Desconectado</span>
+        </div>
+      </div>
+
+      <div class="controls">
+        <h2 style="margin-bottom: 16px; color: #2d3748">Configuración</h2>
+        <div class="form-group">
+          <label for="restaurantId">Restaurant ID:</label>
+          <input
+            type="text"
+            id="restaurantId"
+            placeholder="cmkm5sun9000001kygwrs996s"
+            value="cmkm5sun9000001kygwrs996s"
+          />
+        </div>
+        <div class="form-group">
+          <label for="token">JWT Token:</label>
+          <input type="text" id="token" placeholder="Pega tu JWT token aquí" />
+        </div>
+        <div class="button-group">
+          <button id="connectBtn" class="btn btn-primary" onclick="connect()">
+            Conectar SSE
+          </button>
+          <button
+            id="disconnectBtn"
+            class="btn btn-danger"
+            onclick="disconnect()"
+            disabled
+          >
+            Desconectar
+          </button>
+          <button class="btn btn-success" onclick="clearNotifications()">
+            Limpiar Notificaciones
+          </button>
+        </div>
+      </div>
+
+      <div id="notificationsContainer">
+        <div class="empty-state">
+          <svg fill="currentColor" viewBox="0 0 20 20">
+            <path
+              fill-rule="evenodd"
+              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+              clip-rule="evenodd"
+            ></path>
+          </svg>
+          <p>No hay notificaciones aún</p>
+          <p style="font-size: 12px; margin-top: 8px">
+            Conecta al servidor SSE para empezar a recibir notificaciones
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let eventSource = null;
+      let notifications = [];
+
+      function updateConnectionStatus(connected) {
+        const statusEl = document.getElementById('connectionStatus');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+
+        if (connected) {
+          statusEl.className = 'status connected';
+          statusEl.innerHTML = '<span>🟢</span><span>Conectado</span>';
+          connectBtn.disabled = true;
+          disconnectBtn.disabled = false;
+        } else {
+          statusEl.className = 'status disconnected';
+          statusEl.innerHTML = '<span>⚫</span><span>Desconectado</span>';
+          connectBtn.disabled = false;
+          disconnectBtn.disabled = true;
+        }
+      }
+
+      function connect() {
+        const restaurantId = document.getElementById('restaurantId').value;
+        const token = document.getElementById('token').value;
+
+        if (!restaurantId || !token) {
+          alert('Por favor completa el Restaurant ID y el JWT Token');
+          return;
+        }
+
+        disconnect(); // Cerrar conexión existente si hay una
+
+        const url = `http://localhost:4000/api/restaurants/${restaurantId}/kitchen/notifications`;
+
+        // Nota: EventSource no soporta headers personalizados directamente
+        // Para desarrollo local, podrías necesitar un proxy o usar polyfills
+        eventSource = new EventSource(url);
+
+        eventSource.onopen = () => {
+          console.log('✅ Conexión SSE establecida');
+          updateConnectionStatus(true);
+        };
+
+        eventSource.addEventListener('order_created', (event) => {
+          console.log('📦 Nuevo pedido:', event);
+          addNotification(JSON.parse(event.data));
+        });
+
+        eventSource.addEventListener('order_updated', (event) => {
+          console.log('🔄 Pedido actualizado:', event);
+          addNotification(JSON.parse(event.data));
+        });
+
+        eventSource.addEventListener('order_cancelled', (event) => {
+          console.log('❌ Pedido cancelado:', event);
+          addNotification(JSON.parse(event.data));
+        });
+
+        eventSource.onerror = (error) => {
+          console.error('❌ Error en SSE:', error);
+          updateConnectionStatus(false);
+
+          // Intentar reconectar después de 5 segundos
+          setTimeout(() => {
+            if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+              console.log('🔄 Intentando reconectar...');
+              connect();
+            }
+          }, 5000);
+        };
+      }
+
+      function disconnect() {
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+          updateConnectionStatus(false);
+          console.log('🔌 Conexión SSE cerrada');
+        }
+      }
+
+      function addNotification(notification) {
+        notifications.unshift(notification);
+        renderNotifications();
+      }
+
+      function clearNotifications() {
+        notifications = [];
+        renderNotifications();
+      }
+
+      function formatTime(timestamp) {
+        const date = new Date(timestamp);
+        return date.toLocaleTimeString('es-AR', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        });
+      }
+
+      function renderNotifications() {
+        const container = document.getElementById('notificationsContainer');
+
+        if (notifications.length === 0) {
+          container.innerHTML = `
+                    <div class="empty-state">
+                        <svg fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+                        </svg>
+                        <p>No hay notificaciones aún</p>
+                        <p style="font-size: 12px; margin-top: 8px;">Conecta al servidor SSE para empezar a recibir notificaciones</p>
+                    </div>
+                `;
+          return;
+        }
+
+        container.innerHTML = `
+                <div class="notifications">
+                    ${notifications
+                      .map(
+                        (notif) => `
+                        <div class="notification ${notif.type}">
+                            <div class="notification-header">
+                                <span class="notification-type ${notif.type}">
+                                    ${
+                                      notif.type === 'order_created'
+                                        ? '📦 Nuevo'
+                                        : notif.type === 'order_updated'
+                                          ? '🔄 Actualizado'
+                                          : '❌ Cancelado'
+                                    }
+                                </span>
+                                <span class="notification-time">${formatTime(notif.timestamp)}</span>
+                            </div>
+                            <div class="order-number">${notif.data.orderNumber}</div>
+                            <span class="order-status ${notif.data.status}">${notif.data.status}</span>
+                            <div class="order-details">
+                                <p><strong>Cliente:</strong> ${notif.data.customerName}</p>
+                                <p><strong>Tipo:</strong> ${notif.data.type}</p>
+                                <p><strong>Total:</strong> $${(notif.data.total / 100).toFixed(2)}</p>
+                            </div>
+                            <div class="order-items">
+                                <strong>Items:</strong>
+                                ${notif.data.items
+                                  .map(
+                                    (item) => `
+                                    <div class="order-item">
+                                        <span>${item.quantity}x ${item.name}</span>
+                                        ${item.notes ? `<span style="color: #a0aec0; font-size: 12px;">${item.notes}</span>` : ''}
+                                    </div>
+                                `,
+                                  )
+                                  .join('')}
+                            </div>
+                        </div>
+                    `,
+                      )
+                      .join('')}
+                </div>
+            `;
+      }
+
+      // Inicialización
+      renderNotifications();
+
+      // Limpiar al cerrar la página
+      window.addEventListener('beforeunload', () => {
+        disconnect();
+      });
+    </script>
+  </body>
+</html>

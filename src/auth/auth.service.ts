@@ -30,6 +30,7 @@ export interface AuthResponse {
   };
   token: string;
   expiresAt: string;
+  needsSetup?: boolean;
 }
 
 @Injectable()
@@ -175,7 +176,11 @@ export class AuthService {
         email: dto.email,
       },
       include: {
-        restaurant: true,
+        restaurant: {
+          include: {
+            hours: true,
+          },
+        },
         role: true,
       },
     });
@@ -197,7 +202,14 @@ export class AuthService {
     const updatedUser = await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLogin: new Date() },
-      include: { restaurant: true, role: true },
+      include: {
+        restaurant: {
+          include: {
+            hours: true,
+          },
+        },
+        role: true,
+      },
     });
 
     return await this.generateAuthResponse(updatedUser as User);
@@ -295,6 +307,7 @@ export class AuthService {
       },
       token,
       expiresAt: expiresAt.toISOString(),
+      needsSetup: this.needsRestaurantSetup(fullUser.restaurant),
     };
   }
 
@@ -302,7 +315,14 @@ export class AuthService {
   async createAuthResponseForUserId(userId: string): Promise<AuthResponse> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { role: true, restaurant: true },
+      include: {
+        role: true,
+        restaurant: {
+          include: {
+            hours: true,
+          },
+        },
+      },
     });
     if (!user) throw new UnauthorizedException('User not found');
     return await this.generateAuthResponse(user as any);
@@ -315,5 +335,25 @@ export class AuthService {
       .replace(/[\u0300-\u036f]/g, '') // Remove accents
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '');
+  }
+
+  private needsRestaurantSetup(restaurant: any): boolean {
+    if (!restaurant) return true;
+
+    // Check basic required fields for operation
+    const hasBasicInfo = !!(
+      restaurant.name &&
+      restaurant.name.trim() !== '' &&
+      restaurant.address &&
+      restaurant.address.trim() !== '' &&
+      restaurant.phone &&
+      restaurant.phone.trim() !== ''
+    );
+
+    // Check if hours are configured
+    const hasHours = restaurant.hours && restaurant.hours.length > 0;
+
+    // Restaurant needs setup if basic info or hours are missing
+    return !hasBasicInfo || !hasHours;
   }
 }
