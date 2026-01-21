@@ -8,6 +8,7 @@ import {
   HttpCode,
   HttpStatus,
   Delete,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -20,6 +21,7 @@ import { SubscriptionsService } from './subscriptions.service';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/decorators/current-user.decorator';
 import { assertRestaurantAccess } from '../common/decorators/verify-restaurant-access.decorator';
+import { AuthService } from '../auth/auth.service';
 import {
   CreateSubscriptionDto,
   CreateCheckoutDto,
@@ -30,7 +32,10 @@ import {
 @ApiBearerAuth()
 @Controller('api/restaurants/:restaurantId/subscription')
 export class SubscriptionsController {
-  constructor(private readonly subscriptionsService: SubscriptionsService) {}
+  constructor(
+    private readonly subscriptionsService: SubscriptionsService,
+    private readonly authService: AuthService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Obtener suscripción actual del restaurante' })
@@ -86,7 +91,8 @@ export class SubscriptionsController {
     @Body() dto: CreateCheckoutDto,
     @CurrentUser() user: RequestUser,
   ) {
-    assertRestaurantAccess(user, restaurantId);
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
     return this.subscriptionsService.createCheckout(restaurantId, dto, user);
   }
 
@@ -100,7 +106,8 @@ export class SubscriptionsController {
     @Body() dto: UpdateSubscriptionDto,
     @CurrentUser() user: RequestUser,
   ) {
-    assertRestaurantAccess(user, restaurantId);
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
     return this.subscriptionsService.updateSubscription(
       restaurantId,
       dto,
@@ -118,7 +125,8 @@ export class SubscriptionsController {
     @Param('restaurantId') restaurantId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    assertRestaurantAccess(user, restaurantId);
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
     return this.subscriptionsService.cancelSubscription(restaurantId);
   }
 
@@ -135,7 +143,8 @@ export class SubscriptionsController {
     @Param('restaurantId') restaurantId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    assertRestaurantAccess(user, restaurantId);
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
     return this.subscriptionsService.reactivateSubscription(restaurantId);
   }
 
@@ -147,7 +156,8 @@ export class SubscriptionsController {
     @Param('restaurantId') restaurantId: string,
     @CurrentUser() user: RequestUser,
   ) {
-    assertRestaurantAccess(user, restaurantId);
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
     return this.subscriptionsService.getInvoices(restaurantId);
   }
 
@@ -158,7 +168,9 @@ export class SubscriptionsController {
     @Body() body: { token?: string },
     @CurrentUser() user?: RequestUser,
   ) {
-    assertRestaurantAccess(user, restaurantId);
+    if (!user) throw new ForbiddenException('Unauthorized');
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
 
     const token = (body?.token ?? '').trim();
     if (!token) {
@@ -176,7 +188,9 @@ export class SubscriptionsController {
     @Param('restaurantId') restaurantId: string,
     @CurrentUser() user?: RequestUser,
   ) {
-    assertRestaurantAccess(user, restaurantId);
+    if (!user) throw new ForbiddenException('Unauthorized');
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
     return this.subscriptionsService.listPaymentMethods(restaurantId);
   }
 
@@ -187,7 +201,9 @@ export class SubscriptionsController {
     @Param('paymentMethodId') paymentMethodId: string,
     @CurrentUser() user?: RequestUser,
   ) {
-    assertRestaurantAccess(user, restaurantId);
+    if (!user) throw new ForbiddenException('Unauthorized');
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
     await this.subscriptionsService.removePaymentMethod(
       restaurantId,
       paymentMethodId,
@@ -206,7 +222,9 @@ export class SubscriptionsController {
     },
     @CurrentUser() user?: RequestUser,
   ) {
-    assertRestaurantAccess(user, restaurantId);
+    if (!user) throw new ForbiddenException('Unauthorized');
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
     return this.subscriptionsService.setPreferredPaymentMethod(
       restaurantId,
       body,
@@ -221,7 +239,9 @@ export class SubscriptionsController {
     @Body() body: { email?: string; name?: string },
     @CurrentUser() user?: RequestUser,
   ) {
-    assertRestaurantAccess(user, restaurantId);
+    if (!user) throw new ForbiddenException('Unauthorized');
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
 
     const metadata: any = {};
     if (body?.email) metadata.email = body.email;

@@ -8,6 +8,7 @@ import {
   Query,
   Req,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
@@ -17,6 +18,7 @@ import { assertRestaurantAccess } from '../common/decorators/verify-restaurant-a
 import { MercadoPagoCredentialsService } from './mercadopago-credentials.service';
 import { MercadoPagoService } from './mercadopago.service';
 import { MercadoPagoWebhookService } from './mercadopago-webhook.service';
+import { AuthService } from '../auth/auth.service';
 import type { PreferenceRequestBody } from './mercadopago.service';
 
 @ApiTags('mercadopago')
@@ -26,6 +28,7 @@ export class MercadoPagoController {
     private readonly credentialsService: MercadoPagoCredentialsService,
     private readonly mercadoPagoService: MercadoPagoService,
     private readonly webhookService: MercadoPagoWebhookService,
+    private readonly authService: AuthService,
   ) {}
 
   // A) Tenant token
@@ -39,7 +42,9 @@ export class MercadoPagoController {
       throw new BadRequestException({ error: 'restaurantId es requerido' });
     }
 
-    assertRestaurantAccess(user, id);
+    if (!user) throw new ForbiddenException('Unauthorized');
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, id);
 
     return this.credentialsService.getStatus(id);
   }
@@ -61,7 +66,9 @@ export class MercadoPagoController {
       throw new BadRequestException({ error: 'restaurantId es requerido' });
     }
 
-    assertRestaurantAccess(user, restaurantId);
+    if (!user) throw new ForbiddenException('Unauthorized');
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
 
     const accessToken = (body?.accessToken ?? '').trim();
     if (!accessToken) {
@@ -87,7 +94,9 @@ export class MercadoPagoController {
       throw new BadRequestException({ error: 'restaurantId es requerido' });
     }
 
-    assertRestaurantAccess(user, restaurantId);
+    if (!user) throw new ForbiddenException('Unauthorized');
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
 
     await this.credentialsService.clearToken(restaurantId);
     return { success: true };
@@ -101,7 +110,9 @@ export class MercadoPagoController {
     const id = (restaurantId ?? '').trim();
 
     if (id) {
-      assertRestaurantAccess(user, id);
+      if (!user) throw new ForbiddenException('Unauthorized');
+      const freshUser = await this.authService.validateUser(user.userId);
+      assertRestaurantAccess(freshUser, id);
     } else {
       // Require authentication even if no restaurantId provided
       if (!user) throw new BadRequestException('Unauthorized');

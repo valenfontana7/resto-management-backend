@@ -6,9 +6,10 @@ import { MercadoPagoService } from './mercadopago.service';
 import { MercadoPagoWebhookService } from './mercadopago-webhook.service';
 import { EncryptionService } from './encryption.service';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [PrismaModule, ConfigModule],
+  imports: [PrismaModule, ConfigModule, AuthModule],
   controllers: [MercadoPagoController],
   providers: [
     EncryptionService,

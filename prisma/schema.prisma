@@ -45,6 +45,10 @@ model Restaurant {
   // Features (JSON object)
   features Json?
 
+  // Modules audit
+  modulesUpdatedBy String?
+  modulesUpdatedAt DateTime?
+
   // Social Media (JSON object)
   socialMedia Json?
 

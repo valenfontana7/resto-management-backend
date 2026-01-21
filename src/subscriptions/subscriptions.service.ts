@@ -22,6 +22,7 @@ import {
   PLAN_NAMES,
   TRIAL_DAYS,
   isPlanUpgrade,
+  adjustFeaturesForPlan,
 } from './constants';
 import { SubscriptionStatus, Prisma } from '@prisma/client';
 import { addDays, addMonths, differenceInDays, format } from 'date-fns';
@@ -743,6 +744,18 @@ export class SubscriptionsService {
     const isUpgrade = isPlanUpgrade(currentPlan, newPlan);
     let message: string;
 
+    // Obtener las features actuales del restaurante
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { features: true },
+    });
+
+    // Ajustar features según el nuevo plan
+    const adjustedFeatures = adjustFeaturesForPlan(
+      (restaurant?.features as any) || {},
+      newPlan,
+    );
+
     if (isUpgrade) {
       // Upgrade: aplicar inmediatamente
       const updateData: any = {
@@ -767,6 +780,12 @@ export class SubscriptionsService {
         where: { restaurantId },
         data: updateData,
       });
+
+      // Actualizar features del restaurante
+      await this.prisma.restaurant.update({
+        where: { id: restaurantId },
+        data: { features: adjustedFeatures },
+      });
     } else {
       // Downgrade a Starter o plan inferior: aplicar al final del período
       await this.prisma.subscription.update({
@@ -777,7 +796,14 @@ export class SubscriptionsService {
           planType: newPlan,
         },
       });
-      message = `Plan actualizado. El cambio se aplicará al final del período actual (${format(subscription.currentPeriodEnd, "d 'de' MMMM", { locale: es })}).`;
+
+      // Actualizar features del restaurante (incluso en downgrade)
+      await this.prisma.restaurant.update({
+        where: { id: restaurantId },
+        data: { features: adjustedFeatures },
+      });
+
+      message = `Plan actualizado. El cambio se aplicará al final del período actual (${format(subscription.currentPeriodEnd, "d 'de' MMMM", { locale: es })}). Algunas funcionalidades han sido deshabilitadas según tu nuevo plan.`;
     }
 
     const updatedSubscription = await this.prisma.subscription.findUnique({

@@ -105,6 +105,10 @@ export class RestaurantsService {
 
     const mapped: any = { ...restaurant };
 
+    if ('features' in mapped) {
+      mapped.features = this.normalizeFeatures(mapped.features);
+    }
+
     if ('logo' in mapped) mapped.logo = this.s3.toClientUrl(mapped.logo);
     if ('coverImage' in mapped)
       mapped.coverImage = this.s3.toClientUrl(mapped.coverImage);
@@ -121,6 +125,36 @@ export class RestaurantsService {
     }
 
     return mapped;
+  }
+
+  private normalizeFeatures(raw: any) {
+    const defaults = {
+      menu: true,
+      orders: true,
+      reservations: false,
+      delivery: false,
+      loyalty: false,
+      reviews: false,
+      giftCards: false,
+      catering: false,
+      onlineOrdering: true,
+      takeaway: true,
+      socialMedia: true,
+    };
+
+    const input = raw && typeof raw === 'object' ? raw : {};
+    const normalized = {
+      ...defaults,
+      ...input,
+    };
+
+    if (normalized.orders === false) {
+      normalized.onlineOrdering = false;
+      normalized.delivery = false;
+      normalized.takeaway = false;
+    }
+
+    return normalized;
   }
 
   /**
@@ -278,12 +312,7 @@ export class RestaurantsService {
         orderLeadTime: 30,
       },
     };
-    const features = data.features || {
-      onlineOrdering: true,
-      reservations: true,
-      delivery: false,
-      takeaway: true,
-    };
+    const features = this.normalizeFeatures(data.features);
     const hours = data.hours || {};
 
     const hoursData: any[] = [];
@@ -434,11 +463,16 @@ export class RestaurantsService {
             restaurantId: restaurant.id,
             name: 'Manager',
             permissions: [
-              'manage_menu',
-              'manage_orders',
-              'view_reports',
-              'manage_tables',
-              'manage_reservations',
+              'dashboard',
+              'menu',
+              'orders',
+              'reservations',
+              'tables',
+              'reports',
+              'analytics',
+              'kitchen',
+              'delivery',
+              'settings',
             ],
             color: '#f59e0b',
             isSystemRole: true,
@@ -446,21 +480,21 @@ export class RestaurantsService {
           {
             restaurantId: restaurant.id,
             name: 'Waiter',
-            permissions: ['take_orders', 'manage_orders', 'view_tables'],
+            permissions: ['orders', 'tables'],
             color: '#3b82f6',
             isSystemRole: true,
           },
           {
             restaurantId: restaurant.id,
             name: 'Kitchen',
-            permissions: ['view_orders', 'update_order_status'],
+            permissions: ['orders', 'kitchen'],
             color: '#8b5cf6',
             isSystemRole: true,
           },
           {
             restaurantId: restaurant.id,
             name: 'Delivery',
-            permissions: ['view_delivery_orders', 'update_delivery_status'],
+            permissions: ['orders', 'delivery'],
             color: '#10b981',
             isSystemRole: true,
           },
@@ -495,7 +529,7 @@ export class RestaurantsService {
     });
   }
 
-  async update(id: string, payload: any) {
+  async update(id: string, payload: any, userId?: string) {
     const updateData: any = {};
 
     // Get current restaurant data for deep merge
@@ -649,10 +683,25 @@ export class RestaurantsService {
     }
 
     if (payload.features !== undefined) {
-      updateData.features =
+      const incomingFeatures =
         typeof payload.features === 'string'
           ? JSON.parse(payload.features)
           : payload.features;
+      const currentFeatures =
+        currentRestaurant.features &&
+        typeof currentRestaurant.features === 'object'
+          ? (currentRestaurant.features as Record<string, any>)
+          : {};
+      const mergedFeatures = {
+        ...currentFeatures,
+        ...(incomingFeatures || {}),
+      };
+      updateData.features = this.normalizeFeatures(mergedFeatures);
+
+      if (userId) {
+        updateData.modulesUpdatedBy = userId;
+        updateData.modulesUpdatedAt = new Date();
+      }
     }
 
     if (payload.socialMedia !== undefined) {

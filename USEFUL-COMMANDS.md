@@ -51,6 +51,57 @@ docker-compose exec app npx prisma migrate deploy
 
 ---
 
+## 🗄️ Comandos útiles: operaciones directas en la DB con `docker exec` + `psql`
+
+> Nota: estos comandos asumen que el contenedor de Postgres se llama `resto-postgres` (ver `docker-compose.yml`). Ajusta el nombre del contenedor, usuario (`-U`) y base de datos (`-d`) según tu entorno.
+
+### 1) Setear rol `SUPER_ADMIN` para un usuario (por email)
+
+Ejecuta este comando para asignar el rol `SUPER_ADMIN` a un usuario identificado por su email. El comando busca un role de sistema cuyo nombre sea parecido a "super admin" (varias formas) y actualiza el `roleId` del usuario.
+
+```bash
+docker exec -i resto-postgres psql -U resto_user -d resto_db -c "WITH r AS (SELECT id FROM \"Role\" WHERE lower(name) IN ('super_admin','super admin','super-admin') AND \"isSystemRole\" = true LIMIT 1) UPDATE \"User\" SET \"roleId\" = (SELECT id FROM r) WHERE lower(email) = lower('user@example.com');"
+```
+
+- Reemplaza `user@example.com` por el email real.
+- Si tu contenedor de Postgres tiene un nombre distinto, sustituye `resto-postgres`.
+
+### 2) Verificar el cambio
+
+Comprueba que el usuario tiene el `roleId` actualizado y muestra el nombre del role asociado:
+
+```bash
+# Ver roleId del usuario
+docker exec -i resto-postgres psql -U resto_user -d resto_db -c "SELECT id, email, \"roleId\" FROM \"User\" WHERE lower(email)=lower('user@example.com');"
+
+# Ver nombre del role asignado
+docker exec -i resto-postgres psql -U resto_user -d resto_db -c "SELECT id, name FROM \"Role\" WHERE id = (SELECT \"roleId\" FROM \"User\" WHERE lower(email)=lower('user@example.com'));"
+```
+
+(Si no existe SUPER_ADMIN ejecutar esto)
+
+docker exec -i resto-postgres psql -U resto_user -d resto_db -c "INSERT INTO \"Role\" (id, name, permissions, color, \"isSystemRole\", \"createdAt\", \"updatedAt\") VALUES (gen_random_uuid()::text, 'SUPER_ADMIN', '[]'::json, '#ef4444', true, now(), now()) RETURNING id;"
+
+### 3) Rollback (restaurar `roleId` anterior)
+
+Antes de cambiar, puedes guardar el `roleId` actual y, en caso de error, restaurarlo.
+
+```bash
+# Guardar roleId previo (ejemplo: en variable shell)
+PREV_ROLE_ID=$(docker exec -i resto-postgres psql -U resto_user -d resto_db -t -c "SELECT \"roleId\" FROM \"User\" WHERE lower(email)=lower('user@example.com');" | xargs)
+
+# Para restaurar más tarde (reemplaza $PREV_ROLE_ID si lo guardaste manualmente)
+docker exec -i resto-postgres psql -U resto_user -d resto_db -c "UPDATE \"User\" SET \"roleId\" = '${PREV_ROLE_ID}' WHERE lower(email) = lower('user@example.com');"
+```
+
+### 4) Notas y precauciones
+
+- Ejecutar estas operaciones sólo en entornos de desarrollo o con extremo cuidado en producción.
+- Algunos despliegues requieren que uses el superusuario `postgres` para `DROP/CREATE` de DB; para updates de filas `resto_user` suele ser suficiente.
+- Las comillas dobles en los identificadores de Prisma/PG (`"User"`, `"Role"`) son necesarias si las tablas usan mayúsculas o nombres reservados.
+
+---
+
 ## 📊 Monitoreo
 
 ### Estado General

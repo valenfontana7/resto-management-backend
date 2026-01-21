@@ -29,6 +29,7 @@ import { KitchenModule } from './kitchen/kitchen.module';
 import { CouponsModule } from './coupons/coupons.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { RequestLoggingMiddleware } from './common/middleware/request-logging.middleware';
+import { FeatureFlagsGuard } from './common/guards/feature-flags.guard';
 
 @Module({
   imports: [
@@ -81,6 +82,10 @@ import { RequestLoggingMiddleware } from './common/middleware/request-logging.mi
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: FeatureFlagsGuard,
     },
   ],
 })

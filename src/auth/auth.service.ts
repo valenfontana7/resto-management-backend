@@ -120,11 +120,16 @@ export class AuthService {
             restaurantId: restaurant.id,
             name: 'Manager',
             permissions: [
-              'manage_menu',
-              'manage_orders',
-              'view_reports',
-              'manage_tables',
-              'manage_reservations',
+              'dashboard',
+              'menu',
+              'orders',
+              'reservations',
+              'tables',
+              'reports',
+              'analytics',
+              'kitchen',
+              'delivery',
+              'settings',
             ],
             color: '#f59e0b',
             isSystemRole: true,
@@ -132,21 +137,21 @@ export class AuthService {
           {
             restaurantId: restaurant.id,
             name: 'Waiter',
-            permissions: ['take_orders', 'manage_orders', 'view_tables'],
+            permissions: ['orders', 'tables'],
             color: '#3b82f6',
             isSystemRole: true,
           },
           {
             restaurantId: restaurant.id,
             name: 'Kitchen',
-            permissions: ['view_orders', 'update_order_status'],
+            permissions: ['orders', 'kitchen'],
             color: '#8b5cf6',
             isSystemRole: true,
           },
           {
             restaurantId: restaurant.id,
             name: 'Delivery',
-            permissions: ['view_delivery_orders', 'update_delivery_status'],
+            permissions: ['orders', 'delivery'],
             color: '#10b981',
             isSystemRole: true,
           },
@@ -264,10 +269,128 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    return { user };
+    const mappedRole = this.mapRoleForResponse(user.role || null);
+
+    return {
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        roleId: user.roleId,
+        restaurantId: user.restaurantId,
+        restaurant: user.restaurant,
+        role: mappedRole,
+        createdAt: user.createdAt,
+      },
+    };
   }
 
-  private async generateAuthResponse(user: User): Promise<AuthResponse> {
+  private mapRoleForResponse(
+    role: { id: string; name: string; permissions: any; color: string } | null,
+  ) {
+    if (!role) return null;
+    const roleCode = this.mapRoleNameToCode(role.name);
+    if (roleCode) return roleCode;
+
+    return {
+      id: role.id,
+      name: role.name,
+      permissions: this.normalizePermissions(
+        this.coercePermissions(role.permissions),
+      ),
+      color: role.color,
+    };
+  }
+
+  private coercePermissions(permissions: any): string[] {
+    if (!permissions) return [];
+    if (Array.isArray(permissions)) {
+      return permissions.filter((p) => typeof p === 'string');
+    }
+    if (typeof permissions === 'string') return [permissions];
+    return [];
+  }
+
+  private mapRoleNameToCode(roleName?: string | null): string | null {
+    if (!roleName) return null;
+    const normalized = roleName.trim().toUpperCase();
+
+    const map: Record<string, string> = {
+      SUPER_ADMIN: 'SUPER_ADMIN',
+      OWNER: 'OWNER',
+      ADMIN: 'ADMIN',
+      MANAGER: 'MANAGER',
+      WAITER: 'WAITER',
+      CHEF: 'CHEF',
+      KITCHEN: 'KITCHEN',
+      DELIVERY: 'DELIVERY',
+    };
+
+    if (map[normalized]) return map[normalized];
+
+    const friendlyMap: Record<string, string> = {
+      ADMINISTRATOR: 'ADMIN',
+      ADMINISTRADOR: 'ADMIN',
+      GERENTE: 'MANAGER',
+      MOZO: 'WAITER',
+      COCINA: 'KITCHEN',
+      REPARTO: 'DELIVERY',
+      REPARTIDOR: 'DELIVERY',
+    };
+
+    return friendlyMap[normalized] || null;
+  }
+
+  private normalizePermissions(permissions: string[]) {
+    if (permissions.includes('all')) return ['all'];
+
+    const mapping: Record<string, string[]> = {
+      manage_menu: ['menu'],
+      manage_orders: ['orders'],
+      view_orders: ['orders'],
+      update_order_status: ['orders', 'kitchen'],
+      view_reports: ['reports'],
+      manage_tables: ['tables'],
+      view_tables: ['tables'],
+      manage_reservations: ['reservations'],
+      take_orders: ['orders'],
+      view_delivery_orders: ['delivery', 'orders'],
+      update_delivery_status: ['delivery'],
+      manage_payments: ['billing'],
+    };
+
+    const allowed = new Set([
+      'orders',
+      'reservations',
+      'menu',
+      'reports',
+      'tables',
+      'kitchen',
+      'delivery',
+      'promotions',
+      'analytics',
+      'settings',
+      'billing',
+      'branding',
+      'dashboard',
+    ]);
+
+    const normalized = new Set<string>();
+    for (const perm of permissions) {
+      if (allowed.has(perm)) {
+        normalized.add(perm);
+        continue;
+      }
+      const mapped = mapping[perm] || [];
+      for (const p of mapped) {
+        if (allowed.has(p)) normalized.add(p);
+      }
+    }
+
+    return Array.from(normalized);
+  }
+
+  async generateAuthResponse(user: User): Promise<AuthResponse> {
     // Ensure role and restaurant relations are present
     let fullUser: any = user;
     if (!user || !('role' in user) || !('restaurant' in user)) {

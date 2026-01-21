@@ -108,12 +108,25 @@ export class RestaurantsController {
   @ApiResponse({ status: 200, description: 'Return the restaurant.' })
   @ApiResponse({ status: 404, description: 'Restaurant not found.' })
   async getMyRestaurant(@CurrentUser() user: RequestUser) {
-    if (!user.restaurantId) {
+    // Always fetch fresh user data from DB to ensure restaurantId is up-to-date
+    const freshUser = await this.authService.validateUser(user.userId);
+    if (!freshUser.restaurantId) {
       throw new ForbiddenException('User does not have a restaurant');
     }
     const restaurant = await this.restaurantsService.findById(
-      user.restaurantId,
+      freshUser.restaurantId,
     );
+    return { restaurant };
+  }
+
+  @Get(':id')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get restaurant by id' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  @ApiResponse({ status: 200, description: 'Return the restaurant.' })
+  @ApiResponse({ status: 404, description: 'Restaurant not found.' })
+  async getById(@VerifyRestaurantAccess('id') restaurantId: string) {
+    const restaurant = await this.restaurantsService.findById(restaurantId);
     return { restaurant };
   }
 
@@ -145,6 +158,15 @@ export class RestaurantsController {
   @ApiResponse({
     status: 201,
     description: 'The restaurant has been successfully created.',
+    schema: {
+      example: {
+        restaurant: { id: 'uuid', name: 'My Restaurant' },
+        slug: 'my-restaurant',
+        url: 'http://localhost:3000/my-restaurant',
+        token: 'jwt-token',
+        expiresAt: '2026-01-28T00:00:00.000Z',
+      },
+    },
   })
   async create(@Body() createDto: any, @CurrentUser() user: RequestUser) {
     // Support frontend onboarding payloads under `onboardingData` or legacy flat payload
@@ -193,10 +215,17 @@ export class RestaurantsController {
       restaurant.id,
     );
 
+    // Generate new token with updated restaurantId
+    const updatedUser = await this.authService.validateUser(user.userId);
+    const authResponse =
+      await this.authService.generateAuthResponse(updatedUser);
+
     return {
       restaurant,
       slug: restaurant.slug,
       url: `${process.env.FRONTEND_URL || 'http://localhost:3000'}/${restaurant.slug}`,
+      token: authResponse.token,
+      expiresAt: authResponse.expiresAt,
     };
   }
 
@@ -212,6 +241,7 @@ export class RestaurantsController {
   async update(
     @VerifyRestaurantAccess('id') restaurantId: string,
     @Body() updateDto: UpdateRestaurantSettingsDto,
+    @CurrentUser() user: RequestUser,
   ) {
     try {
       console.log('🔵 Controller received update request:', {
@@ -227,6 +257,7 @@ export class RestaurantsController {
       const restaurant = await this.restaurantsService.update(
         restaurantId,
         updateDto,
+        user?.userId,
       );
 
       console.log('🟢 Controller returning restaurant:', {

@@ -619,9 +619,14 @@ export class FeaturesDto {
   @ApiPropertyOptional({ example: true })
   @IsOptional()
   @IsBoolean()
-  onlineOrdering?: boolean;
+  menu?: boolean;
 
   @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  orders?: boolean;
+
+  @ApiPropertyOptional({ example: false })
   @IsOptional()
   @IsBoolean()
   reservations?: boolean;
@@ -629,7 +634,27 @@ export class FeaturesDto {
   @ApiPropertyOptional({ example: false })
   @IsOptional()
   @IsBoolean()
-  delivery?: boolean;
+  loyalty?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  reviews?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  giftCards?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  catering?: boolean;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  onlineOrdering?: boolean;
 
   @ApiPropertyOptional({ example: true })
   @IsOptional()
@@ -639,12 +664,12 @@ export class FeaturesDto {
   @ApiPropertyOptional({ example: true })
   @IsOptional()
   @IsBoolean()
-  reviews?: boolean;
+  socialMedia?: boolean;
 
-  @ApiPropertyOptional({ example: true })
+  @ApiPropertyOptional({ example: false })
   @IsOptional()
   @IsBoolean()
-  socialMedia?: boolean;
+  delivery?: boolean;
 }
 
 // ==================== Social Media DTO ====================

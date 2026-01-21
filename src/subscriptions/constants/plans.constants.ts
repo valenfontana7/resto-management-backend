@@ -100,6 +100,71 @@ export function planHasFeature(planType: PlanType, feature: string): boolean {
 }
 
 /**
+ * Tipo de features del restaurante
+ */
+export interface RestaurantFeatures {
+  menu: boolean;
+  orders: boolean;
+  reservations: boolean;
+  delivery: boolean;
+  loyalty: boolean;
+  reviews: boolean;
+  giftCards: boolean;
+  catering: boolean;
+  onlineOrdering: boolean;
+  takeaway: boolean;
+  socialMedia: boolean;
+}
+
+/**
+ * Features habilitadas por defecto según el plan
+ */
+export const DEFAULT_FEATURES_BY_PLAN: Record<
+  PlanType,
+  Partial<RestaurantFeatures>
+> = {
+  [PlanType.STARTER]: {
+    menu: true,
+    orders: true,
+    reservations: false,
+    delivery: false,
+    loyalty: false,
+    reviews: false,
+    giftCards: false,
+    catering: false,
+    onlineOrdering: true,
+    takeaway: true,
+    socialMedia: true,
+  },
+  [PlanType.PROFESSIONAL]: {
+    menu: true,
+    orders: true,
+    reservations: true,
+    delivery: false,
+    loyalty: false,
+    reviews: false,
+    giftCards: false,
+    catering: false,
+    onlineOrdering: true,
+    takeaway: true,
+    socialMedia: true,
+  },
+  [PlanType.ENTERPRISE]: {
+    menu: true,
+    orders: true,
+    reservations: true,
+    delivery: true,
+    loyalty: false,
+    reviews: false,
+    giftCards: false,
+    catering: false,
+    onlineOrdering: true,
+    takeaway: true,
+    socialMedia: true,
+  },
+};
+
+/**
  * Determinar si un cambio de plan es upgrade o downgrade
  */
 export function isPlanUpgrade(
@@ -113,4 +178,27 @@ export function isPlanUpgrade(
   };
 
   return planHierarchy[newPlan] > planHierarchy[currentPlan];
+}
+
+/**
+ * Ajustar features del restaurante según el plan de suscripción
+ * Deshabilita features que no están permitidas en el nuevo plan
+ */
+export function adjustFeaturesForPlan(
+  currentFeatures: Partial<RestaurantFeatures>,
+  newPlan: PlanType,
+): Partial<RestaurantFeatures> {
+  const allowedFeatures = DEFAULT_FEATURES_BY_PLAN[newPlan];
+  const adjustedFeatures: Partial<RestaurantFeatures> = { ...currentFeatures };
+
+  // Para cada feature, verificar si está permitida en el nuevo plan
+  Object.keys(allowedFeatures).forEach((key) => {
+    const featureKey = key as keyof RestaurantFeatures;
+    // Si la feature no está permitida en el nuevo plan, deshabilitarla
+    if (!allowedFeatures[featureKey]) {
+      adjustedFeatures[featureKey] = false;
+    }
+  });
+
+  return adjustedFeatures;
 }
