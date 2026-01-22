@@ -4,15 +4,17 @@ import {
   ExecutionContext,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+import { Reflector, ModuleRef } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { AuthService } from '../auth.service';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private reflector: Reflector,
     private jwtService: JwtService,
+    private moduleRef: ModuleRef,
   ) {
     console.log('JwtAuthGuard: Using CanActivate implementation');
   }
@@ -36,14 +38,16 @@ export class JwtAuthGuard implements CanActivate {
 
     try {
       const payload = await this.jwtService.verifyAsync(token);
-      // Map JWT payload to RequestUser format
+      // Load fresh user from DB to avoid stale token data
+      const authService = this.moduleRef.get(AuthService, { strict: false });
+      const freshUser = await authService.validateUser(payload.sub);
       request.user = {
-        userId: payload.sub,
-        email: payload.email,
-        roleId: payload.roleId,
-        restaurantId: payload.restaurantId,
-        role: payload.roleName,
-        restaurantSlug: payload.restaurantSlug,
+        userId: freshUser.id,
+        email: freshUser.email,
+        roleId: freshUser.roleId ?? null,
+        restaurantId: freshUser.restaurantId ?? null,
+        role: freshUser.role?.name ?? null,
+        restaurantSlug: freshUser.restaurant?.slug ?? null,
       };
       return true;
     } catch (error) {
