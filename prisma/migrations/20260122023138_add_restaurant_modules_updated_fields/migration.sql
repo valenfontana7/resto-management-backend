@@ -10,19 +10,19 @@
 CREATE TYPE "CouponType" AS ENUM ('PERCENTAGE', 'FIXED');
 
 -- DropForeignKey
-ALTER TABLE "UserPaymentMethod" DROP CONSTRAINT "fk_userpaymentmethod_user";
+ALTER TABLE "UserPaymentMethod" DROP CONSTRAINT IF EXISTS "fk_userpaymentmethod_user";
 
 -- DropIndex
-DROP INDEX "BusinessHour_restaurantId_dayOfWeek_key";
+DROP INDEX IF EXISTS "BusinessHour_restaurantId_dayOfWeek_key";
 
 -- DropIndex
-DROP INDEX "idx_subscription_userpaymentmethodid";
+DROP INDEX IF EXISTS "idx_subscription_userpaymentmethodid";
 
 -- DropIndex
-DROP INDEX "idx_subscriptionpaymentmethod_issuerid";
+DROP INDEX IF EXISTS "idx_subscriptionpaymentmethod_issuerid";
 
 -- DropIndex
-DROP INDEX "idx_userpaymentmethod_issuerid";
+DROP INDEX IF EXISTS "idx_userpaymentmethod_issuerid";
 
 -- AlterTable
 ALTER TABLE "MercadoPagoCredential" ALTER COLUMN "isSandbox" SET NOT NULL;
