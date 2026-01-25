@@ -17,6 +17,15 @@ export class CreateRestaurantDto {
   email: string;
 
   @ApiProperty({
+    description: 'Administrator email for the restaurant',
+    example: 'admin@doncangrejo.com',
+    required: false,
+  })
+  @IsOptional()
+  @IsEmail()
+  adminEmail?: string;
+
+  @ApiProperty({
     description: 'Business information',
     example: {
       type: 'restaurant',

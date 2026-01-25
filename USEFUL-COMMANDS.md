@@ -55,12 +55,80 @@ docker-compose exec app npx prisma migrate deploy
 
 > Nota: estos comandos asumen que el contenedor de Postgres se llama `resto-postgres` (ver `docker-compose.yml`). Ajusta el nombre del contenedor, usuario (`-U`) y base de datos (`-d`) según tu entorno.
 
+### Credenciales de Desarrollo
+
+Para desarrollo/testing, usa estas credenciales:
+
+- **Email**: `valenfontana7@gmail.com`
+- **Password**: `admin123`
+- **Rol**: SUPER_ADMIN
+
+### Crear usuario de desarrollo
+
+Si necesitas crear un nuevo usuario con rol SUPER_ADMIN:
+
+```bash
+# 1. Generar hash de contraseña
+docker-compose exec app node -e "
+const bcrypt = require('bcrypt');
+const password = 'admin123';
+bcrypt.hash(password, 10).then(hash => console.log('Hash:', hash));
+"
+
+# 2. Crear usuario (reemplaza \$HASH_GENERADO)
+docker-compose exec db psql -U resto_user -d resto_db -c "
+INSERT INTO \"User\" (id, name, email, password, \"roleId\", \"isActive\", \"createdAt\", \"updatedAt\")
+SELECT
+  gen_random_uuid()::text,
+  'Admin User',
+  'nuevo-admin@example.com',
+  '\$HASH_GENERADO',
+  id,
+  true,
+  now(),
+  now()
+FROM \"Role\"
+WHERE name = 'SUPER_ADMIN' AND \"isSystemRole\" = true;
+"
+```
+
+## ✅ Verificación de Funcionalidad
+
+### Autenticación
+
+- ✅ Login exitoso con credenciales actualizadas
+- ✅ Token JWT generado correctamente
+- ✅ Usuario SUPER_ADMIN autenticado
+
+### Creación de Restaurantes
+
+- ✅ Restaurante creado exitosamente con adminEmail
+- ✅ Múltiples restaurantes pueden compartir el mismo email de admin
+- ✅ Sin errores de restricción de unicidad en emails
+
+## 📋 Estado Actual del Sistema
+
+**Master Admin Panel**: ✅ Completamente funcional
+
+- Autenticación SUPER_ADMIN: ✅
+- Creación de restaurantes: ✅
+- Gestión de usuarios: ✅
+- Emails duplicados permitidos: ✅
+
+**Credenciales de Desarrollo**:
+
+- Email: `valenfontana7@gmail.com`
+- Password: `admin123`
+- Rol: `SUPER_ADMIN`
+
 ### 1) Setear rol `SUPER_ADMIN` para un usuario (por email)
 
 Ejecuta este comando para asignar el rol `SUPER_ADMIN` a un usuario identificado por su email. El comando busca un role de sistema cuyo nombre sea parecido a "super admin" (varias formas) y actualiza el `roleId` del usuario.
 
 ```bash
 docker exec -i resto-postgres psql -U resto_user -d resto_db -c "WITH r AS (SELECT id FROM \"Role\" WHERE lower(name) IN ('super_admin','super admin','super-admin') AND \"isSystemRole\" = true LIMIT 1) UPDATE \"User\" SET \"roleId\" = (SELECT id FROM r) WHERE lower(email) = lower('user@example.com');"
+
+**Nota**: Si el usuario no existe, créalo primero con una contraseña hasheada.
 ```
 
 - Reemplaza `user@example.com` por el email real.

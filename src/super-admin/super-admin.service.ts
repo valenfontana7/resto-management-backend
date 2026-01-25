@@ -19,7 +19,35 @@ export class SuperAdminService {
   constructor(
     private prisma: PrismaService,
     private authService: AuthService,
-  ) {}
+  ) {
+    this.ensureSuperAdminRole();
+  }
+
+  private async ensureSuperAdminRole() {
+    try {
+      const superAdminRole = await this.prisma.role.findFirst({
+        where: {
+          name: 'SUPER_ADMIN',
+          restaurantId: null,
+        },
+      });
+
+      if (!superAdminRole) {
+        await this.prisma.role.create({
+          data: {
+            name: 'SUPER_ADMIN',
+            permissions: ['all', 'super_admin'],
+            color: '#000000',
+            isSystemRole: true,
+            restaurantId: null,
+          },
+        });
+        console.log('✅ SUPER_ADMIN role created automatically');
+      }
+    } catch (error) {
+      console.error('❌ Failed to create SUPER_ADMIN role:', error);
+    }
+  }
 
   async getRestaurants(
     page: number = 1,
@@ -463,10 +491,27 @@ export class SuperAdminService {
         });
       }
 
+      // Use provided adminEmail or default to restaurant email
+      const adminEmail = dto.adminEmail || dto.email;
+
+      // Check if admin email already exists for this restaurant
+      const existingUser = await tx.user.findFirst({
+        where: {
+          email: adminEmail,
+          restaurantId: restaurant.id,
+        },
+      });
+
+      if (existingUser) {
+        throw new BadRequestException(
+          'Ya existe un administrador con este email para este restaurante',
+        );
+      }
+
       // Create admin user for the restaurant
       const adminUser = await tx.user.create({
         data: {
-          email: dto.email,
+          email: adminEmail,
           password: '', // Will be set later by the user
           name: `Admin ${dto.name}`,
           restaurantId: restaurant.id,
@@ -503,6 +548,7 @@ export class SuperAdminService {
       meta: {
         message: 'Restaurante creado exitosamente',
         adminUserId: result.adminUser.id,
+        adminEmail: result.adminUser.email,
       },
     };
   }
