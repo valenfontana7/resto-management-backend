@@ -78,6 +78,11 @@ model Restaurant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Super Admin Fields
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  legalDetails       Json? // { legalName, constitutionDate, fiscalCategory, files: [] }
+  adminAuditLogs     AdminAuditLog[]
+
   @@index([slug])
   @@index([status])
 }
@@ -666,6 +671,9 @@ model User {
 
   // Métodos de pago guardados por el usuario
   paymentMethods UserPaymentMethod[]
+  
+  // Super Admin Relations
+  auditLogsPerformed AdminAuditLog[]
 
   @@index([email])
   @@index([restaurantId])
@@ -796,6 +804,37 @@ model SubscriptionPaymentMethod {
   createdAt       DateTime @default(now())
 
   @@index([subscriptionId])
+}
+
+// ============================================
+// SUPER ADMIN & AUDIT
+// ============================================
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model AdminAuditLog {
+  id           String   @id @default(cuid())
+  
+  adminId      String   // User ID del Super Admin
+  admin        User     @relation(fields: [adminId], references: [id])
+  
+  action       String   // "SUSPEND_RESTAURANT", "CHANGE_PLAN", "IMPERSONATE", etc.
+  details      Json?    // { reason, previousValue, newValue }
+  ipAddress    String?  // Para seguridad
+  userAgent    String?
+  
+  targetRestaurantId String?
+  targetRestaurant   Restaurant? @relation(fields: [targetRestaurantId], references: [id])
+  
+  createdAt    DateTime @default(now())
+
+  @@index([adminId])
+  @@index([targetRestaurantId])
 }
 
 // ============================================

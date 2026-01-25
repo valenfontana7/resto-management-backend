@@ -451,6 +451,70 @@ export class AuthService {
     return await this.generateAuthResponse(user as any);
   }
 
+  async impersonate(
+    restaurantId: string,
+    adminId: string,
+  ): Promise<AuthResponse> {
+    // 1. Find a target user (prefer Owner/Admin)
+    const rolesPriority = [
+      'OWNER',
+      'Owner',
+      'ADMIN',
+      'Admin',
+      'MANAGER',
+      'Manager',
+    ];
+
+    let targetUser: any = null;
+
+    // Try finding by role name priority
+    for (const roleName of rolesPriority) {
+      targetUser = await this.prisma.user.findFirst({
+        where: {
+          restaurantId,
+          role: { name: roleName },
+          isActive: true,
+        },
+        include: { role: true, restaurant: true },
+      });
+      if (targetUser) break;
+    }
+
+    // Fallback: any active user, oldest first
+    if (!targetUser) {
+      targetUser = await this.prisma.user.findFirst({
+        where: { restaurantId, isActive: true },
+        include: { role: true, restaurant: true },
+        orderBy: { createdAt: 'asc' },
+      });
+    }
+
+    if (!targetUser) {
+      throw new ConflictException(
+        'No active users found in this restaurant to impersonate.',
+      );
+    }
+
+    // 2. Generate Token
+    const authResponse = await this.generateAuthResponse(targetUser);
+
+    // 3. Log Audit
+    await this.prisma.adminAuditLog.create({
+      data: {
+        adminId,
+        action: 'IMPERSONATE',
+        targetRestaurantId: restaurantId,
+        details: {
+          impersonatedUserEmail: targetUser.email,
+          impersonatedUserId: targetUser.id,
+          roleName: targetUser.role?.name,
+        },
+      },
+    });
+
+    return authResponse;
+  }
+
   private generateSlug(name: string): string {
     return name
       .toLowerCase()

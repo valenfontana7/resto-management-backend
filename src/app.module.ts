@@ -31,6 +31,8 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { RequestLoggingMiddleware } from './common/middleware/request-logging.middleware';
 import { FeatureFlagsGuard } from './common/guards/feature-flags.guard';
 
+import { SuperAdminModule } from './super-admin/super-admin.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -67,6 +69,7 @@ import { FeatureFlagsGuard } from './common/guards/feature-flags.guard';
     UsersModule,
     KitchenModule,
     CouponsModule,
+    SuperAdminModule,
   ],
   controllers: [AppController],
   providers: [

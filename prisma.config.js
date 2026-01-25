@@ -15,6 +15,9 @@ const migrationsPath = fs.existsSync(containerMigrationsPath)
 
 module.exports = {
   schema: schemaPath,
-  migrations: { path: migrationsPath },
+  migrations: {
+    path: migrationsPath,
+    seed: 'ts-node prisma/seed.ts',
+  },
   datasource: { url: process.env.DATABASE_URL },
 };

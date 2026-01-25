@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Res } from '@nestjs/common';
+import { Controller, Post, Get, Body, Res, UseGuards } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -7,8 +7,12 @@ import {
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
+import { ImpersonateDto } from './dto/impersonate.dto';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { Roles } from './decorators/roles.decorator';
+import { RolesGuard } from './guards/roles.guard';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { RequestUser } from './decorators/current-user.decorator';
 import type { Response } from 'express';
 
@@ -16,6 +20,19 @@ import type { Response } from 'express';
 @Controller('api/auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
+
+  @Post('impersonate')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SUPER_ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Impersonate a restaurant user (Super Admin only)' })
+  @ApiResponse({ status: 201, description: 'Impersonation token generated' })
+  async impersonate(
+    @Body() dto: ImpersonateDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.authService.impersonate(dto.restaurantId, user.userId);
+  }
 
   @Public()
   @Post('register')

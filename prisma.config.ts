@@ -13,6 +13,7 @@ export default defineConfig({
     path: fs.existsSync(containerMigrationsPath)
       ? containerMigrationsPath
       : 'prisma/migrations',
+    seed: 'ts-node prisma/seed.ts',
   },
   datasource: {
     url: env('DATABASE_URL'),
