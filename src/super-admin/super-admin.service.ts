@@ -2,7 +2,6 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -11,6 +10,7 @@ import {
 } from './dto/update-restaurant-status.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { AuthService } from '../auth/auth.service';
 import { PlanType, RestaurantStatus } from '@prisma/client';
 
@@ -20,7 +20,7 @@ export class SuperAdminService {
     private prisma: PrismaService,
     private authService: AuthService,
   ) {
-    this.ensureSuperAdminRole();
+    void this.ensureSuperAdminRole();
   }
 
   private async ensureSuperAdminRole() {
@@ -55,6 +55,7 @@ export class SuperAdminService {
     search?: string,
     status?: string,
     plan?: string,
+    cuisine?: string,
     include?: string,
   ) {
     const skip = (page - 1) * limit;
@@ -67,10 +68,13 @@ export class SuperAdminService {
       ];
     }
     if (status) {
-      where.status = status;
+      where.status = status.toUpperCase();
     }
     if (plan) {
       where.subscription = { planType: plan };
+    }
+    if (cuisine) {
+      where.cuisineTypes = { has: cuisine };
     }
 
     // Parse include parameter
@@ -314,15 +318,13 @@ export class SuperAdminService {
   async getGlobalStats() {
     const totalRestaurants = await this.prisma.restaurant.count();
     const totalUsers = await this.prisma.user.count();
+    const activeRestaurants = await this.prisma.restaurant.count({
+      where: { status: 'ACTIVE' },
+    });
 
     const startOfCurrentMonth = new Date();
     startOfCurrentMonth.setDate(1);
     startOfCurrentMonth.setHours(0, 0, 0, 0);
-
-    const startOfPreviousMonth = new Date(startOfCurrentMonth);
-    startOfPreviousMonth.setMonth(startOfPreviousMonth.getMonth() - 1);
-
-    const endOfPreviousMonth = new Date(startOfCurrentMonth);
 
     // Global revenue
     // Note: In a real large scale app, this would be pre-calculated or cached.
@@ -336,21 +338,11 @@ export class SuperAdminService {
       _sum: { total: true },
     });
 
-    const revenuePrevious = await this.prisma.order.aggregate({
-      where: {
-        createdAt: { gte: startOfPreviousMonth, lt: endOfPreviousMonth },
-        status: { in: ['PAID', 'DELIVERED', 'READY'] as any },
-      },
-      _sum: { total: true },
-    });
-
     return {
       totalRestaurants,
+      activeRestaurants,
+      totalRevenue: revenueCurrent._sum.total || 0,
       totalUsers,
-      revenue: {
-        currentMonth: revenueCurrent._sum.total || 0,
-        previousMonth: revenuePrevious._sum.total || 0,
-      },
     };
   }
 
@@ -602,5 +594,134 @@ export class SuperAdminService {
         role: targetUser.role?.name,
       },
     };
+  }
+
+  async updateUser(userId: string, dto: UpdateUserDto, adminId: string) {
+    // Verificar que el usuario existe
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { role: true, restaurant: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    // Preparar los datos de actualización
+    const updateData: any = {};
+
+    if (dto.name !== undefined) updateData.name = dto.name;
+    if (dto.email !== undefined) updateData.email = dto.email;
+    if (dto.roleId !== undefined) updateData.roleId = dto.roleId;
+    if (dto.isActive !== undefined) updateData.isActive = dto.isActive;
+    if (dto.avatar !== undefined) updateData.avatar = dto.avatar;
+
+    // Actualizar el usuario
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        restaurantId: true,
+        isActive: true,
+        avatar: true,
+        role: {
+          select: {
+            name: true,
+          },
+        },
+        restaurant: {
+          select: {
+            name: true,
+          },
+        },
+        updatedAt: true,
+      },
+    });
+
+    // Registrar en audit log
+    await this.prisma.adminAuditLog.create({
+      data: {
+        adminId,
+        action: 'UPDATE_USER',
+        details: {
+          updatedFields: Object.keys(updateData),
+          previousValues: {
+            name: user.name,
+            email: user.email,
+            roleId: user.roleId,
+            isActive: user.isActive,
+            avatar: user.avatar,
+          },
+        },
+      },
+    });
+
+    return updatedUser;
+  }
+
+  async getRoles() {
+    const roles = await this.prisma.role.findMany({
+      select: {
+        id: true,
+        name: true,
+        permissions: true,
+        color: true,
+        isSystemRole: true,
+        restaurantId: true,
+        restaurant: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: [
+        { isSystemRole: 'desc' }, // System roles first
+        { name: 'asc' },
+      ],
+    });
+
+    // Remove duplicates by name and permissions, keeping the first occurrence
+    const uniqueRoles = roles.reduce((acc, role) => {
+      const key = `${role.name}-${JSON.stringify(role.permissions)}`;
+      if (!acc.has(key)) {
+        acc.set(key, role);
+      }
+      return acc;
+    }, new Map<string, any>());
+
+    const rolesWithDescription = Array.from(uniqueRoles.values()).map(
+      (role) => ({
+        id: role.id,
+        name: role.name,
+        description: this.getRoleDescription(
+          role.name,
+          role.permissions as string[],
+        ),
+        permissions: role.permissions as string[],
+        isSystemRole: role.isSystemRole,
+        restaurant: role.restaurant?.name || null,
+      }),
+    );
+
+    return { roles: rolesWithDescription };
+  }
+
+  private getRoleDescription(name: string, permissions: string[]): string {
+    const descriptions: Record<string, string> = {
+      SUPER_ADMIN: 'Super administrador con acceso total al sistema',
+      Admin: 'Administrador del restaurante con permisos completos',
+      Manager: 'Gerente con acceso a operaciones diarias',
+      Waiter: 'Mesero con acceso a pedidos y mesas',
+      Kitchen: 'Cocinero con acceso a pedidos de cocina',
+      Delivery: 'Repartidor con acceso a entregas',
+    };
+
+    return (
+      descriptions[name] ||
+      `Rol personalizado con permisos: ${permissions.join(', ')}`
+    );
   }
 }

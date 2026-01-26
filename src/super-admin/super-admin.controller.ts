@@ -16,6 +16,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { UpdateRestaurantStatusDto } from './dto/update-restaurant-status.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 
 @Controller('api/super-admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -30,6 +31,7 @@ export class SuperAdminController {
     @Query('search') search?: string,
     @Query('status') status?: string,
     @Query('plan') plan?: string,
+    @Query('cuisine') cuisine?: string,
     @Query('include') include?: string,
   ) {
     return this.superAdminService.getRestaurants(
@@ -38,6 +40,7 @@ export class SuperAdminController {
       search,
       status,
       plan,
+      cuisine,
       include,
     );
   }
@@ -89,6 +92,20 @@ export class SuperAdminController {
       +limit,
       +offset,
     );
+  }
+
+  @Patch('users/:userId')
+  async updateUser(
+    @Param('userId') userId: string,
+    @Body() dto: UpdateUserDto,
+    @Request() req,
+  ) {
+    return this.superAdminService.updateUser(userId, dto, req.user.userId);
+  }
+
+  @Get('roles')
+  async getRoles() {
+    return this.superAdminService.getRoles();
   }
 
   @Post('restaurants')

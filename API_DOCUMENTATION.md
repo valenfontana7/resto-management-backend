@@ -531,6 +531,105 @@ Valid transitions:
 
 ---
 
+## Super Admin Endpoints
+
+**Requires SUPER_ADMIN role**
+
+### GET `/api/super-admin/roles`
+
+Get list of all available roles in the system
+
+**Response:**
+
+```json
+{
+  "roles": [
+    {
+      "id": "role-id",
+      "name": "SUPER_ADMIN",
+      "description": "Super administrador con acceso total al sistema",
+      "permissions": ["all", "super_admin"],
+      "isSystemRole": true,
+      "restaurant": null
+    },
+    {
+      "id": "role-id-2",
+      "name": "Admin",
+      "description": "Administrador del restaurante con permisos completos",
+      "permissions": ["all"],
+      "isSystemRole": true,
+      "restaurant": "Restaurant Name"
+    }
+  ]
+}
+```
+
+### GET `/api/super-admin/users`
+
+Get paginated list of all users across all restaurants
+
+**Query Parameters:**
+
+- `search` (optional): Search by name or email
+- `role` (optional): Filter by role name
+- `isActive` (optional): Filter by active status (true/false)
+- `limit` (optional): Number of results (default: 10)
+- `offset` (optional): Pagination offset (default: 0)
+
+**Response:**
+
+```json
+{
+  "total": 150,
+  "users": [
+    {
+      "id": "user-id",
+      "email": "user@example.com",
+      "name": "John Doe",
+      "restaurantId": "restaurant-id",
+      "isActive": true,
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "role": { "name": "ADMIN" },
+      "restaurant": { "name": "Restaurant Name" }
+    }
+  ]
+}
+```
+
+### PATCH `/api/super-admin/users/{userId}`
+
+Update a specific user
+
+**Body:**
+
+```json
+{
+  "name": "Updated Name",
+  "email": "newemail@example.com",
+  "roleId": "role-id",
+  "isActive": true,
+  "avatar": "https://example.com/avatar.jpg"
+}
+```
+
+**Response:**
+
+```json
+{
+  "id": "user-id",
+  "email": "newemail@example.com",
+  "name": "Updated Name",
+  "restaurantId": "restaurant-id",
+  "isActive": true,
+  "avatar": "https://example.com/avatar.jpg",
+  "role": { "name": "ADMIN" },
+  "restaurant": { "name": "Restaurant Name" },
+  "updatedAt": "2024-01-01T00:00:00.000Z"
+}
+```
+
+---
+
 ## Notes
 
 1. All **Protected** endpoints require `Authorization: Bearer <token>` header
