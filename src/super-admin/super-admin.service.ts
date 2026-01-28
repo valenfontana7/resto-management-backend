@@ -10,6 +10,7 @@ import {
 } from './dto/update-restaurant-status.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
+import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AuthService } from '../auth/auth.service';
 import { PlanType, RestaurantStatus } from '@prisma/client';
@@ -221,6 +222,101 @@ export class SuperAdminService {
         totalDishes: restaurant._count.dishes,
       },
     };
+  }
+
+  async updateRestaurant(
+    id: string,
+    dto: UpdateRestaurantDto,
+    adminId: string,
+  ) {
+    // Verificar que el restaurante existe
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException('Restaurant not found');
+    }
+
+    // Preparar datos para actualización
+    const updateData: any = {};
+
+    if (dto.name !== undefined) {
+      updateData.name = dto.name;
+    }
+
+    if (dto.email !== undefined) {
+      updateData.email = dto.email;
+    }
+
+    // Manejar businessInfo
+    if (dto.businessInfo) {
+      if (dto.businessInfo.type !== undefined) {
+        updateData.type = dto.businessInfo.type;
+      }
+      if (dto.businessInfo.cuisineTypes !== undefined) {
+        updateData.cuisineTypes = dto.businessInfo.cuisineTypes;
+      }
+      if (dto.businessInfo.description !== undefined) {
+        updateData.description = dto.businessInfo.description;
+      }
+    }
+
+    // Manejar contact
+    if (dto.contact) {
+      if (dto.contact.phone !== undefined) {
+        updateData.phone = dto.contact.phone;
+      }
+      if (dto.contact.address !== undefined) {
+        updateData.address = dto.contact.address;
+      }
+      if (dto.contact.city !== undefined) {
+        updateData.city = dto.contact.city;
+      }
+      if (dto.contact.country !== undefined) {
+        updateData.country = dto.contact.country;
+      }
+      if (dto.contact.postalCode !== undefined) {
+        updateData.postalCode = dto.contact.postalCode;
+      }
+    }
+
+    // Manejar branding
+    if (dto.branding !== undefined) {
+      updateData.branding = dto.branding;
+    }
+
+    // Actualizar el restaurante
+    const updated = await this.prisma.restaurant.update({
+      where: { id },
+      data: updateData,
+    });
+
+    // Registrar en audit log
+    await this.prisma.adminAuditLog.create({
+      data: {
+        adminId,
+        action: 'UPDATE_RESTAURANT',
+        targetRestaurantId: id,
+        details: {
+          changes: updateData,
+          previousValues: {
+            name: restaurant.name,
+            email: restaurant.email,
+            type: restaurant.type,
+            cuisineTypes: restaurant.cuisineTypes,
+            description: restaurant.description,
+            phone: restaurant.phone,
+            address: restaurant.address,
+            city: restaurant.city,
+            country: restaurant.country,
+            postalCode: restaurant.postalCode,
+          },
+        },
+      },
+    });
+
+    return updated;
   }
 
   async updateRestaurantStatus(
