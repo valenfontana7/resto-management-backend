@@ -44,8 +44,11 @@ export class OrdersController {
     // Debug logs
     console.log('[CONTROLLER DEBUG] req.user:', req?.user);
     console.log('[CONTROLLER DEBUG] req.user.role:', req?.user?.role);
-    console.log('[CONTROLLER DEBUG] Authorization header:', req?.headers?.authorization);
-    
+    console.log(
+      '[CONTROLLER DEBUG] Authorization header:',
+      req?.headers?.authorization,
+    );
+
     const origin = this.getOrigin(req);
     return this.ordersService.create(
       restaurantId,
