@@ -16,6 +16,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { UpdateRestaurantStatusDto } from './dto/update-restaurant-status.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
+import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 @Controller('api/super-admin')
@@ -48,6 +49,15 @@ export class SuperAdminController {
   @Get('restaurants/:id')
   async getRestaurantDetails(@Param('id') id: string) {
     return this.superAdminService.getRestaurantDetails(id);
+  }
+
+  @Patch('restaurants/:id')
+  async updateRestaurant(
+    @Param('id') id: string,
+    @Body() dto: UpdateRestaurantDto,
+    @Request() req,
+  ) {
+    return this.superAdminService.updateRestaurant(id, dto, req.user.userId);
   }
 
   @Patch('restaurants/:id/status')
