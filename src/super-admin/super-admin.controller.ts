@@ -112,4 +112,17 @@ export class SuperAdminController {
   async createRestaurant(@Body() dto: CreateRestaurantDto) {
     return this.superAdminService.createRestaurant(dto);
   }
+
+  @Post('restaurants/:restaurantId/orders')
+  async createManualOrder(
+    @Param('restaurantId') restaurantId: string,
+    @Body() createOrderDto: any,
+    @Request() req,
+  ) {
+    return this.superAdminService.createManualOrder(
+      restaurantId,
+      createOrderDto,
+      req.user.userId,
+    );
+  }
 }

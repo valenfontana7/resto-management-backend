@@ -25,12 +25,33 @@ export class JwtAuthGuard implements CanActivate {
       context.getClass(),
     ]);
 
-    if (isPublic) {
-      return true;
-    }
-
     const request = context.switchToHttp().getRequest();
     const token = this.extractTokenFromRequest(request);
+
+    // Rutas públicas: permitir acceso siempre, pero si viene token intentamos
+    // hidratar request.user para que el handler pueda usar rol/restaurant.
+    // Si el token es inválido, NO se corta la request (sigue siendo público).
+    if (isPublic) {
+      if (!token) return true;
+
+      try {
+        const payload = await this.jwtService.verifyAsync(token);
+        const authService = this.moduleRef.get(AuthService, { strict: false });
+        const freshUser = await authService.validateUser(payload.sub);
+        request.user = {
+          userId: freshUser.id,
+          email: freshUser.email,
+          roleId: freshUser.roleId ?? null,
+          restaurantId: freshUser.restaurantId ?? null,
+          role: freshUser.role?.name ?? null,
+          restaurantSlug: freshUser.restaurant?.slug ?? null,
+        };
+      } catch {
+        // ignore
+      }
+
+      return true;
+    }
 
     if (!token) {
       throw new UnauthorizedException('No token provided');

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
@@ -8,6 +8,7 @@ import { MercadoPagoModule } from '../mercadopago/mercadopago.module';
 import { EmailModule } from '../email/email.module';
 import { WebsocketModule } from '../websocket/websocket.module';
 import { KitchenModule } from '../kitchen/kitchen.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -17,7 +18,8 @@ import { KitchenModule } from '../kitchen/kitchen.module';
     MercadoPagoModule,
     EmailModule,
     WebsocketModule,
-    KitchenModule,
+    forwardRef(() => KitchenModule),
+    NotificationsModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService],

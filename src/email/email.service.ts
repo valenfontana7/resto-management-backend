@@ -1504,6 +1504,62 @@ export class EmailService {
     });
   }
 
+  /**
+   * Send a generic notification email
+   */
+  async sendNotificationEmail(
+    to: string,
+    subject: string,
+    title: string,
+    message: string,
+    data?: any,
+  ): Promise<boolean> {
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${title}</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">${title}</h1>
+          </div>
+
+          <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <p style="font-size: 16px; margin-bottom: 20px;">${message}</p>
+
+            ${
+              data
+                ? `
+              <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea;">
+                <h3 style="margin-top: 0; color: #667eea;">Detalles adicionales:</h3>
+                <pre style="background: white; padding: 10px; border-radius: 4px; overflow-x: auto; font-family: monospace; font-size: 12px;">${JSON.stringify(data, null, 2)}</pre>
+              </div>
+            `
+                : ''
+            }
+
+            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+
+            <p style="color: #666; font-size: 14px; text-align: center;">
+              Esta es una notificación automática del sistema de gestión de restaurantes.<br>
+              Si tienes alguna pregunta, contacta con el administrador de tu restaurante.
+            </p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    return this.sendEmail({
+      from: `Sistema de Notificaciones <${this.fromEmail}>`,
+      to,
+      subject,
+      html,
+    });
+  }
+
   // ─────────────────────────────────────────────────────────────
   // Subscription Email Template
   // ─────────────────────────────────────────────────────────────

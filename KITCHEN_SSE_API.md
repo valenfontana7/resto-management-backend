@@ -4,10 +4,38 @@
 
 El endpoint de SSE (Server-Sent Events) de cocina permite recibir notificaciones en tiempo real sobre cambios en los pedidos de un restaurante. Estas notificaciones se emiten automáticamente cuando el estado de un pedido cambia.
 
-## Endpoint
+## Endpoints
+
+### Notificaciones SSE
 
 ```
 GET /api/restaurants/:restaurantId/kitchen/notifications
+```
+
+### Obtener Órdenes para Cocina
+
+```
+GET /api/restaurants/:restaurantId/kitchen/orders
+```
+
+Este endpoint devuelve las órdenes que están en estados relevantes para la cocina: `CONFIRMED`, `PREPARING`, `READY`. Utiliza los mismos filtros que el endpoint general de órdenes, pero fuerza el filtro de status.
+
+**Parámetros de Query:**
+
+- `page`: Número de página (default: 1)
+- `limit`: Límite de resultados (default: 50)
+- `date`: Filtrar por fecha específica (YYYY-MM-DD)
+- `startDate`: Fecha de inicio (YYYY-MM-DD)
+- `endDate`: Fecha de fin (YYYY-MM-DD)
+
+**Respuesta:**
+
+```json
+{
+  "orders": [...],
+  "pagination": {...},
+  "stats": {...}
+}
 ```
 
 ## Autenticación

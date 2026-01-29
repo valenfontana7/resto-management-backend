@@ -13,12 +13,15 @@ import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AuthService } from '../auth/auth.service';
 import { PlanType, RestaurantStatus } from '@prisma/client';
+import { KitchenNotificationsService } from '../kitchen/kitchen-notifications.service';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class SuperAdminService {
   constructor(
     private prisma: PrismaService,
     private authService: AuthService,
+    private kitchenNotifications: KitchenNotificationsService,
   ) {
     void this.ensureSuperAdminRole();
   }
@@ -723,5 +726,191 @@ export class SuperAdminService {
       descriptions[name] ||
       `Rol personalizado con permisos: ${permissions.join(', ')}`
     );
+  }
+
+  async createManualOrder(
+    restaurantId: string,
+    createOrderDto: any,
+    adminId: string,
+  ) {
+    // Verificar que el restaurante existe
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+      },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException('Restaurante no encontrado');
+    }
+
+    // Validar que los platos existen
+    const dishIds = createOrderDto.items.map((item: any) => item.dishId);
+    const dishes = await this.prisma.dish.findMany({
+      where: {
+        id: { in: dishIds },
+        restaurantId,
+      },
+    });
+
+    if (dishes.length !== dishIds.length) {
+      throw new BadRequestException(
+        'Algunos platos no existen o no pertenecen al restaurante',
+      );
+    }
+
+    // Calcular totales
+    const orderItems = createOrderDto.items.map((item: any) => {
+      const dish = dishes.find((d) => d.id === item.dishId);
+      if (!dish)
+        throw new BadRequestException(`Plato ${item.dishId} no encontrado`);
+
+      return {
+        dishId: item.dishId,
+        name: dish.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice ?? dish.price,
+        subtotal: (item.unitPrice ?? dish.price) * item.quantity,
+        notes: item.notes,
+      };
+    });
+
+    const subtotal =
+      createOrderDto.subtotal ??
+      orderItems.reduce((sum: number, item: any) => sum + item.subtotal, 0);
+    const deliveryFee = createOrderDto.deliveryFee ?? 0;
+    const tip = createOrderDto.tip ?? 0;
+    const total = createOrderDto.total ?? subtotal + deliveryFee + tip;
+
+    // Generar número de orden
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    const dateStr = `${year}${month}${day}`;
+
+    const startOfDay = new Date(today);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(today);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const ordersCount = await this.prisma.order.count({
+      where: {
+        restaurantId,
+        createdAt: {
+          gte: startOfDay,
+          lt: endOfDay,
+        },
+      },
+    });
+
+    const orderNumber = `OD-${dateStr}-${String(ordersCount + 1).padStart(3, '0')}`;
+
+    // Generar token de tracking público único
+    const crypto = require('crypto');
+    const publicTrackingToken = crypto.randomBytes(32).toString('base64url');
+
+    // Crear la orden directamente como PAID (paymentStatus)
+    // El status de la orden comienza en CONFIRMED para pedidos manuales (ya que están pagados y listos para cocina)
+    const order = await this.prisma.order.create({
+      data: {
+        orderNumber,
+        restaurantId,
+        publicTrackingToken,
+        customerName: createOrderDto.customerName,
+        customerEmail: createOrderDto.customerEmail,
+        customerPhone: createOrderDto.customerPhone,
+        type: createOrderDto.type,
+        status: 'PREPARING', // Estado en preparación para que aparezca en cocina
+        paymentMethod: createOrderDto.paymentMethod ?? 'cash',
+        paymentStatus: 'PAID', // Ya está pagado (creado manualmente por admin)
+        paidAt: new Date(),
+        confirmedAt: new Date(), // Confirmado automáticamente
+        preparingAt: new Date(), // En preparación automáticamente
+        subtotal,
+        deliveryFee,
+        tip,
+        total,
+        deliveryAddress: createOrderDto.deliveryAddress,
+        deliveryNotes: createOrderDto.deliveryNotes,
+        tableId: createOrderDto.tableId,
+        notes: createOrderDto.notes,
+        items: {
+          create: orderItems.map((item: any) => ({
+            dishId: item.dishId,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            subtotal: item.subtotal,
+            notes: item.notes,
+          })),
+        },
+        statusHistory: {
+          create: {
+            toStatus: 'PREPARING',
+            changedBy: adminId,
+            notes:
+              'Pedido creado y puesto en preparación manualmente por SUPER_ADMIN',
+          },
+        },
+      },
+      include: {
+        items: {
+          include: {
+            dish: true,
+          },
+        },
+        statusHistory: true,
+        restaurant: true,
+      },
+    });
+
+    // Emitir notificación SSE para cocina
+    this.kitchenNotifications.emitNotification(order.restaurantId, {
+      type: 'order_updated',
+      orderId: order.id,
+      data: {
+        orderNumber: order.orderNumber,
+        status: 'PREPARING',
+        customerName: order.customerName,
+        type: order.type,
+        items: order.items.map((item) => ({
+          name: item.dish.name,
+          quantity: item.quantity,
+          notes: item.notes,
+        })),
+        total: order.total,
+        createdAt: order.createdAt.toISOString(),
+        updatedAt: order.updatedAt.toISOString(),
+      },
+    });
+
+    // Registrar en audit log
+    await this.prisma.adminAuditLog.create({
+      data: {
+        adminId,
+        action: 'CREATE_MANUAL_ORDER',
+        targetRestaurantId: restaurantId,
+        details: {
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          total: order.total,
+        },
+      },
+    });
+
+    return {
+      success: true,
+      order: {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        total: order.total,
+        createdAt: order.createdAt,
+      },
+    };
   }
 }

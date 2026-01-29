@@ -74,6 +74,7 @@ model Restaurant {
   mercadoPagoCredential MercadoPagoCredential?
   checkoutSessions CheckoutSession[]
   subscription    Subscription?
+  notifications   Notification[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -675,6 +676,9 @@ model User {
   // Super Admin Relations
   auditLogsPerformed AdminAuditLog[]
 
+  // Notifications
+  notifications Notification[]
+
   @@index([email])
   @@index([restaurantId])
   @@index([restaurantId, roleId])
@@ -911,4 +915,62 @@ model Analytics {
 
   @@index([restaurantId, date])
   @@index([restaurantId, metric])
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+model Notification {
+  id          String   @id @default(cuid())
+  userId      String
+  restaurantId String?
+  type        NotificationType
+  title       String
+  message     String
+  data        Json? // Additional data for the notification
+  isRead      Boolean  @default(false)
+  priority    NotificationPriority @default(NORMAL)
+  channels    NotificationChannel[] // Channels to send: EMAIL, PUSH, IN_APP, SSE
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  restaurant Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([restaurantId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+enum NotificationType {
+  ORDER_CREATED
+  ORDER_UPDATED
+  ORDER_CANCELLED
+  ORDER_READY
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  RESERVATION_CONFIRMED
+  RESERVATION_CANCELLED
+  SUBSCRIPTION_EXPIRED
+  SUBSCRIPTION_RENEWED
+  SYSTEM_MAINTENANCE
+  CUSTOM
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum NotificationChannel {
+  EMAIL
+  PUSH
+  IN_APP
+  SSE
 }

@@ -15,6 +15,7 @@ import {
 } from '../email/email.service';
 import { OrdersGateway, OrderUpdatePayload } from '../websocket/orders.gateway';
 import { KitchenNotificationsService } from '../kitchen/kitchen-notifications.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import * as crypto from 'crypto';
 import {
   CreateOrderDto,
@@ -38,12 +39,14 @@ export class OrdersService {
     private readonly ordersGateway: OrdersGateway,
     private readonly configService: ConfigService,
     private readonly kitchenNotifications: KitchenNotificationsService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async create(
     restaurantId: string,
     createDto: CreateOrderDto,
     origin?: string,
+    role?: string | null,
   ) {
     if (!createDto) {
       throw new BadRequestException('Request body is required');
@@ -1360,7 +1363,7 @@ export class OrdersService {
   /**
    * Emite notificaciones SSE para la cocina basadas en cambios de estado de pedidos
    */
-  private emitKitchenNotification(order: any, newStatus: OrderStatus) {
+  private async emitKitchenNotification(order: any, newStatus: OrderStatus) {
     let notificationType:
       | 'order_created'
       | 'order_updated'
@@ -1408,6 +1411,83 @@ export class OrdersService {
           updatedAt: order.updatedAt,
         },
       });
+
+      // Enviar notificaciones a usuarios del restaurante
+      await this.sendOrderNotificationsToUsers(order, newStatus);
+    }
+  }
+
+  private async sendOrderNotificationsToUsers(
+    order: any,
+    newStatus: OrderStatus,
+  ) {
+    try {
+      // Obtener usuarios del restaurante con roles que deberían recibir notificaciones
+      const restaurantUsers = await this.prisma.user.findMany({
+        where: {
+          restaurantId: order.restaurantId,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          role: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      });
+
+      // Determinar tipo de notificación
+      let notificationType:
+        | 'ORDER_CREATED'
+        | 'ORDER_UPDATED'
+        | 'ORDER_CANCELLED'
+        | 'ORDER_READY';
+
+      switch (newStatus) {
+        case OrderStatus.CONFIRMED:
+          notificationType = 'ORDER_CREATED';
+          break;
+        case OrderStatus.PREPARING:
+          notificationType = 'ORDER_UPDATED';
+          break;
+        case OrderStatus.READY:
+          notificationType = 'ORDER_READY';
+          break;
+        case OrderStatus.CANCELLED:
+          notificationType = 'ORDER_CANCELLED';
+          break;
+        default:
+          return; // No enviar notificación para otros estados
+      }
+
+      // Enviar notificación a cada usuario del restaurante
+      for (const user of restaurantUsers) {
+        try {
+          await this.notificationsService.createOrderNotification(
+            user.id,
+            order.restaurantId,
+            order.id,
+            notificationType,
+            {
+              orderNumber: order.orderNumber,
+              status: newStatus,
+              customerName: order.customerName,
+              type: order.type,
+              total: order.total,
+            },
+          );
+        } catch (error) {
+          this.logger.error(
+            `Error enviando notificación a usuario ${user.id}:`,
+            error,
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.error('Error enviando notificaciones de orden:', error);
     }
   }
 }

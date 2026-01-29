@@ -1,8 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule } from '@nestjs/config';
 import { KitchenController } from './kitchen.controller';
 import { KitchenNotificationsService } from './kitchen-notifications.service';
+import { OrdersModule } from '../orders/orders.module';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { KitchenNotificationsService } from './kitchen-notifications.service';
       secret: process.env.JWT_SECRET || 'fallback-secret',
       signOptions: { expiresIn: '24h' },
     }),
+    forwardRef(() => OrdersModule),
   ],
   controllers: [KitchenController],
   providers: [KitchenNotificationsService],

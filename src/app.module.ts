@@ -32,6 +32,7 @@ import { RequestLoggingMiddleware } from './common/middleware/request-logging.mi
 import { FeatureFlagsGuard } from './common/guards/feature-flags.guard';
 
 import { SuperAdminModule } from './super-admin/super-admin.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { SuperAdminModule } from './super-admin/super-admin.module';
     KitchenModule,
     CouponsModule,
     SuperAdminModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [
