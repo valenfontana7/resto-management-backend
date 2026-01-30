@@ -72,7 +72,7 @@ export class NotificationsService {
    * Enviar notificación por los canales configurados
    */
   private async sendNotification(notification: Notification): Promise<void> {
-    const channels = notification.channels as NotificationChannel[];
+    const channels = notification.channels;
 
     for (const channel of channels) {
       try {

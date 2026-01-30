@@ -59,7 +59,7 @@ export class UploadsController {
   async proxyGet(@Req() req, @Res() res: Response) {
     console.log(`[DEBUG] proxyGet called`);
     console.log(`[DEBUG] req.url: ${req.url}`);
-    console.log(`[DEBUG] req.originalUrl: ${(req as any).originalUrl}`);
+    console.log(`[DEBUG] req.originalUrl: ${req.originalUrl}`);
     // El parámetro wildcard puede tener slashes reemplazados por comas, obtener la URL real
     const originalUrl = req.url;
     const keyFromUrl = originalUrl.replace(/^\/api\/uploads\//, '');

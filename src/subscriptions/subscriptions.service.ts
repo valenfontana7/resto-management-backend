@@ -307,7 +307,7 @@ export class SubscriptionsService {
         // Propagar como error 502
         throw new BadRequestException({
           error: 'Error deleting card in MercadoPago',
-          details: String((e as any).message ?? e),
+          details: String(e.message ?? e),
         });
       }
     }

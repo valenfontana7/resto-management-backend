@@ -135,7 +135,6 @@ export class OrdersService {
 
     // Si NO es MercadoPago, persistimos la Order directamente (no hay webhook para crearla luego)
     const isMercadoPago =
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
       String(paymentMethod) === this.MERCADOPAGO_PAYMENT_METHOD;
     if (!isMercadoPago) {
       const order = await this.prisma.order.create({
