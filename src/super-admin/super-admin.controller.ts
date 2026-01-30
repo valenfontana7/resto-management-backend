@@ -3,6 +3,7 @@ import {
   Get,
   Patch,
   Post,
+  Delete,
   Body,
   Param,
   Query,
@@ -134,5 +135,29 @@ export class SuperAdminController {
       createOrderDto,
       req.user.userId,
     );
+  }
+
+  @Get('restaurants/:restaurantId/orders')
+  async getRestaurantOrders(
+    @Param('restaurantId') restaurantId: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+    @Query('status') status?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
+    return this.superAdminService.getRestaurantOrders(
+      restaurantId,
+      +page,
+      +limit,
+      status,
+      dateFrom,
+      dateTo,
+    );
+  }
+
+  @Delete('restaurants/:id')
+  async deleteRestaurant(@Param('id') id: string, @Request() req) {
+    return this.superAdminService.deleteRestaurant(id, req.user.userId);
   }
 }

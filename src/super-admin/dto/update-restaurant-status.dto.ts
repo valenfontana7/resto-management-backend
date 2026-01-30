@@ -1,9 +1,9 @@
 import { IsEnum, IsOptional, IsString } from 'class-validator';
 
 export enum RestaurantStatusAction {
-  ACTIVE = 'ACTIVE',
-  SUSPENDED = 'SUSPENDED',
-  BANNED = 'BANNED', // Maps to INACTIVE or specific logic
+  ACTIVE = 'active',
+  SUSPENDED = 'suspended',
+  BANNED = 'banned', // Maps to INACTIVE or specific logic
 }
 
 export class UpdateRestaurantStatusDto {

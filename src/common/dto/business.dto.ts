@@ -192,6 +192,14 @@ export class OrderRulesDto {
   orderLeadTime?: number;
 
   @ApiPropertyOptional({
+    example: false,
+    description: 'Allow scheduled orders',
+  })
+  @IsOptional()
+  @IsBoolean()
+  allowScheduledOrders?: boolean;
+
+  @ApiPropertyOptional({
     example: 100,
     description: 'Maximum concurrent orders',
   })
@@ -201,11 +209,46 @@ export class OrderRulesDto {
   maxConcurrentOrders?: number;
 }
 
+export class DeliveryZoneDto {
+  @ApiPropertyOptional({ example: '1769739295791' })
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @ApiPropertyOptional({ example: 'Villa Crespo' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ example: 1000 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  deliveryFee?: number;
+
+  @ApiPropertyOptional({ example: 1 })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minOrder?: number;
+
+  @ApiPropertyOptional({ example: [] })
+  @IsOptional()
+  @IsArray()
+  areas?: any[];
+}
+
 export class DeliveryRulesDto {
   @ApiPropertyOptional({ example: true })
   @IsOptional()
   @IsBoolean()
   enabled?: boolean;
+
+  @ApiPropertyOptional({ type: [DeliveryZoneDto] })
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => DeliveryZoneDto)
+  zones?: DeliveryZoneDto[];
 
   @ApiPropertyOptional({ example: 500 })
   @IsOptional()
@@ -279,12 +322,36 @@ export class PaymentRulesDto {
     ['cash', 'debit-card', 'credit-card', 'bank-transfer', 'digital-wallet'],
     { each: true },
   )
-  acceptedMethods?: string[];
+  methods?: string[];
 
   @ApiPropertyOptional({ example: false })
   @IsOptional()
   @IsBoolean()
-  requirePaymentForReservation?: boolean;
+  requirePrepayment?: boolean;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  acceptTips?: boolean;
+}
+
+export class PickupRulesDto {
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+}
+
+export class DineInRulesDto {
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  reservationsEnabled?: boolean;
 }
 
 export class BusinessRulesDto {
@@ -300,6 +367,18 @@ export class BusinessRulesDto {
   @Type(() => DeliveryRulesDto)
   delivery?: DeliveryRulesDto;
 
+  @ApiPropertyOptional({ type: PickupRulesDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PickupRulesDto)
+  pickup?: PickupRulesDto;
+
+  @ApiPropertyOptional({ type: DineInRulesDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DineInRulesDto)
+  dineIn?: DineInRulesDto;
+
   @ApiPropertyOptional({ type: ReservationRulesDto })
   @IsOptional()
   @ValidateNested()
@@ -310,7 +389,7 @@ export class BusinessRulesDto {
   @IsOptional()
   @ValidateNested()
   @Type(() => PaymentRulesDto)
-  payments?: PaymentRulesDto;
+  payment?: PaymentRulesDto;
 }
 
 // ==================== Features ====================

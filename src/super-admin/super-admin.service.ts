@@ -369,6 +369,33 @@ export class SuperAdminService {
     return updated;
   }
 
+  async deleteRestaurant(id: string, adminId: string) {
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+    if (!restaurant) throw new NotFoundException('Restaurant not found');
+
+    const updated = await this.prisma.restaurant.update({
+      where: { id },
+      data: { status: 'INACTIVE' },
+    });
+
+    await this.prisma.adminAuditLog.create({
+      data: {
+        adminId,
+        action: 'DELETE_RESTAURANT',
+        targetRestaurantId: id,
+        details: {
+          oldStatus: restaurant.status,
+          newStatus: 'INACTIVE',
+        },
+      },
+    });
+
+    return updated;
+  }
+
   async updateSubscription(
     id: string,
     dto: UpdateSubscriptionDto,
@@ -822,6 +849,71 @@ export class SuperAdminService {
       descriptions[name] ||
       `Rol personalizado con permisos: ${permissions.join(', ')}`
     );
+  }
+
+  async getRestaurantOrders(
+    restaurantId: string,
+    page: number = 1,
+    limit: number = 10,
+    status?: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ) {
+    const skip = (page - 1) * limit;
+
+    // Build where clause
+    const where: any = {
+      restaurantId,
+    };
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) {
+        where.createdAt.gte = new Date(dateFrom);
+      }
+      if (dateTo) {
+        where.createdAt.lte = new Date(dateTo);
+      }
+    }
+
+    const [orders, total] = await Promise.all([
+      this.prisma.order.findMany({
+        where,
+        include: {
+          items: {
+            include: {
+              dish: true,
+            },
+          },
+          statusHistory: {
+            orderBy: {
+              createdAt: 'desc',
+            },
+            take: 5,
+          },
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        skip,
+        take: limit,
+      }),
+      this.prisma.order.count({ where }),
+    ]);
+
+    return {
+      orders,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async createManualOrder(
