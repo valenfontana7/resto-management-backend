@@ -15,7 +15,6 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { AuthService } from '../auth/auth.service';
 import { PlanType, RestaurantStatus } from '@prisma/client';
 import { KitchenNotificationsService } from '../kitchen/kitchen-notifications.service';
-import { OrderFiltersDto } from '../orders/dto/order.dto';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -225,92 +224,6 @@ export class SuperAdminService {
         totalOrders: restaurant._count.orders,
         totalDishes: restaurant._count.dishes,
       },
-    };
-  }
-
-  async getRestaurantOrders(id: string, filters: OrderFiltersDto) {
-    // Verify restaurant exists
-    const restaurant = await this.prisma.restaurant.findUnique({
-      where: { id },
-    });
-    if (!restaurant) {
-      throw new NotFoundException('Restaurant not found');
-    }
-
-    const where: any = {
-      restaurantId: id,
-    };
-
-    if (filters.status) {
-      const statuses = filters.status
-        .split(',')
-        .map((s) => s.trim().toUpperCase());
-      if (statuses.length === 1) {
-        where.status = statuses[0];
-      } else {
-        where.status = { in: statuses };
-      }
-    }
-
-    if (filters.type) {
-      where.type = filters.type;
-    }
-
-    if (filters.customerPhone) {
-      where.customerPhone = {
-        contains: filters.customerPhone,
-      };
-    }
-
-    if (filters.startDate || filters.endDate) {
-      where.createdAt = {};
-      if (filters.startDate) {
-        where.createdAt.gte = new Date(filters.startDate);
-      }
-      if (filters.endDate) {
-        where.createdAt.lte = new Date(filters.endDate);
-      }
-    }
-
-    if (filters.date) {
-      const date = new Date(filters.date);
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
-      where.createdAt = {
-        gte: startOfDay,
-        lte: endOfDay,
-      };
-    }
-
-    const page = filters.page || 1;
-    const limit = filters.limit || 50;
-    const skip = (page - 1) * limit;
-
-    const [orders, total] = await Promise.all([
-      this.prisma.order.findMany({
-        where,
-        include: {
-          items: {
-            include: {
-              dish: true,
-            },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: limit,
-      }),
-      this.prisma.order.count({ where }),
-    ]);
-
-    return {
-      orders,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
     };
   }
 

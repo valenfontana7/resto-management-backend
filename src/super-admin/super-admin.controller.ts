@@ -20,8 +20,6 @@ import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
-import { OrderFiltersDto } from '../orders/dto/order.dto';
-
 @Controller('api/super-admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('SUPER_ADMIN')
@@ -52,14 +50,6 @@ export class SuperAdminController {
   @Get('restaurants/:id')
   async getRestaurantDetails(@Param('id') id: string) {
     return this.superAdminService.getRestaurantDetails(id);
-  }
-
-  @Get('restaurants/:id/orders')
-  async getRestaurantOrders(
-    @Param('id') id: string,
-    @Query() filters: OrderFiltersDto,
-  ) {
-    return this.superAdminService.getRestaurantOrders(id, filters);
   }
 
   @Patch('restaurants/:id')
