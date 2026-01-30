@@ -12,10 +12,12 @@ import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { CreateUserDto } from './dto/create-user.dto';
 import { AuthService } from '../auth/auth.service';
 import { PlanType, RestaurantStatus } from '@prisma/client';
 import { KitchenNotificationsService } from '../kitchen/kitchen-notifications.service';
 import * as crypto from 'crypto';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class SuperAdminService {
@@ -550,6 +552,54 @@ export class SuperAdminService {
     };
   }
 
+  async createUser(dto: CreateUserDto, adminId: string) {
+    // Check if email already exists
+    const existingUser = await this.prisma.user.findFirst({
+      where: { email: dto.email },
+    });
+
+    if (existingUser) {
+      throw new BadRequestException('Email already registered');
+    }
+
+    // Check if role exists
+    const role = await this.prisma.role.findUnique({
+      where: { id: dto.roleId },
+    });
+
+    if (!role) {
+      throw new NotFoundException('Role not found');
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+
+    // Create user
+    const user = await this.prisma.user.create({
+      data: {
+        email: dto.email,
+        password: hashedPassword,
+        name: dto.name,
+        isActive: dto.isActive ?? true,
+        roleId: dto.roleId,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        isActive: true,
+        createdAt: true,
+        role: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+
+    return user;
+  }
+
   async createRestaurant(dto: CreateRestaurantDto) {
     // Generate unique slug
     const baseSlug = dto.name
@@ -738,6 +788,9 @@ export class SuperAdminService {
 
     if (dto.name !== undefined) updateData.name = dto.name;
     if (dto.email !== undefined) updateData.email = dto.email;
+    if (dto.password !== undefined) {
+      updateData.password = await bcrypt.hash(dto.password, 10);
+    }
     if (dto.roleId !== undefined) updateData.roleId = dto.roleId;
     if (dto.isActive !== undefined) updateData.isActive = dto.isActive;
     if (dto.avatar !== undefined) updateData.avatar = dto.avatar;
@@ -773,7 +826,10 @@ export class SuperAdminService {
         adminId,
         action: 'UPDATE_USER',
         details: {
-          updatedFields: Object.keys(updateData),
+          updatedFields: Object.keys(updateData).filter(
+            (field) => field !== 'password',
+          ), // Don't log password
+          passwordChanged: dto.password ? true : false,
           previousValues: {
             name: user.name,
             email: user.email,

@@ -19,6 +19,7 @@ import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { CreateUserDto } from './dto/create-user.dto';
 
 @Controller('api/super-admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -103,6 +104,11 @@ export class SuperAdminController {
       +limit,
       +offset,
     );
+  }
+
+  @Post('users')
+  async createUser(@Body() dto: CreateUserDto, @Request() req) {
+    return this.superAdminService.createUser(dto, req.user.userId);
   }
 
   @Patch('users/:userId')
