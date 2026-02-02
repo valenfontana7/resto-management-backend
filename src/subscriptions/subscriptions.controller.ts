@@ -115,6 +115,21 @@ export class SubscriptionsController {
     );
   }
 
+  @Patch('upgrade')
+  @ApiOperation({ summary: 'Cambiar plan de suscripción (upgrade/downgrade)' })
+  @ApiParam({ name: 'restaurantId', description: 'ID del restaurante' })
+  @ApiResponse({ status: 200, description: 'Plan cambiado exitosamente' })
+  @ApiResponse({ status: 404, description: 'No existe suscripción o plan' })
+  async upgradePlan(
+    @Param('restaurantId') restaurantId: string,
+    @Body() body: { newPlanId: string },
+    @CurrentUser() user: RequestUser,
+  ) {
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
+    return this.subscriptionsService.upgradePlan(restaurantId, body.newPlanId);
+  }
+
   @Post('cancel')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cancelar suscripción' })

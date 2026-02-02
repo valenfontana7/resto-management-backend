@@ -6,7 +6,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SubscriptionStatus } from '@prisma/client';
 import { differenceInDays } from 'date-fns';
 import { PlanType } from './dto';
-import { PLAN_PRICES, PLAN_NAMES } from './constants';
+import { PLAN_NAMES } from './constants';
+import { PlansService } from './plans/plans.service';
 
 @Injectable()
 export class SubscriptionTasksService {
@@ -16,6 +17,7 @@ export class SubscriptionTasksService {
     private readonly subscriptionsService: SubscriptionsService,
     private readonly emailService: EmailService,
     private readonly prisma: PrismaService,
+    private readonly plansService: PlansService,
   ) {}
 
   /**
@@ -68,7 +70,12 @@ export class SubscriptionTasksService {
           if (pm && subscription.mpCustomerId) {
             // Intentar cobrar hasta 3 veces
             const planType = subscription.planType as PlanType;
-            const amount = PLAN_PRICES[planType] ?? 0;
+
+            // Obtener precio dinámico del plan
+            const plan = await this.plansService
+              .findOne(subscription.planId)
+              .catch(() => null);
+            const amount = plan?.price ?? 0;
 
             // Validar monto antes de intentar cobrar
             if (amount <= 0) {
@@ -223,7 +230,12 @@ export class SubscriptionTasksService {
         const daysRemaining = differenceInDays(subscription.trialEnd, now);
         const planType = subscription.planType as PlanType;
         const planName = PLAN_NAMES[planType];
-        const amount = PLAN_PRICES[planType];
+
+        // Obtener precio dinámico
+        const plan = await this.plansService
+          .findOne(subscription.planId)
+          .catch(() => null);
+        const amount = plan?.price ?? 0;
 
         // Enviar aviso 3 días antes
         if (daysRemaining === 3) {
@@ -301,7 +313,12 @@ export class SubscriptionTasksService {
             });
 
           const planType = subscription.planType as PlanType;
-          const amount = PLAN_PRICES[planType];
+
+          // Obtener precio dinámico
+          const plan = await this.plansService
+            .findOne(subscription.planId)
+            .catch(() => null);
+          const amount = plan?.price ?? 0;
 
           // Si no hay método de pago o es plan gratuito, solo notificar
           if (!paymentMethod || !subscription.mpCustomerId || amount <= 0) {

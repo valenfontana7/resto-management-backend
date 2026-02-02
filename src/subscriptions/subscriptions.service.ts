@@ -18,7 +18,6 @@ import {
   PlanType,
 } from './dto';
 import {
-  PLAN_PRICES,
   PLAN_NAMES,
   TRIAL_DAYS,
   isPlanUpgrade,
@@ -27,6 +26,7 @@ import {
 import { SubscriptionStatus, Prisma } from '@prisma/client';
 import { addDays, addMonths, differenceInDays, format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { PlansService } from './plans/plans.service';
 
 @Injectable()
 export class SubscriptionsService {
@@ -38,6 +38,7 @@ export class SubscriptionsService {
     private readonly configService: ConfigService,
     private readonly emailService: EmailService,
     private readonly mercadopagoService: MercadoPagoService,
+    private readonly plansService: PlansService,
   ) {
     const accessToken = this.configService.get<string>(
       'MERCADOPAGO_ACCESS_TOKEN',
@@ -398,6 +399,11 @@ export class SubscriptionsService {
     const subscription = await this.prisma.subscription.findUnique({
       where: { restaurantId },
       include: {
+        plan: {
+          include: {
+            restrictions: true,
+          },
+        },
         invoices: {
           take: 5,
           orderBy: { createdAt: 'desc' },
@@ -500,12 +506,18 @@ export class SubscriptionsService {
     let nextBillingDate: Date | null = null;
     let nextBillingAmount = 0;
 
+    // Obtener precio del plan dinámicamente
+    const currentPlan = await this.plansService
+      .findOne(subscription.planId)
+      .catch(() => null);
+    const planPrice = currentPlan?.price || 0;
+
     if (isTrialing && subscription.trialEnd) {
       nextBillingDate = subscription.trialEnd;
-      nextBillingAmount = PLAN_PRICES[planType];
+      nextBillingAmount = planPrice;
     } else if (subscription.status === SubscriptionStatus.ACTIVE) {
       nextBillingDate = subscription.currentPeriodEnd;
-      nextBillingAmount = PLAN_PRICES[subscription.planType as PlanType];
+      nextBillingAmount = planPrice;
     }
 
     return {
@@ -648,7 +660,9 @@ export class SubscriptionsService {
       throw new NotFoundException('Restaurante no encontrado');
     }
 
-    const price = PLAN_PRICES[dto.planType];
+    // Obtener precio dinámico del plan
+    const plan = await this.plansService.findOne(dto.planType);
+    const price = plan.price;
     if (price === 0) {
       throw new BadRequestException(
         'El plan Starter es gratuito, no requiere checkout',
@@ -867,6 +881,68 @@ export class SubscriptionsService {
     return {
       subscription: updatedSubscription,
       message: `Suscripción cancelada. Tendrás acceso hasta el ${endDate}.`,
+    };
+  }
+
+  /**
+   * Cambiar plan de suscripción (upgrade/downgrade)
+   */
+  async upgradePlan(restaurantId: string, newPlanId: string) {
+    // Verificar que el plan existe
+    const newPlan = await this.prisma.subscriptionPlan.findUnique({
+      where: { id: newPlanId },
+      include: { restrictions: true },
+    });
+
+    if (!newPlan) {
+      throw new NotFoundException(`Plan con ID ${newPlanId} no encontrado`);
+    }
+
+    if (!newPlan.isActive) {
+      throw new BadRequestException(
+        `El plan ${newPlan.displayName} no está disponible`,
+      );
+    }
+
+    // Obtener suscripción actual
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { restaurantId },
+      include: { plan: true },
+    });
+
+    if (!subscription) {
+      throw new NotFoundException(
+        'No existe suscripción para este restaurante',
+      );
+    }
+
+    if (subscription.planId === newPlanId) {
+      throw new BadRequestException('Ya estás en este plan');
+    }
+
+    // Actualizar plan
+    const updatedSubscription = await this.prisma.subscription.update({
+      where: { restaurantId },
+      data: {
+        planId: newPlanId,
+        planType: newPlanId as any, // Mantener compatibilidad
+      },
+      include: {
+        plan: {
+          include: {
+            restrictions: true,
+          },
+        },
+      },
+    });
+
+    this.logger.log(
+      `Restaurant ${restaurantId} cambió de plan ${subscription.planId} a ${newPlanId}`,
+    );
+
+    return {
+      subscription: updatedSubscription,
+      message: `Plan cambiado exitosamente a ${newPlan.displayName}`,
     };
   }
 

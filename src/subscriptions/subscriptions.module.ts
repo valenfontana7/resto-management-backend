@@ -7,6 +7,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 import { MercadoPagoModule } from '../mercadopago/mercadopago.module';
 import { AuthModule } from '../auth/auth.module';
+import { PlansModule } from './plans/plans.module';
 
 @Module({
   imports: [
@@ -15,9 +16,10 @@ import { AuthModule } from '../auth/auth.module';
     ScheduleModule.forRoot(),
     MercadoPagoModule,
     AuthModule,
+    PlansModule,
   ],
   controllers: [SubscriptionsController],
   providers: [SubscriptionsService, SubscriptionTasksService],
-  exports: [SubscriptionsService],
+  exports: [SubscriptionsService, PlansModule],
 })
 export class SubscriptionsModule {}

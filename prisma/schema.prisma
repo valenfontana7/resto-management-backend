@@ -703,12 +703,61 @@ enum SubscriptionStatus {
   EXPIRED       // Expirada (trial o pago no renovado)
 }
 
+// ============================================
+// SUBSCRIPTION PLANS (Manageables)
+// ============================================
+
+model SubscriptionPlan {
+  id              String    @id  // "STARTER", "PROFESSIONAL", "ENTERPRISE"
+  displayName     String
+  description     String
+  price           Int       // En centavos
+  interval        String    // "monthly" o "yearly"
+  trialDays       Int       @default(0)
+  color           String    // Clase de gradiente CSS
+  order           Int       @default(0)
+  isActive        Boolean   @default(true)
+  isDefault       Boolean   @default(false)
+  
+  restrictions    PlanRestriction[]
+  subscriptions   Subscription[]
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([isActive])
+  @@index([order])
+}
+
+// Restricciones por Plan
+model PlanRestriction {
+  id              String    @id @default(cuid())
+  planId          String
+  plan            SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  
+  key             String    // "products", "users", "tables", etc.
+  type            String    // "limit", "boolean", "text"
+  value           String    // Valor serializado
+  displayName     String
+  description     String?
+  category        String    // "limits", "features", "integrations", "support"
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@unique([planId, key])
+  @@index([planId])
+  @@index([category])
+}
+
 model Subscription {
   id              String             @id @default(cuid())
   restaurantId    String             @unique
   restaurant      Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   
-  planType        PlanType           @default(STARTER)
+  planId          String             @default("STARTER")
+  plan            SubscriptionPlan   @relation(fields: [planId], references: [id])
+  planType        PlanType           @default(STARTER) // Mantener por compatibilidad
   status          SubscriptionStatus @default(TRIALING)
   
   // Fechas del período

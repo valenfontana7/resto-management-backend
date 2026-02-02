@@ -33,6 +33,7 @@ import { FeatureFlagsGuard } from './common/guards/feature-flags.guard';
 
 import { SuperAdminModule } from './super-admin/super-admin.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { PlansModule } from './subscriptions/plans/plans.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     CouponsModule,
     SuperAdminModule,
     NotificationsModule,
+    PlansModule, // Importar PlansModule aquí para exponer endpoints públicos
   ],
   controllers: [AppController],
   providers: [
