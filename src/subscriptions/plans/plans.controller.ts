@@ -16,11 +16,13 @@ import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { CreateRestrictionDto } from './dto/create-restriction.dto';
 import { UpdateRestrictionDto } from './dto/update-restriction.dto';
+import { Public } from '../../auth/decorators/public.decorator';
 
 /**
  * Controlador PÚBLICO para planes de suscripción
  * Ruta base: /api/plans
  */
+@Public()
 @Controller('api/plans')
 export class PublicPlansController {
   constructor(private readonly plansService: PlansService) {}
@@ -52,7 +54,7 @@ export class PublicPlansController {
  * Controlador para gestión de planes de suscripción (ADMIN)
  * Ruta base: /api/master/plans
  */
-@Controller('master/plans')
+@Controller('api/master/plans')
 export class PlansController {
   constructor(private readonly plansService: PlansService) {}
 
