@@ -20,6 +20,10 @@ import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateSettingsDto } from './dto/update-settings.dto';
+import { ChangePlanDto } from './dto/change-plan.dto';
+import { CancelSubscriptionDto } from './dto/cancel-subscription.dto';
+import { ReactivateSubscriptionDto } from './dto/reactivate-subscription.dto';
 
 @Controller('api/super-admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -165,5 +169,62 @@ export class SuperAdminController {
   @Delete('restaurants/:id')
   async deleteRestaurant(@Param('id') id: string, @Request() req) {
     return this.superAdminService.deleteRestaurant(id, req.user.userId);
+  }
+
+  // ============================================
+  // SUBSCRIPTION MANAGEMENT
+  // ============================================
+
+  @Patch('restaurants/:restaurantId/subscription/plan')
+  async changePlan(
+    @Param('restaurantId') restaurantId: string,
+    @Body() dto: ChangePlanDto,
+    @Request() req,
+  ) {
+    return this.superAdminService.changePlan(
+      restaurantId,
+      dto.planId,
+      req.user.userId,
+    );
+  }
+
+  @Post('restaurants/:restaurantId/subscription/cancel')
+  async cancelSubscription(
+    @Param('restaurantId') restaurantId: string,
+    @Body() dto: CancelSubscriptionDto,
+    @Request() req,
+  ) {
+    return this.superAdminService.cancelSubscription(
+      restaurantId,
+      dto.reason,
+      req.user.userId,
+    );
+  }
+
+  @Post('restaurants/:restaurantId/subscription/reactivate')
+  async reactivateSubscription(
+    @Param('restaurantId') restaurantId: string,
+    @Body() dto: ReactivateSubscriptionDto,
+    @Request() req,
+  ) {
+    return this.superAdminService.reactivateSubscription(
+      restaurantId,
+      dto.planId,
+      req.user.userId,
+    );
+  }
+
+  // ============================================
+  // SYSTEM SETTINGS
+  // ============================================
+
+  @Get('settings')
+  async getSettings() {
+    return this.superAdminService.getSettings();
+  }
+
+  @Patch('settings')
+  async updateSettings(@Body() dto: UpdateSettingsDto, @Request() req) {
+    return this.superAdminService.updateSettings(dto, req.user.userId);
   }
 }

@@ -1155,4 +1155,423 @@ export class SuperAdminService {
       },
     };
   }
+
+  // ============================================
+  // SUBSCRIPTION MANAGEMENT
+  // ============================================
+
+  async changePlan(restaurantId: string, planId: string, adminId: string) {
+    // Validar que el restaurante existe
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      include: { subscription: true },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException('Restaurante no encontrado');
+    }
+
+    if (!restaurant.subscription) {
+      throw new BadRequestException(
+        'El restaurante no tiene una suscripción activa',
+      );
+    }
+
+    // Validar que el plan existe y está activo
+    const plan = await this.prisma.subscriptionPlan.findUnique({
+      where: { id: planId },
+    });
+
+    if (!plan) {
+      throw new NotFoundException('Plan no encontrado');
+    }
+
+    if (!plan.isActive) {
+      throw new BadRequestException('El plan seleccionado no está activo');
+    }
+
+    // Guardar el plan anterior para el historial
+    const oldPlanId = restaurant.subscription.planId;
+    const oldPlanType = restaurant.subscription.planType;
+
+    // Convertir el planId a PlanType (STARTER, PROFESSIONAL, ENTERPRISE)
+    const newPlanType = plan.id as PlanType;
+
+    // Actualizar la suscripción
+    const subscription = await this.prisma.subscription.update({
+      where: { id: restaurant.subscription.id },
+      data: {
+        planId: plan.id,
+        planType: newPlanType,
+        previousPlanType: oldPlanType,
+      },
+      include: {
+        plan: true,
+      },
+    });
+
+    // Registrar en audit log
+    await this.prisma.adminAuditLog.create({
+      data: {
+        adminId,
+        action: 'CHANGE_SUBSCRIPTION_PLAN',
+        targetRestaurantId: restaurantId,
+        details: {
+          subscriptionId: subscription.id,
+          oldPlanId,
+          oldPlanType,
+          newPlanId: plan.id,
+          newPlanType: subscription.planType,
+        },
+      },
+    });
+
+    // TODO: Implementar lógica de prorrateo si es necesario
+    // TODO: Enviar notificación al owner del restaurante
+
+    return {
+      success: true,
+      message: 'Plan actualizado correctamente',
+      subscription: {
+        id: subscription.id,
+        restaurantId: subscription.restaurantId,
+        planType: subscription.planType,
+        status: subscription.status,
+        currentPeriodStart: subscription.currentPeriodStart,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+      },
+    };
+  }
+
+  async cancelSubscription(
+    restaurantId: string,
+    reason?: string,
+    adminId?: string,
+  ) {
+    // Validar que el restaurante existe
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      include: { subscription: true },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException('Restaurante no encontrado');
+    }
+
+    if (!restaurant.subscription) {
+      throw new BadRequestException(
+        'El restaurante no tiene una suscripción activa',
+      );
+    }
+
+    if (restaurant.subscription.status === 'CANCELED') {
+      throw new BadRequestException('La suscripción ya está cancelada');
+    }
+
+    // Cancelar la suscripción
+    const subscription = await this.prisma.subscription.update({
+      where: { id: restaurant.subscription.id },
+      data: {
+        status: 'CANCELED',
+        canceledAt: new Date(),
+        cancellationReason: reason,
+        cancelAtPeriodEnd: true,
+      },
+    });
+
+    // Registrar en audit log
+    if (adminId) {
+      await this.prisma.adminAuditLog.create({
+        data: {
+          adminId,
+          action: 'CANCEL_SUBSCRIPTION',
+          targetRestaurantId: restaurantId,
+          details: {
+            subscriptionId: subscription.id,
+            reason: reason || 'No especificado',
+            canceledAt: subscription.canceledAt,
+            currentPeriodEnd: subscription.currentPeriodEnd,
+          },
+        },
+      });
+    }
+
+    // TODO: Programar job para desactivar funcionalidades al final del período
+    // TODO: Enviar notificación de cancelación al owner
+
+    return {
+      success: true,
+      message:
+        'Suscripción cancelada. Acceso válido hasta el fin del período actual.',
+      subscription: {
+        id: subscription.id,
+        status: subscription.status,
+        canceledAt: subscription.canceledAt,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        cancellationReason: subscription.cancellationReason,
+      },
+    };
+  }
+
+  async reactivateSubscription(
+    restaurantId: string,
+    planId?: string,
+    adminId?: string,
+  ) {
+    // Validar que el restaurante existe
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      include: { subscription: true },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException('Restaurante no encontrado');
+    }
+
+    if (!restaurant.subscription) {
+      throw new BadRequestException('El restaurante no tiene una suscripción');
+    }
+
+    if (
+      restaurant.subscription.status !== 'CANCELED' &&
+      restaurant.subscription.status !== 'EXPIRED'
+    ) {
+      throw new BadRequestException(
+        'La suscripción debe estar cancelada o expirada para ser reactivada',
+      );
+    }
+
+    // Si se proporciona planId, validar que existe
+    let plan;
+    if (planId) {
+      plan = await this.prisma.subscriptionPlan.findUnique({
+        where: { id: planId },
+      });
+
+      if (!plan) {
+        throw new NotFoundException('Plan no encontrado');
+      }
+
+      if (!plan.isActive) {
+        throw new BadRequestException('El plan seleccionado no está activo');
+      }
+    } else {
+      // Si no se proporciona planId, usar el plan anterior o el plan actual
+      plan = await this.prisma.subscriptionPlan.findUnique({
+        where: { id: restaurant.subscription.planId },
+      });
+    }
+
+    // Calcular nuevo período de facturación
+    const now = new Date();
+    const currentPeriodEnd = new Date(now);
+    currentPeriodEnd.setMonth(currentPeriodEnd.getMonth() + 1);
+
+    // Convertir el planId a PlanType
+    const newPlanType = plan.id as PlanType;
+
+    // Reactivar la suscripción
+    const subscription = await this.prisma.subscription.update({
+      where: { id: restaurant.subscription.id },
+      data: {
+        status: 'ACTIVE',
+        planId: plan.id,
+        planType: newPlanType,
+        canceledAt: null,
+        cancellationReason: null,
+        cancelAtPeriodEnd: false,
+        currentPeriodStart: now,
+        currentPeriodEnd: currentPeriodEnd,
+      },
+    });
+
+    // Registrar en audit log
+    if (adminId) {
+      await this.prisma.adminAuditLog.create({
+        data: {
+          adminId,
+          action: 'REACTIVATE_SUBSCRIPTION',
+          targetRestaurantId: restaurantId,
+          details: {
+            subscriptionId: subscription.id,
+            planId: plan.id,
+            planType: subscription.planType,
+            currentPeriodStart: subscription.currentPeriodStart,
+            currentPeriodEnd: subscription.currentPeriodEnd,
+          },
+        },
+      });
+    }
+
+    // TODO: Restaurar acceso a funcionalidades
+    // TODO: Enviar notificación de reactivación
+
+    return {
+      success: true,
+      message: 'Suscripción reactivada correctamente',
+      subscription: {
+        id: subscription.id,
+        status: subscription.status,
+        planType: subscription.planType,
+        currentPeriodStart: subscription.currentPeriodStart,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+      },
+    };
+  }
+
+  // ============================================
+  // SYSTEM SETTINGS
+  // ============================================
+
+  async getSettings() {
+    // Intentar obtener la configuración existente
+    let settings = await this.prisma.systemSettings.findFirst({
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    // Si no existe, crear una con valores por defecto
+    if (!settings) {
+      settings = await this.prisma.systemSettings.create({
+        data: {},
+      });
+    }
+
+    // Transformar a la estructura esperada por el frontend
+    return {
+      platformName: settings.platformName,
+      supportEmail: settings.supportEmail,
+      sessionTimeout: settings.sessionTimeout,
+      notifications: {
+        newRegistrations: settings.notifyNewRegistrations,
+        paymentAlerts: settings.notifyPaymentAlerts,
+        dailySummary: settings.notifyDailySummary,
+      },
+      webhooks: {
+        enabled: settings.webhookEnabled,
+        url: settings.webhookUrl || '',
+      },
+      maintenance: {
+        enabled: settings.maintenanceEnabled,
+        message: settings.maintenanceMessage || '',
+      },
+    };
+  }
+
+  async updateSettings(dto: any, adminId: string) {
+    // Validaciones personalizadas
+    if (dto.sessionTimeout !== undefined && dto.sessionTimeout < 1) {
+      throw new BadRequestException('El timeout de sesión debe ser mayor a 0');
+    }
+
+    if (dto.supportEmail && !dto.supportEmail.includes('@')) {
+      throw new BadRequestException('El email de soporte no es válido');
+    }
+
+    if (dto.webhooks?.enabled && !dto.webhooks?.url) {
+      throw new BadRequestException(
+        'La URL del webhook es requerida cuando está habilitado',
+      );
+    }
+
+    // Obtener la configuración actual o crear una nueva
+    let settings = await this.prisma.systemSettings.findFirst({
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    const updateData: any = {
+      updatedBy: adminId,
+    };
+
+    if (dto.platformName !== undefined) {
+      updateData.platformName = dto.platformName;
+    }
+
+    if (dto.supportEmail !== undefined) {
+      updateData.supportEmail = dto.supportEmail;
+    }
+
+    if (dto.sessionTimeout !== undefined) {
+      updateData.sessionTimeout = dto.sessionTimeout;
+    }
+
+    if (dto.notifications) {
+      if (dto.notifications.newRegistrations !== undefined) {
+        updateData.notifyNewRegistrations = dto.notifications.newRegistrations;
+      }
+      if (dto.notifications.paymentAlerts !== undefined) {
+        updateData.notifyPaymentAlerts = dto.notifications.paymentAlerts;
+      }
+      if (dto.notifications.dailySummary !== undefined) {
+        updateData.notifyDailySummary = dto.notifications.dailySummary;
+      }
+    }
+
+    if (dto.webhooks) {
+      if (dto.webhooks.enabled !== undefined) {
+        updateData.webhookEnabled = dto.webhooks.enabled;
+      }
+      if (dto.webhooks.url !== undefined) {
+        updateData.webhookUrl = dto.webhooks.url;
+      }
+    }
+
+    if (dto.maintenance) {
+      if (dto.maintenance.enabled !== undefined) {
+        updateData.maintenanceEnabled = dto.maintenance.enabled;
+      }
+      if (dto.maintenance.message !== undefined) {
+        updateData.maintenanceMessage = dto.maintenance.message;
+      }
+    }
+
+    // Actualizar o crear
+    if (settings) {
+      settings = await this.prisma.systemSettings.update({
+        where: { id: settings.id },
+        data: updateData,
+      });
+    } else {
+      settings = await this.prisma.systemSettings.create({
+        data: updateData,
+      });
+    }
+
+    // Registrar en audit log
+    await this.prisma.adminAuditLog.create({
+      data: {
+        adminId,
+        action: 'UPDATE_SYSTEM_SETTINGS',
+        targetRestaurantId: null,
+        details: {
+          changes: updateData,
+        },
+      },
+    });
+
+    // TODO: Invalidar cache de configuración si se usa Redis
+    // TODO: Si se cambió el webhook, validar la URL
+
+    return {
+      success: true,
+      message: 'Configuración actualizada correctamente',
+      settings: {
+        platformName: settings.platformName,
+        supportEmail: settings.supportEmail,
+        sessionTimeout: settings.sessionTimeout,
+        notifications: {
+          newRegistrations: settings.notifyNewRegistrations,
+          paymentAlerts: settings.notifyPaymentAlerts,
+          dailySummary: settings.notifyDailySummary,
+        },
+        webhooks: {
+          enabled: settings.webhookEnabled,
+          url: settings.webhookUrl || '',
+        },
+        maintenance: {
+          enabled: settings.maintenanceEnabled,
+          message: settings.maintenanceMessage || '',
+        },
+      },
+    };
+  }
 }
