@@ -655,6 +655,51 @@ export interface AdvancedConfig {
   experimentalFeatures?: string[];
 }
 
+// ==================== RESTAURANT CONFIGURATION ====================
+
+export interface RestaurantConfig {
+  // Basic info
+  name?: string;
+  description?: string;
+  slogan?: string;
+
+  // Contact
+  email?: string;
+  phone?: string;
+  website?: string;
+
+  // Location
+  address?: string;
+  city?: string;
+  country?: string;
+  postalCode?: string;
+
+  // Business info
+  businessInfo?: {
+    name?: string;
+    taxId?: string;
+    businessType?: string;
+    foundedYear?: number;
+  };
+
+  // Social media
+  socialLinks?: {
+    facebook?: string;
+    instagram?: string;
+    twitter?: string;
+    linkedin?: string;
+  };
+
+  // Cuisine and categories
+  cuisineTypes?: string[];
+  categories?: string[];
+
+  // Operational
+  openingHours?: any; // Flexible structure
+  deliveryRadius?: number;
+  minimumOrder?: number;
+}
+
 // ==================== SECTIONS CONFIGURATION ====================
 
 export interface SectionsConfig {
@@ -677,6 +722,7 @@ export interface BuilderConfiguration {
   theme: ThemeConfig;
   layout: LayoutConfig;
   assets: AssetsConfig;
+  restaurant?: RestaurantConfig;
 
   // Section configurations
   sections: SectionsConfig;
@@ -734,6 +780,8 @@ export const DEFAULT_BUILDER_CONFIG: BuilderConfiguration = {
   },
 
   assets: {},
+
+  restaurant: {},
 
   sections: {
     nav: {

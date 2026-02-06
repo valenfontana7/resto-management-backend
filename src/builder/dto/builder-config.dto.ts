@@ -1881,6 +1881,142 @@ export class AdvancedConfigDto {
   experimentalFeatures?: string[];
 }
 
+// ==================== RESTAURANT DTO ====================
+
+export class BusinessInfoDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  taxId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  businessType?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  foundedYear?: number;
+}
+
+export class SocialLinksDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  facebook?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  instagram?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  twitter?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  linkedin?: string;
+}
+
+export class RestaurantConfigDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  slogan?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  website?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  postalCode?: string;
+
+  @ApiPropertyOptional({ type: BusinessInfoDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BusinessInfoDto)
+  businessInfo?: BusinessInfoDto;
+
+  @ApiPropertyOptional({ type: SocialLinksDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SocialLinksDto)
+  socialLinks?: SocialLinksDto;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  cuisineTypes?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  categories?: string[];
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  openingHours?: any;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  deliveryRadius?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  minimumOrder?: number;
+}
+
 // ==================== SECTIONS DTO ====================
 
 export class SectionsConfigDto {
@@ -1976,6 +2112,12 @@ export class UpdateBuilderConfigDto {
   @ValidateNested()
   @Type(() => AssetsConfigDto)
   assets?: AssetsConfigDto;
+
+  @ApiPropertyOptional({ type: RestaurantConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RestaurantConfigDto)
+  restaurant?: RestaurantConfigDto;
 
   @ApiPropertyOptional({ type: SectionsConfigDto })
   @IsOptional()

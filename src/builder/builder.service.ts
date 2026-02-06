@@ -323,6 +323,36 @@ export class BuilderService {
       },
     });
 
+    // Update restaurant fields from builder config
+    if (config.restaurant) {
+      const restaurantUpdate: any = {};
+      if (config.restaurant.name)
+        restaurantUpdate.name = config.restaurant.name;
+      if (config.restaurant.description)
+        restaurantUpdate.description = config.restaurant.description;
+      if (config.restaurant.email)
+        restaurantUpdate.email = config.restaurant.email;
+      if (config.restaurant.phone)
+        restaurantUpdate.phone = config.restaurant.phone;
+      if (config.restaurant.address)
+        restaurantUpdate.address = config.restaurant.address;
+      if (config.restaurant.city)
+        restaurantUpdate.city = config.restaurant.city;
+      if (config.restaurant.country)
+        restaurantUpdate.country = config.restaurant.country;
+      if (config.restaurant.postalCode)
+        restaurantUpdate.postalCode = config.restaurant.postalCode;
+      if (config.restaurant.cuisineTypes)
+        restaurantUpdate.cuisineTypes = config.restaurant.cuisineTypes;
+
+      if (Object.keys(restaurantUpdate).length > 0) {
+        await this.prisma.restaurant.update({
+          where: { id: restaurantId },
+          data: restaurantUpdate,
+        });
+      }
+    }
+
     // Mark as published
     await this.prisma.builderConfig.update({
       where: { restaurantId },
