@@ -1207,6 +1207,25 @@ export class SubscriptionsService {
   }
 
   /**
+   * Extender período de suscripción sin cobrar (para cuentas gratuitas)
+   */
+  async extendPeriodWithoutCharge(subscriptionId: string) {
+    const now = new Date();
+    const nextPeriodEnd = new Date(now);
+    nextPeriodEnd.setMonth(nextPeriodEnd.getMonth() + 1);
+
+    return this.prisma.subscription.update({
+      where: { id: subscriptionId },
+      data: {
+        status: SubscriptionStatus.ACTIVE,
+        currentPeriodStart: now,
+        currentPeriodEnd: nextPeriodEnd,
+        updatedAt: now,
+      },
+    });
+  }
+
+  /**
    * Obtener suscripciones canceladas que deben finalizar
    */
   async getCanceledSubscriptionsToFinalize() {

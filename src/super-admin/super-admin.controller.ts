@@ -24,6 +24,8 @@ import { UpdateSettingsDto } from './dto/update-settings.dto';
 import { ChangePlanDto } from './dto/change-plan.dto';
 import { CancelSubscriptionDto } from './dto/cancel-subscription.dto';
 import { ReactivateSubscriptionDto } from './dto/reactivate-subscription.dto';
+import { ToggleTrialDto } from './dto/toggle-trial.dto';
+import { UpdateBillingControlsDto } from './dto/update-billing-controls.dto';
 
 @Controller('api/super-admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -210,6 +212,32 @@ export class SuperAdminController {
     return this.superAdminService.reactivateSubscription(
       restaurantId,
       dto.planId,
+      req.user.userId,
+    );
+  }
+
+  @Patch('restaurants/:restaurantId/subscription/toggle-trial')
+  async toggleTrial(
+    @Param('restaurantId') restaurantId: string,
+    @Body() dto: ToggleTrialDto,
+    @Request() req,
+  ) {
+    return this.superAdminService.toggleTrial(
+      restaurantId,
+      dto.enableTrial,
+      req.user.userId,
+    );
+  }
+
+  @Patch('restaurants/:restaurantId/subscription/billing-controls')
+  async updateBillingControls(
+    @Param('restaurantId') restaurantId: string,
+    @Body() dto: UpdateBillingControlsDto,
+    @Request() req,
+  ) {
+    return this.superAdminService.updateBillingControls(
+      restaurantId,
+      dto,
       req.user.userId,
     );
   }

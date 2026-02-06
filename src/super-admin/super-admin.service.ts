@@ -13,6 +13,7 @@ import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { ToggleTrialDto } from './dto/toggle-trial.dto';
 import { AuthService } from '../auth/auth.service';
 import { PlanType, RestaurantStatus } from '@prisma/client';
 import { KitchenNotificationsService } from '../kitchen/kitchen-notifications.service';
@@ -1415,6 +1416,175 @@ export class SuperAdminService {
         planType: subscription.planType,
         currentPeriodStart: subscription.currentPeriodStart,
         currentPeriodEnd: subscription.currentPeriodEnd,
+      },
+    };
+  }
+
+  async toggleTrial(
+    restaurantId: string,
+    enableTrial: boolean,
+    adminId?: string,
+  ) {
+    // Validar que el restaurante existe
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      include: { subscription: true },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException('Restaurante no encontrado');
+    }
+
+    if (!restaurant.subscription) {
+      throw new BadRequestException('El restaurante no tiene una suscripción');
+    }
+
+    const now = new Date();
+    let updateData: any = {};
+
+    if (enableTrial) {
+      // Activar trial
+      const trialEnd = new Date(now);
+      trialEnd.setDate(trialEnd.getDate() + 30); // 30 días de trial
+
+      updateData = {
+        status: 'TRIALING',
+        trialStart: now,
+        trialEnd: trialEnd,
+        canceledAt: null,
+        cancellationReason: null,
+        cancelAtPeriodEnd: false,
+        currentPeriodStart: now,
+        currentPeriodEnd: trialEnd,
+      };
+    } else {
+      // Desactivar trial (activar suscripción)
+      updateData = {
+        status: 'ACTIVE',
+        trialStart: null,
+        trialEnd: null,
+        canceledAt: null,
+        cancellationReason: null,
+        cancelAtPeriodEnd: false,
+        currentPeriodStart: now,
+        currentPeriodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000), // 30 días desde ahora
+      };
+    }
+
+    const subscription = await this.prisma.subscription.update({
+      where: { id: restaurant.subscription.id },
+      data: updateData,
+    });
+
+    // Registrar en audit log
+    if (adminId) {
+      await this.prisma.adminAuditLog.create({
+        data: {
+          adminId,
+          action: enableTrial ? 'ENABLE_TRIAL' : 'DISABLE_TRIAL',
+          targetRestaurantId: restaurantId,
+          details: {
+            subscriptionId: subscription.id,
+            status: subscription.status,
+            trialStart: subscription.trialStart,
+            trialEnd: subscription.trialEnd,
+            currentPeriodStart: subscription.currentPeriodStart,
+            currentPeriodEnd: subscription.currentPeriodEnd,
+          },
+        },
+      });
+    }
+
+    return {
+      success: true,
+      message: enableTrial
+        ? 'Trial activado correctamente'
+        : 'Trial desactivado correctamente',
+      subscription: {
+        id: subscription.id,
+        status: subscription.status,
+        trialStart: subscription.trialStart,
+        trialEnd: subscription.trialEnd,
+        currentPeriodStart: subscription.currentPeriodStart,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+      },
+    };
+  }
+
+  async updateBillingControls(
+    restaurantId: string,
+    dto: any,
+    adminId?: string,
+  ) {
+    // Validar que el restaurante existe
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      include: { subscription: true },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException('Restaurante no encontrado');
+    }
+
+    if (!restaurant.subscription) {
+      throw new BadRequestException('El restaurante no tiene una suscripción');
+    }
+
+    const now = new Date();
+    const updateData: any = {};
+
+    // Actualizar cuenta gratuita
+    if (dto.isFreeAccount !== undefined) {
+      updateData.isFreeAccount = dto.isFreeAccount;
+    }
+
+    // Actualizar descuento
+    if (dto.discountPercentage !== undefined) {
+      updateData.discountPercentage = dto.discountPercentage;
+      updateData.discountGrantedAt = now;
+      if (adminId) {
+        updateData.discountGrantedBy = adminId;
+      }
+    }
+
+    if (dto.discountReason !== undefined) {
+      updateData.discountReason = dto.discountReason;
+    }
+
+    const subscription = await this.prisma.subscription.update({
+      where: { id: restaurant.subscription.id },
+      data: updateData,
+    });
+
+    // Registrar en audit log
+    if (adminId) {
+      await this.prisma.adminAuditLog.create({
+        data: {
+          adminId,
+          action: 'UPDATE_BILLING_CONTROLS',
+          targetRestaurantId: restaurantId,
+          details: {
+            subscriptionId: subscription.id,
+            isFreeAccount: subscription.isFreeAccount,
+            discountPercentage: subscription.discountPercentage,
+            discountReason: subscription.discountReason,
+            discountGrantedBy: subscription.discountGrantedBy,
+            discountGrantedAt: subscription.discountGrantedAt,
+          },
+        },
+      });
+    }
+
+    return {
+      success: true,
+      message: 'Controles de facturación actualizados correctamente',
+      subscription: {
+        id: subscription.id,
+        isFreeAccount: subscription.isFreeAccount,
+        discountPercentage: subscription.discountPercentage,
+        discountReason: subscription.discountReason,
+        discountGrantedBy: subscription.discountGrantedBy,
+        discountGrantedAt: subscription.discountGrantedAt,
       },
     };
   }

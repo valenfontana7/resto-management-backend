@@ -8,14 +8,14 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
-  UpdateBrandingDto,
   UpdatePaymentMethodsDto,
   UpdateDeliveryZonesDto,
 } from './dto/restaurant-settings.dto';
+import { UpdateBrandingV2Dto } from './dto/branding-v2.dto';
 import * as path from 'path';
 import { S3Service } from '../storage/s3.service';
 import { RestaurantUsersService } from './services/restaurant-users.service';
-import { RestaurantBrandingService } from './services/restaurant-branding.service';
+import { RestaurantBrandingV2Service } from './services/restaurant-branding-v2.service';
 import { RestaurantSettingsService } from './services/restaurant-settings.service';
 import { RestaurantStatus } from '@prisma/client';
 
@@ -26,8 +26,8 @@ export class RestaurantsService {
     private readonly s3: S3Service,
     @Inject(forwardRef(() => RestaurantUsersService))
     private readonly usersService: RestaurantUsersService,
-    @Inject(forwardRef(() => RestaurantBrandingService))
-    private readonly brandingService: RestaurantBrandingService,
+    @Inject(forwardRef(() => RestaurantBrandingV2Service))
+    private readonly brandingService: RestaurantBrandingV2Service,
     @Inject(forwardRef(() => RestaurantSettingsService))
     private readonly settingsService: RestaurantSettingsService,
   ) {}
@@ -1180,9 +1180,9 @@ export class RestaurantsService {
   }
 
   /**
-   * @deprecated Usa RestaurantBrandingService.updateBranding() directamente
+   * @deprecated Usa RestaurantBrandingV2Service.updateBranding() directamente
    */
-  async updateBranding(id: string, branding: UpdateBrandingDto) {
+  async updateBranding(id: string, branding: UpdateBrandingV2Dto) {
     return this.brandingService.updateBranding(id, branding);
   }
 
@@ -1328,14 +1328,14 @@ export class RestaurantsService {
   }
 
   /**
-   * @deprecated Usa RestaurantBrandingService.deleteAsset() directamente
+   * @deprecated Usa RestaurantBrandingV2Service.deleteAsset() directamente
    */
   async deleteAsset(id: string, type?: string) {
     return this.brandingService.deleteAsset(id, type);
   }
 
   /**
-   * @deprecated Usa RestaurantBrandingService.presignAssetUpload() directamente
+   * @deprecated Usa RestaurantBrandingV2Service.presignAssetUpload() directamente
    */
   async presignAssetUpload(
     id: string,
@@ -1346,7 +1346,7 @@ export class RestaurantsService {
   }
 
   /**
-   * @deprecated Usa RestaurantBrandingService.saveUploadedAsset() directamente
+   * @deprecated Usa RestaurantBrandingV2Service.saveUploadedAsset() directamente
    */
   async saveUploadedAsset(id: string, file: Express.Multer.File, type: string) {
     return this.brandingService.saveUploadedAsset(id, file, type);

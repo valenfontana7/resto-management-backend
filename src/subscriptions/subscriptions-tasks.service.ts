@@ -35,6 +35,7 @@ export class SubscriptionTasksService {
         where: {
           status: SubscriptionStatus.TRIALING,
           trialEnd: { lt: new Date() },
+          isFreeAccount: false, // Excluir cuentas gratuitas
         },
         include: {
           restaurant: { select: { id: true, name: true, email: true } },
@@ -75,12 +76,24 @@ export class SubscriptionTasksService {
             const plan = await this.plansService
               .findOne(subscription.planId)
               .catch(() => null);
-            const amount = plan?.price ?? 0;
+            let amount = plan?.price ?? 0;
+
+            // Aplicar descuento si existe
+            if (
+              subscription.discountPercentage &&
+              subscription.discountPercentage > 0
+            ) {
+              const discount = (amount * subscription.discountPercentage) / 100;
+              amount = Math.round(amount - discount);
+              this.logger.log(
+                `Applied ${subscription.discountPercentage}% discount to subscription ${subscription.id}. Original: ${plan?.price}, Final: ${amount}`,
+              );
+            }
 
             // Validar monto antes de intentar cobrar
             if (amount <= 0) {
               this.logger.warn(
-                `Skipping charge for ${subscription.id}: plan ${planType} has no price`,
+                `Skipping charge for ${subscription.id}: plan ${planType} has no price or 100% discount`,
               );
               // Activar directamente si es plan gratuito
               await this.subscriptionsService.processPaymentApproved(
@@ -216,6 +229,7 @@ export class SubscriptionTasksService {
         where: {
           status: SubscriptionStatus.TRIALING,
           trialEnd: { gt: now },
+          isFreeAccount: false, // Excluir cuentas gratuitas
         },
         include: {
           restaurant: {
@@ -235,7 +249,16 @@ export class SubscriptionTasksService {
         const plan = await this.plansService
           .findOne(subscription.planId)
           .catch(() => null);
-        const amount = plan?.price ?? 0;
+        let amount = plan?.price ?? 0;
+
+        // Aplicar descuento si existe
+        if (
+          subscription.discountPercentage &&
+          subscription.discountPercentage > 0
+        ) {
+          const discount = (amount * subscription.discountPercentage) / 100;
+          amount = Math.round(amount - discount);
+        }
 
         // Enviar aviso 3 días antes
         if (daysRemaining === 3) {
@@ -284,6 +307,18 @@ export class SubscriptionTasksService {
 
       for (const subscription of subscriptionsToRenew) {
         try {
+          // Excluir cuentas gratuitas del cobro
+          if (subscription.isFreeAccount) {
+            this.logger.log(
+              `Skipping renewal for free account ${subscription.id}`,
+            );
+            // Extender período sin cobrar
+            await this.subscriptionsService.extendPeriodWithoutCharge(
+              subscription.id,
+            );
+            continue;
+          }
+
           // Bloqueo optimista: marcar como PAST_DUE antes de procesar
           const lockResult = await this.prisma.subscription.updateMany({
             where: {
@@ -318,7 +353,19 @@ export class SubscriptionTasksService {
           const plan = await this.plansService
             .findOne(subscription.planId)
             .catch(() => null);
-          const amount = plan?.price ?? 0;
+          let amount = plan?.price ?? 0;
+
+          // Aplicar descuento si existe
+          if (
+            subscription.discountPercentage &&
+            subscription.discountPercentage > 0
+          ) {
+            const discount = (amount * subscription.discountPercentage) / 100;
+            amount = Math.round(amount - discount);
+            this.logger.log(
+              `Applied ${subscription.discountPercentage}% discount to renewal ${subscription.id}. Original: ${plan?.price}, Final: ${amount}`,
+            );
+          }
 
           // Si no hay método de pago o es plan gratuito, solo notificar
           if (!paymentMethod || !subscription.mpCustomerId || amount <= 0) {

@@ -381,6 +381,25 @@ export class ReservationsSectionDto {
   shadow?: boolean;
 }
 
+export class NavConfigDto {
+  @IsOptional()
+  @IsEnum(['sm', 'md', 'lg'])
+  logoSize?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  showOpenStatus?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  showContactButton?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  cuisineTypesColor?: string;
+}
+
 export class UpdateBrandingDto {
   @IsOptional()
   @ValidateNested()
@@ -403,6 +422,11 @@ export class UpdateBrandingDto {
   @ValidateNested()
   @Type(() => BrandingLayoutDto)
   layout?: BrandingLayoutDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => NavConfigDto)
+  nav?: NavConfigDto;
 
   @IsOptional()
   @ValidateNested()

@@ -1,0 +1,582 @@
+### Test Builder API Endpoints
+### Prerequisites: Replace {{token}} with a valid JWT and {{restaurantId}} with a valid restaurant ID
+
+@baseUrl = http://localhost:4000
+@token = YOUR_JWT_TOKEN_HERE
+@restaurantId = YOUR_RESTAURANT_ID_HERE
+
+### =====================================================
+### BUILDER CONFIGURATION ENDPOINTS
+### =====================================================
+
+### Get Builder Config (creates default if not exists)
+GET {{baseUrl}}/api/restaurants/{{restaurantId}}/builder/config
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+###
+
+### Get Builder Metadata (version, dates, publish status)
+GET {{baseUrl}}/api/restaurants/{{restaurantId}}/builder/metadata
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+###
+
+### Partial Update - Theme Colors Only
+PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/config
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "theme": {
+    "colors": {
+      "primary": "#FF5722",
+      "secondary": "#2196F3",
+      "accent": "#4CAF50",
+      "background": "#FAFAFA",
+      "text": "#212121"
+    }
+  }
+}
+
+###
+
+### Partial Update - Multiple Sections
+PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/config
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "theme": {
+    "colors": {
+      "primary": "#E91E63"
+    },
+    "typography": {
+      "fontFamily": "Poppins",
+      "headingFont": "Montserrat"
+    }
+  },
+  "sections": {
+    "hero": {
+      "enabled": true,
+      "variant": "image",
+      "title": "Bienvenidos a Nuestro Restaurante",
+      "subtitle": "La mejor experiencia gastronómica"
+    }
+  }
+}
+
+###
+
+### Replace Entire Config (PUT)
+PUT {{baseUrl}}/restaurants/{{restaurantId}}/builder/config
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "version": "1.0.0",
+  "theme": {
+    "colors": {
+      "primary": "#3B82F6",
+      "secondary": "#1E40AF",
+      "accent": "#F59E0B",
+      "background": "#FFFFFF",
+      "text": "#1F2937",
+      "textMuted": "#6B7280",
+      "border": "#E5E7EB",
+      "success": "#10B981",
+      "warning": "#F59E0B",
+      "error": "#EF4444",
+      "card": "#FFFFFF",
+      "cardHover": "#F9FAFB",
+      "overlay": "rgba(0, 0, 0, 0.5)"
+    },
+    "typography": {
+      "fontFamily": "Inter",
+      "headingFont": "Inter",
+      "fontSize": {
+        "xs": "0.75rem",
+        "sm": "0.875rem",
+        "base": "1rem",
+        "lg": "1.125rem",
+        "xl": "1.25rem",
+        "2xl": "1.5rem",
+        "3xl": "1.875rem",
+        "4xl": "2.25rem"
+      },
+      "fontWeight": {
+        "normal": 400,
+        "medium": 500,
+        "semibold": 600,
+        "bold": 700
+      },
+      "lineHeight": {
+        "tight": 1.25,
+        "normal": 1.5,
+        "relaxed": 1.75
+      }
+    },
+    "spacing": {
+      "unit": 4,
+      "containerPadding": "1rem",
+      "sectionGap": "2rem",
+      "cardPadding": "1rem"
+    },
+    "borderRadius": {
+      "none": "0",
+      "sm": "0.25rem",
+      "md": "0.5rem",
+      "lg": "1rem",
+      "xl": "1.5rem",
+      "full": "9999px"
+    },
+    "shadows": {
+      "sm": "0 1px 2px rgba(0, 0, 0, 0.05)",
+      "md": "0 4px 6px rgba(0, 0, 0, 0.1)",
+      "lg": "0 10px 15px rgba(0, 0, 0, 0.1)",
+      "xl": "0 20px 25px rgba(0, 0, 0, 0.15)"
+    },
+    "animations": {
+      "duration": {
+        "fast": "150ms",
+        "normal": "300ms",
+        "slow": "500ms"
+      },
+      "easing": {
+        "default": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "in": "cubic-bezier(0.4, 0, 1, 1)",
+        "out": "cubic-bezier(0, 0, 0.2, 1)",
+        "bounce": "cubic-bezier(0.68, -0.55, 0.265, 1.55)"
+      }
+    }
+  },
+  "layout": {
+    "maxWidth": "1280px",
+    "containerPadding": "1rem",
+    "headerHeight": "64px",
+    "footerHeight": "auto",
+    "sidebarWidth": "280px",
+    "gridColumns": 12,
+    "gridGap": "1rem"
+  },
+  "assets": {
+    "logo": {
+      "url": "",
+      "width": 120,
+      "height": 40
+    },
+    "favicon": "",
+    "heroImage": "",
+    "backgroundImage": "",
+    "gallery": []
+  },
+  "sections": {
+    "navigation": {
+      "variant": "fixed",
+      "showLogo": true,
+      "showSearch": true,
+      "showCart": true,
+      "showUserMenu": true,
+      "menuPosition": "center",
+      "transparent": false,
+      "links": []
+    },
+    "hero": {
+      "enabled": true,
+      "variant": "image",
+      "title": "¡Bienvenidos!",
+      "subtitle": "La mejor experiencia gastronómica",
+      "backgroundImage": "",
+      "backgroundColor": "#1F2937",
+      "textColor": "#FFFFFF",
+      "minHeight": "70vh",
+      "overlay": true,
+      "overlayOpacity": 0.4,
+      "ctaButton": {
+        "text": "Ver Menú",
+        "link": "#menu",
+        "variant": "primary"
+      },
+      "secondaryButton": null,
+      "alignment": "center",
+      "animation": "fade"
+    },
+    "menu": {
+      "variant": "grid",
+      "columns": 3,
+      "showFilters": true,
+      "showSearch": true,
+      "showPrices": true,
+      "showDescriptions": true,
+      "showImages": true,
+      "imageAspectRatio": "4:3",
+      "cardStyle": "elevated",
+      "categoriesPosition": "top",
+      "stickyCategories": true
+    },
+    "info": {
+      "enabled": true,
+      "showAddress": true,
+      "showPhone": true,
+      "showEmail": true,
+      "showHours": true,
+      "showMap": true,
+      "showSocial": true,
+      "variant": "cards"
+    },
+    "footer": {
+      "variant": "simple",
+      "showLogo": true,
+      "showSocial": true,
+      "showNewsletter": false,
+      "showPaymentMethods": true,
+      "columns": [],
+      "copyrightText": "© 2024 Todos los derechos reservados",
+      "backgroundColor": "#1F2937",
+      "textColor": "#F9FAFB"
+    },
+    "cart": {
+      "variant": "drawer",
+      "position": "right",
+      "showThumbnails": true,
+      "showQuantityControls": true,
+      "showSubtotal": true,
+      "checkoutButtonText": "Finalizar Pedido"
+    }
+  },
+  "mobileMenu": {
+    "variant": "drawer",
+    "position": "left",
+    "showLogo": true,
+    "showSearch": true,
+    "showCategories": true,
+    "animation": "slide",
+    "overlay": true
+  },
+  "seo": {
+    "title": "",
+    "description": "",
+    "keywords": [],
+    "ogImage": "",
+    "twitterHandle": "",
+    "structuredData": {
+      "enabled": true,
+      "type": "Restaurant"
+    }
+  },
+  "advanced": {
+    "customCSS": "",
+    "customJS": "",
+    "analytics": {
+      "googleAnalyticsId": "",
+      "facebookPixelId": "",
+      "hotjarId": ""
+    },
+    "integrations": {
+      "whatsappNumber": "",
+      "whatsappMessage": "Hola! Me gustaría hacer un pedido",
+      "instagramHandle": "",
+      "facebookPage": "",
+      "tiktokHandle": "",
+      "googleMapsEmbedUrl": ""
+    },
+    "features": {
+      "enableReservations": true,
+      "enableDelivery": true,
+      "enableTakeaway": true,
+      "enableTableOrdering": true,
+      "enableReviews": false,
+      "enableLoyalty": false,
+      "enableNotifications": true,
+      "enableDarkMode": false,
+      "enableMultiLanguage": false,
+      "defaultLanguage": "es"
+    }
+  }
+}
+
+###
+
+### =====================================================
+### GRANULAR UPDATE ENDPOINTS
+### =====================================================
+
+### Update Theme Only
+PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/theme
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "colors": {
+    "primary": "#9333EA",
+    "secondary": "#6366F1",
+    "accent": "#EC4899"
+  },
+  "typography": {
+    "fontFamily": "Roboto",
+    "headingFont": "Roboto Slab"
+  }
+}
+
+###
+
+### Update Layout Only
+PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/layout
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "maxWidth": "1440px",
+  "containerPadding": "2rem",
+  "headerHeight": "72px"
+}
+
+###
+
+### Update Assets Only
+PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/assets
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "logo": {
+    "url": "https://example.com/logo.png",
+    "width": 150,
+    "height": 50
+  },
+  "favicon": "https://example.com/favicon.ico",
+  "heroImage": "https://example.com/hero.jpg"
+}
+
+###
+
+### Update Navigation Section
+PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/sections/nav
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "variant": "sticky",
+  "showLogo": true,
+  "showSearch": true,
+  "showCart": true,
+  "transparent": true,
+  "links": [
+    { "text": "Inicio", "href": "/" },
+    { "text": "Menú", "href": "#menu" },
+    { "text": "Nosotros", "href": "#about" },
+    { "text": "Contacto", "href": "#contact" }
+  ]
+}
+
+###
+
+### Update Hero Section
+PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/sections/hero
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "enabled": true,
+  "variant": "video",
+  "title": "Sabores que Inspiran",
+  "subtitle": "Descubre nuestra cocina de autor",
+  "minHeight": "80vh",
+  "overlay": true,
+  "overlayOpacity": 0.5,
+  "alignment": "center",
+  "ctaButton": {
+    "text": "Reservar Mesa",
+    "link": "/reservas",
+    "variant": "primary"
+  }
+}
+
+###
+
+### Update Menu Section
+PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/sections/menu
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "variant": "list",
+  "columns": 2,
+  "showFilters": true,
+  "showSearch": true,
+  "showImages": true,
+  "imageAspectRatio": "16:9",
+  "cardStyle": "flat",
+  "stickyCategories": true
+}
+
+###
+
+### Update Info Section
+PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/sections/info
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "enabled": true,
+  "showAddress": true,
+  "showPhone": true,
+  "showEmail": true,
+  "showHours": true,
+  "showMap": true,
+  "variant": "split"
+}
+
+###
+
+### Update Footer Section
+PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/sections/footer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "variant": "columns",
+  "showLogo": true,
+  "showSocial": true,
+  "showNewsletter": true,
+  "backgroundColor": "#111827",
+  "textColor": "#E5E7EB",
+  "columns": [
+    {
+      "title": "Enlaces",
+      "links": [
+        { "text": "Inicio", "href": "/" },
+        { "text": "Menú", "href": "#menu" }
+      ]
+    },
+    {
+      "title": "Legal",
+      "links": [
+        { "text": "Términos", "href": "/terms" },
+        { "text": "Privacidad", "href": "/privacy" }
+      ]
+    }
+  ]
+}
+
+###
+
+### Update Cart Section
+PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/sections/cart
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "variant": "modal",
+  "position": "center",
+  "showThumbnails": true,
+  "showQuantityControls": true,
+  "checkoutButtonText": "Ir a Pagar"
+}
+
+###
+
+### Update Mobile Menu
+PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/mobile-menu
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "variant": "fullscreen",
+  "position": "left",
+  "showLogo": true,
+  "showSearch": true,
+  "animation": "fade",
+  "overlay": true
+}
+
+###
+
+### Update SEO
+PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/seo
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Mi Restaurante - La Mejor Comida de la Ciudad",
+  "description": "Descubre nuestra selección de platos gourmet. Reserva tu mesa ahora.",
+  "keywords": ["restaurante", "comida", "gourmet", "reservas"],
+  "twitterHandle": "@mirestaurante",
+  "structuredData": {
+    "enabled": true,
+    "type": "Restaurant"
+  }
+}
+
+###
+
+### Update Advanced Settings
+PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/advanced
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "customCSS": ".hero-title { text-shadow: 2px 2px 4px rgba(0,0,0,0.5); }",
+  "analytics": {
+    "googleAnalyticsId": "G-XXXXXXXXXX"
+  },
+  "integrations": {
+    "whatsappNumber": "+54 9 11 1234-5678",
+    "whatsappMessage": "Hola! Me gustaría hacer un pedido",
+    "instagramHandle": "@mirestaurante"
+  },
+  "features": {
+    "enableReservations": true,
+    "enableDelivery": true,
+    "enableDarkMode": true
+  }
+}
+
+###
+
+### =====================================================
+### PUBLISH/UNPUBLISH ACTIONS
+### =====================================================
+
+### Publish Configuration
+POST {{baseUrl}}/restaurants/{{restaurantId}}/builder/publish
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+###
+
+### Unpublish Configuration
+POST {{baseUrl}}/restaurants/{{restaurantId}}/builder/unpublish
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+###
+
+### Reset to Default Configuration
+POST {{baseUrl}}/restaurants/{{restaurantId}}/builder/reset
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+###
+
+### =====================================================
+### MIGRATION FROM BRANDING V2
+### =====================================================
+
+### Migrate from Old Branding System
+POST {{baseUrl}}/restaurants/{{restaurantId}}/builder/migrate-from-branding
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+###
+
+### =====================================================
+### PUBLIC ENDPOINTS (NO AUTH REQUIRED)
+### =====================================================
+
+### Get Published Config (Public)
+GET {{baseUrl}}/public/restaurants/{{restaurantId}}/builder/config
+Content-Type: application/json
+
+###

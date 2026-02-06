@@ -26,7 +26,21 @@ export class RestaurantBrandingService {
   async updateBranding(id: string, branding: UpdateBrandingDto) {
     const brandingData: any = {};
 
-    if (branding.colors || branding.layout || branding.logo !== undefined) {
+    if (
+      branding.colors ||
+      branding.layout ||
+      branding.nav ||
+      branding.logo !== undefined ||
+      branding.coverImage !== undefined ||
+      branding.favicon !== undefined ||
+      branding.mobileMenu ||
+      branding.hero ||
+      branding.cart ||
+      branding.menu ||
+      branding.footer ||
+      branding.checkout ||
+      branding.reservations
+    ) {
       brandingData.branding = {};
 
       if (branding.colors) {
@@ -37,8 +51,45 @@ export class RestaurantBrandingService {
         brandingData.branding.layout = branding.layout;
       }
 
+      if (branding.nav) {
+        brandingData.branding.sections = brandingData.branding.sections || {};
+        brandingData.branding.sections.nav = branding.nav;
+      }
+
+      if (branding.mobileMenu) {
+        brandingData.branding.mobileMenu = branding.mobileMenu;
+      }
+
+      if (branding.hero) {
+        brandingData.branding.hero = branding.hero;
+      }
+
+      if (branding.cart) {
+        brandingData.branding.cart = branding.cart;
+      }
+
+      if (branding.menu) {
+        brandingData.branding.menu = branding.menu;
+      }
+
+      if (branding.footer) {
+        brandingData.branding.footer = branding.footer;
+      }
+
+      if (branding.checkout) {
+        brandingData.branding.checkout = branding.checkout;
+      }
+
+      if (branding.reservations) {
+        brandingData.branding.reservations = branding.reservations;
+      }
+
       if (branding.logo !== undefined) {
         brandingData.branding.logo = branding.logo;
+      }
+
+      if (branding.favicon !== undefined) {
+        brandingData.branding.favicon = branding.favicon;
       }
 
       if (branding.coverImage !== undefined) {

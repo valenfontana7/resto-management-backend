@@ -1,0 +1,292 @@
+### Branding API Test File (V2 - Versión Principal)
+### Usar con REST Client extension en VS Code
+### Actualizar variables antes de ejecutar
+
+@baseUrl = http://localhost:4000
+@restaurantId = YOUR_RESTAURANT_ID
+@token = YOUR_JWT_TOKEN
+
+### ===========================================
+### 1. Obtener branding actual
+### ===========================================
+
+GET {{baseUrl}}/api/restaurants/{{restaurantId}}/branding
+Authorization: Bearer {{token}}
+
+### ===========================================
+### 2. Actualizar branding completo
+### ===========================================
+
+PUT {{baseUrl}}/api/restaurants/{{restaurantId}}/branding
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "theme": {
+    "colors": {
+      "primary": "#FF6B35",
+      "secondary": "#004E89",
+      "background": "#FFFFFF",
+      "text": "#1A1A1A"
+    },
+    "typography": {
+      "primaryFont": "Inter, sans-serif",
+      "headingFont": "Playfair Display, serif"
+    }
+  },
+  "sections": {
+    "nav": {
+      "cuisineTypesColor": "#FF6B35",
+      "showSearch": true,
+      "showLanguageSelector": true
+    }
+  }
+}
+
+### ===========================================
+### 3. Actualizar solo el tema
+### ===========================================
+
+PATCH {{baseUrl}}/api/restaurants/{{restaurantId}}/branding/theme
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "colors": {
+    "primary": "#E63946",
+    "secondary": "#457B9D",
+    "accent": "#F1FAEE"
+  }
+}
+
+### ===========================================
+### 4. Actualizar solo sección NAV
+### ===========================================
+
+PATCH {{baseUrl}}/api/restaurants/{{restaurantId}}/branding/sections/nav
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "cuisineTypesColor": "#E63946",
+  "backgroundColor": "#FFFFFF",
+  "textColor": "#1D3557",
+  "showSearch": true,
+  "showLanguageSelector": false,
+  "logoAlignment": "center"
+}
+
+### ===========================================
+### 5. Actualizar solo sección HERO
+### ===========================================
+
+PATCH {{baseUrl}}/api/restaurants/{{restaurantId}}/branding/sections/hero
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Bienvenido a Nuestro Restaurante",
+  "subtitle": "La mejor comida de la ciudad",
+  "showCTA": true,
+  "ctaText": "Ver Menú",
+  "ctaLink": "/menu",
+  "overlayOpacity": 0.3
+}
+
+### ===========================================
+### 6. Actualizar solo sección MENU
+### ===========================================
+
+PATCH {{baseUrl}}/api/restaurants/{{restaurantId}}/branding/sections/menu
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "layout": "grid",
+  "itemsPerRow": 3,
+  "showImages": true,
+  "showPrices": true,
+  "showDescriptions": true
+}
+
+### ===========================================
+### 7. Actualizar solo sección CART
+### ===========================================
+
+PATCH {{baseUrl}}/api/restaurants/{{restaurantId}}/branding/sections/cart
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "position": "right",
+  "showThumbnails": true,
+  "showItemModifications": true,
+  "minimumOrderAmount": 15.00
+}
+
+### ===========================================
+### 8. Actualizar solo sección FOOTER
+### ===========================================
+
+PATCH {{baseUrl}}/api/restaurants/{{restaurantId}}/branding/sections/footer
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "showSocialMedia": true,
+  "socialMediaLinks": {
+    "facebook": "https://facebook.com/mirestaurante",
+    "instagram": "https://instagram.com/mirestaurante",
+    "twitter": "https://twitter.com/mirestaurante"
+  },
+  "copyrightText": "© 2024 Mi Restaurante. Todos los derechos reservados.",
+  "showContactInfo": true
+}
+
+### ===========================================
+### 9. Actualizar solo sección CHECKOUT
+### ===========================================
+
+PATCH {{baseUrl}}/api/restaurants/{{restaurantId}}/branding/sections/checkout
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "showOrderSummary": true,
+  "showDeliveryTime": true,
+  "showPaymentIcons": true,
+  "allowGuestCheckout": false
+}
+
+### ===========================================
+### 10. Actualizar solo sección RESERVATIONS
+### ===========================================
+
+PATCH {{baseUrl}}/api/restaurants/{{restaurantId}}/branding/sections/reservations
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "showAvailability": true,
+  "showTableSelection": true,
+  "maxPartySize": 12,
+  "allowSpecialRequests": true
+}
+
+### ===========================================
+### 11. Resetear branding a valores por defecto
+### ===========================================
+
+POST {{baseUrl}}/api/restaurants/{{restaurantId}}/branding/reset
+Authorization: Bearer {{token}}
+
+### ===========================================
+### 12. Actualizar branding con configuración completa
+### ===========================================
+
+PUT {{baseUrl}}/api/restaurants/{{restaurantId}}/branding
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "assets": {
+    "logo": "https://example.com/logo.png",
+    "favicon": "https://example.com/favicon.ico"
+  },
+  "theme": {
+    "colors": {
+      "primary": "#FF6B35",
+      "secondary": "#004E89",
+      "accent": "#F4A259",
+      "background": "#FFFFFF",
+      "surface": "#F8F9FA",
+      "text": "#1A1A1A",
+      "textSecondary": "#6C757D",
+      "border": "#DEE2E6",
+      "error": "#DC3545",
+      "success": "#28A745",
+      "warning": "#FFC107",
+      "info": "#17A2B8"
+    },
+    "typography": {
+      "primaryFont": "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      "headingFont": "Playfair Display, Georgia, serif",
+      "baseFontSize": "16px",
+      "lineHeight": "1.5"
+    },
+    "spacing": {
+      "baseUnit": "8px",
+      "containerMaxWidth": "1200px",
+      "sectionPadding": "64px"
+    }
+  },
+  "layout": {
+    "headerStyle": "fixed",
+    "footerStyle": "full",
+    "contentMaxWidth": "1200px",
+    "enableStickyHeader": true
+  },
+  "sections": {
+    "nav": {
+      "cuisineTypesColor": "#FF6B35",
+      "backgroundColor": "#FFFFFF",
+      "textColor": "#1A1A1A",
+      "showLogo": true,
+      "showSearch": true,
+      "showCart": true,
+      "showLanguageSelector": true,
+      "logoAlignment": "left",
+      "height": "70px"
+    },
+    "hero": {
+      "title": "Descubre Sabores Auténticos",
+      "subtitle": "Cocina artesanal con ingredientes locales",
+      "showCTA": true,
+      "ctaText": "Explorar Menú",
+      "ctaLink": "/menu",
+      "overlayOpacity": 0.4,
+      "height": "500px"
+    },
+    "menu": {
+      "layout": "grid",
+      "itemsPerRow": 3,
+      "showImages": true,
+      "showPrices": true,
+      "showDescriptions": true,
+      "showCategories": true,
+      "enableFilters": true
+    }
+  },
+  "mobileMenu": {
+    "style": {
+      "position": "bottom",
+      "openAnimation": "slide-up"
+    },
+    "items": [
+      {
+        "label": "Inicio",
+        "icon": "home",
+        "link": "/",
+        "order": 1
+      },
+      {
+        "label": "Menú",
+        "icon": "menu-book",
+        "link": "/menu",
+        "order": 2
+      },
+      {
+        "label": "Reservas",
+        "icon": "calendar",
+        "link": "/reservations",
+        "order": 3
+      },
+      {
+        "label": "Carrito",
+        "icon": "shopping-cart",
+        "link": "/cart",
+        "order": 4
+      }
+    ]
+  }
+}

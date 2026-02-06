@@ -34,7 +34,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { RestaurantsService } from './restaurants.service';
 import { RestaurantUsersService } from './services/restaurant-users.service';
-import { RestaurantBrandingService } from './services/restaurant-branding.service';
+import { RestaurantBrandingV2Service } from './services/restaurant-branding-v2.service';
 import { RestaurantSettingsService } from './services/restaurant-settings.service';
 import { AuthService } from '../auth/auth.service';
 import type { Response, Request } from 'express';
@@ -43,12 +43,22 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/decorators/current-user.decorator';
 import {
   UpdateBusinessHoursDto,
-  UpdateBrandingDto,
   UpdatePaymentMethodsDto,
   UpdateDeliveryZonesDto,
   InviteUserDto,
   UpdateUserRoleDto,
 } from './dto/restaurant-settings.dto';
+import {
+  UpdateBrandingV2Dto,
+  BrandingThemeDto,
+  NavSectionDto,
+  HeroSectionDto,
+  MenuSectionDto,
+  CartSectionDto,
+  FooterSectionDto,
+  CheckoutSectionDto,
+  ReservationsSectionDto,
+} from './dto/branding-v2.dto';
 import { UpdateRestaurantSettingsDto } from './dto/update-restaurant-settings.dto';
 
 @ApiTags('Restaurants')
@@ -57,7 +67,7 @@ export class RestaurantsController {
   constructor(
     private readonly restaurantsService: RestaurantsService,
     private readonly usersService: RestaurantUsersService,
-    private readonly brandingService: RestaurantBrandingService,
+    private readonly brandingService: RestaurantBrandingV2Service,
     private readonly settingsService: RestaurantSettingsService,
     private readonly authService: AuthService,
   ) {}
@@ -306,19 +316,136 @@ export class RestaurantsController {
     return { success: true, hours: updatedHours };
   }
 
-  @ApiOperation({ summary: 'Update restaurant branding' })
+  @ApiOperation({ summary: 'Get restaurant branding' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  @Get(':id/branding')
+  @ApiBearerAuth()
+  async getBranding(@VerifyRestaurantAccess('id') restaurantId: string) {
+    const branding = await this.brandingService.getBranding(restaurantId);
+    return { success: true, branding };
+  }
+
+  @ApiOperation({ summary: 'Update restaurant branding (V2)' })
   @ApiParam({ name: 'id', description: 'The id of the restaurant' })
   @Put(':id/branding')
   @ApiBearerAuth()
   async updateBranding(
     @VerifyRestaurantAccess('id') restaurantId: string,
-    @Body() dto: UpdateBrandingDto,
+    @Body() dto: UpdateBrandingV2Dto,
   ) {
     const branding = await this.brandingService.updateBranding(
       restaurantId,
       dto,
     );
     return { success: true, branding };
+  }
+
+  @ApiOperation({ summary: 'Reset branding to defaults' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  @Post(':id/branding/reset')
+  @ApiBearerAuth()
+  async resetBranding(@VerifyRestaurantAccess('id') restaurantId: string) {
+    return this.brandingService.resetBranding(restaurantId);
+  }
+
+  @ApiOperation({ summary: 'Update theme configuration' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  @Patch(':id/branding/theme')
+  @ApiBearerAuth()
+  async updateTheme(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+    @Body() themeDto: BrandingThemeDto,
+  ) {
+    return this.brandingService.updateTheme(restaurantId, themeDto);
+  }
+
+  @ApiOperation({ summary: 'Update navigation section' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  @Patch(':id/branding/sections/nav')
+  @ApiBearerAuth()
+  async updateNavSection(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+    @Body() navDto: NavSectionDto,
+  ) {
+    return this.brandingService.updateSection(restaurantId, 'nav', navDto);
+  }
+
+  @ApiOperation({ summary: 'Update hero section' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  @Patch(':id/branding/sections/hero')
+  @ApiBearerAuth()
+  async updateHeroSection(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+    @Body() heroDto: HeroSectionDto,
+  ) {
+    return this.brandingService.updateSection(restaurantId, 'hero', heroDto);
+  }
+
+  @ApiOperation({ summary: 'Update menu section' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  @Patch(':id/branding/sections/menu')
+  @ApiBearerAuth()
+  async updateMenuSection(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+    @Body() menuDto: MenuSectionDto,
+  ) {
+    return this.brandingService.updateSection(restaurantId, 'menu', menuDto);
+  }
+
+  @ApiOperation({ summary: 'Update cart section' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  @Patch(':id/branding/sections/cart')
+  @ApiBearerAuth()
+  async updateCartSection(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+    @Body() cartDto: CartSectionDto,
+  ) {
+    return this.brandingService.updateSection(restaurantId, 'cart', cartDto);
+  }
+
+  @ApiOperation({ summary: 'Update footer section' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  @Patch(':id/branding/sections/footer')
+  @ApiBearerAuth()
+  async updateFooterSection(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+    @Body() footerDto: FooterSectionDto,
+  ) {
+    return this.brandingService.updateSection(
+      restaurantId,
+      'footer',
+      footerDto,
+    );
+  }
+
+  @ApiOperation({ summary: 'Update checkout section' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  @Patch(':id/branding/sections/checkout')
+  @ApiBearerAuth()
+  async updateCheckoutSection(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+    @Body() checkoutDto: CheckoutSectionDto,
+  ) {
+    return this.brandingService.updateSection(
+      restaurantId,
+      'checkout',
+      checkoutDto,
+    );
+  }
+
+  @ApiOperation({ summary: 'Update reservations section' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  @Patch(':id/branding/sections/reservations')
+  @ApiBearerAuth()
+  async updateReservationsSection(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+    @Body() reservationsDto: ReservationsSectionDto,
+  ) {
+    return this.brandingService.updateSection(
+      restaurantId,
+      'reservations',
+      reservationsDto,
+    );
   }
 
   @ApiOperation({ summary: 'Update payment methods' })
