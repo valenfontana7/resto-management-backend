@@ -100,6 +100,7 @@ export class AuthService {
           address: '',
           city: '',
           country: '',
+          onboardingIncomplete: true,
         },
       });
 

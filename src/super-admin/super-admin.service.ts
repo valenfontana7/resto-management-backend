@@ -103,6 +103,7 @@ export class SuperAdminService {
           name: true,
           slug: true,
           status: true,
+          onboardingIncomplete: true,
           createdAt: true,
           subscription: {
             select: {
@@ -139,6 +140,7 @@ export class SuperAdminService {
         name: restaurant.name,
         slug: restaurant.slug,
         status: restaurant.status,
+        onboardingIncomplete: restaurant.onboardingIncomplete,
         createdAt: restaurant.createdAt,
         subscription: restaurant.subscription,
         verificationStatus: restaurant.verificationStatus,
@@ -637,6 +639,7 @@ export class SuperAdminService {
           branding: dto.branding || {},
           status: 'PENDING',
           verificationStatus: 'UNVERIFIED',
+          onboardingIncomplete: true,
         },
       });
 

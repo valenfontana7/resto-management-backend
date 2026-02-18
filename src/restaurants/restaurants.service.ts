@@ -56,6 +56,7 @@ export class RestaurantsService {
         branding: true,
         features: true,
         socialMedia: true,
+        onboardingIncomplete: true,
         hours: true,
         createdAt: true,
         updatedAt: true,
@@ -89,6 +90,7 @@ export class RestaurantsService {
         branding: true,
         features: true,
         socialMedia: true,
+        onboardingIncomplete: true,
         hours: true,
         createdAt: true,
         updatedAt: true,
@@ -367,6 +369,7 @@ export class RestaurantsService {
           type: businessInfo.businessType || businessInfo.type || 'restaurant',
           cuisineTypes: businessInfo.cuisine || businessInfo.cuisineTypes || [],
           description: businessInfo.description || '',
+          onboardingIncomplete: true,
 
           email: contact.email || '',
           phone: contact.phone || '',
@@ -767,6 +770,23 @@ export class RestaurantsService {
     // Tax ID (CUIT/CUIL)
     if (taxId !== undefined) {
       updateData.taxId = taxId;
+    }
+
+    // Handle explicit onboardingIncomplete flag
+    if (payload.onboardingIncomplete !== undefined) {
+      updateData.onboardingIncomplete = payload.onboardingIncomplete;
+    } else {
+      // Auto-mark onboarding as complete if essential fields are present
+      const hasEssentialData = 
+        (updateData.name || currentRestaurant.name) &&
+        (updateData.email || currentRestaurant.email) &&
+        (updateData.phone || currentRestaurant.phone) &&
+        (updateData.address || currentRestaurant.address) &&
+        (updateData.branding || currentRestaurant.branding);
+      
+      if (hasEssentialData && currentRestaurant.onboardingIncomplete) {
+        updateData.onboardingIncomplete = false;
+      }
     }
 
     console.log(

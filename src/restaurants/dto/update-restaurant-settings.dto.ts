@@ -748,4 +748,12 @@ export class UpdateRestaurantSettingsDto {
   @ValidateNested()
   @Type(() => SocialMediaDto)
   socialMedia?: SocialMediaDto;
+
+  @ApiPropertyOptional({ 
+    description: 'Whether the restaurant onboarding is incomplete',
+    example: false 
+  })
+  @IsOptional()
+  @IsBoolean()
+  onboardingIncomplete?: boolean;
 }

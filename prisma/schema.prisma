@@ -36,6 +36,7 @@ model Restaurant {
   modulesUpdatedBy      String?
   legalDetails          Json?
   verificationStatus    VerificationStatus     @default(UNVERIFIED)
+  onboardingIncomplete  Boolean                @default(true)
   adminAuditLogs        AdminAuditLog[]
   hours                 BusinessHour[]
   categories            Category[]

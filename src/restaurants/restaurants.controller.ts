@@ -297,6 +297,24 @@ export class RestaurantsController {
     }
   }
 
+  @Post(':id/complete-onboarding')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Mark restaurant onboarding as complete' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  @ApiResponse({
+    status: 200,
+    description: 'Onboarding marked as complete.',
+  })
+  async completeOnboarding(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+  ) {
+    const restaurant = await this.restaurantsService.update(
+      restaurantId,
+      { onboardingIncomplete: false },
+    );
+    return { restaurant };
+  }
+
   @ApiOperation({ summary: 'Update restaurant hours' })
   @ApiParam({ name: 'id', description: 'The id of the restaurant' })
   @ApiResponse({
