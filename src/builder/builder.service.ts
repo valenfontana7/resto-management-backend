@@ -295,15 +295,52 @@ export class BuilderService {
    * Publish configuration
    */
   async publishConfig(restaurantId: string): Promise<void> {
-    // Verify config exists
-    const builderConfig = await this.prisma.builderConfig.findUnique({
+    // Verify restaurant exists
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException(
+        `Restaurant ${restaurantId} not found`,
+      );
+    }
+
+    // Get or create builder config
+    let builderConfig = await this.prisma.builderConfig.findUnique({
       where: { restaurantId },
     });
 
     if (!builderConfig) {
-      throw new NotFoundException(
-        `No builder configuration found for restaurant ${restaurantId}`,
+      // Create default builder config if it doesn't exist
+      this.logger.log(
+        `No builder config found for restaurant ${restaurantId}, creating default config`,
       );
+
+      const defaultConfig: BuilderConfiguration = {
+        ...DEFAULT_BUILDER_CONFIG,
+        restaurant: {
+          name: restaurant.name,
+          description: restaurant.description || '',
+          email: restaurant.email,
+          phone: restaurant.phone,
+          address: restaurant.address,
+          city: restaurant.city,
+          country: restaurant.country,
+          postalCode: restaurant.postalCode || '',
+          cuisineTypes: restaurant.cuisineTypes || [],
+        },
+        lastModified: new Date().toISOString(),
+      };
+
+      builderConfig = await this.prisma.builderConfig.create({
+        data: {
+          restaurantId,
+          config: defaultConfig as any,
+          version: '1.0.0',
+          isPublished: false,
+        },
+      });
     }
 
     const config = builderConfig.config as unknown as BuilderConfiguration;
@@ -311,11 +348,12 @@ export class BuilderService {
     // Map builder config to branding V2 format
     const brandingV2 = this.mapBuilderToBranding(config);
 
-    // Update restaurant branding field
+    // Update restaurant branding field and publish status
     await this.prisma.restaurant.update({
       where: { id: restaurantId },
       data: {
         branding: brandingV2,
+        isPublished: true,
         ...(brandingV2.assets?.logo && { logo: brandingV2.assets.logo }),
         ...(brandingV2.assets?.coverImage && {
           coverImage: brandingV2.assets.coverImage,
@@ -371,11 +409,20 @@ export class BuilderService {
    * Unpublish configuration
    */
   async unpublishConfig(restaurantId: string): Promise<void> {
+    // Update builder config
     await this.prisma.builderConfig.update({
       where: { restaurantId },
       data: {
         isPublished: false,
         updatedAt: new Date(),
+      },
+    });
+
+    // Update restaurant publish status
+    await this.prisma.restaurant.update({
+      where: { id: restaurantId },
+      data: {
+        isPublished: false,
       },
     });
   }

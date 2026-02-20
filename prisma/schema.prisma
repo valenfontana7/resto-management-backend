@@ -37,6 +37,7 @@ model Restaurant {
   legalDetails          Json?
   verificationStatus    VerificationStatus     @default(UNVERIFIED)
   onboardingIncomplete  Boolean                @default(true)
+  isPublished           Boolean                @default(false)
   adminAuditLogs        AdminAuditLog[]
   hours                 BusinessHour[]
   categories            Category[]

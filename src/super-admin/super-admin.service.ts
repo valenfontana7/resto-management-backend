@@ -104,6 +104,7 @@ export class SuperAdminService {
           slug: true,
           status: true,
           onboardingIncomplete: true,
+          isPublished: true,
           createdAt: true,
           subscription: {
             select: {
@@ -141,6 +142,7 @@ export class SuperAdminService {
         slug: restaurant.slug,
         status: restaurant.status,
         onboardingIncomplete: restaurant.onboardingIncomplete,
+        isPublished: restaurant.isPublished,
         createdAt: restaurant.createdAt,
         subscription: restaurant.subscription,
         verificationStatus: restaurant.verificationStatus,
@@ -292,6 +294,11 @@ export class SuperAdminService {
     // Manejar branding
     if (dto.branding !== undefined) {
       updateData.branding = dto.branding;
+    }
+
+    // Manejar isPublished
+    if (dto.isPublished !== undefined) {
+      updateData.isPublished = dto.isPublished;
     }
 
     // Actualizar el restaurante

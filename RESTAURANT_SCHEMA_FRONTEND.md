@@ -51,6 +51,10 @@ interface Restaurant {
   orderLeadTime: number; // Tiempo de preparación en minutos (default: 30)
   taxId?: string; // ID fiscal / RFC / CUIT
 
+  // ==================== Estado de Publicación ====================
+  onboardingIncomplete: boolean; // Si el onboarding está incompleto (default: true)
+  isPublished: boolean; // Si la web pública del restaurante está publicada (default: false)
+
   // ==================== Campos JSON ====================
   branding?: BuilderConfiguration; // ⭐ Configuración del Website Builder (estructura completa abajo)
   features?: RestaurantFeatures; // Características habilitadas

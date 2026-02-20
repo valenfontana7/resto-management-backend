@@ -262,6 +262,8 @@ export class RestaurantsController {
         colorsKeys: updateDto.branding?.colors
           ? Object.keys(updateDto.branding.colors)
           : [],
+        isPublished: updateDto.isPublished,
+        onboardingIncomplete: updateDto.onboardingIncomplete,
       });
 
       const restaurant = await this.restaurantsService.update(
@@ -275,6 +277,8 @@ export class RestaurantsController {
         hasBranding: !!restaurant.branding,
         brandingType: typeof restaurant.branding,
         branding: restaurant.branding,
+        isPublished: restaurant.isPublished,
+        onboardingIncomplete: restaurant.onboardingIncomplete,
       });
 
       return { restaurant };

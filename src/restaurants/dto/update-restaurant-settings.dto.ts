@@ -756,4 +756,12 @@ export class UpdateRestaurantSettingsDto {
   @IsOptional()
   @IsBoolean()
   onboardingIncomplete?: boolean;
+
+  @ApiPropertyOptional({ 
+    description: 'Whether the restaurant public website is published',
+    example: false 
+  })
+  @IsOptional()
+  @IsBoolean()
+  isPublished?: boolean;
 }

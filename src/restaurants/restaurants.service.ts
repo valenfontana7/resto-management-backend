@@ -57,6 +57,7 @@ export class RestaurantsService {
         features: true,
         socialMedia: true,
         onboardingIncomplete: true,
+        isPublished: true,
         hours: true,
         createdAt: true,
         updatedAt: true,
@@ -91,6 +92,7 @@ export class RestaurantsService {
         features: true,
         socialMedia: true,
         onboardingIncomplete: true,
+        isPublished: true,
         hours: true,
         createdAt: true,
         updatedAt: true,
@@ -789,9 +791,17 @@ export class RestaurantsService {
       }
     }
 
+    // Handle isPublished flag
+    if (payload.isPublished !== undefined) {
+      updateData.isPublished = payload.isPublished;
+    }
+
     console.log(
       '📝 Updating restaurant with data:',
-      JSON.stringify(updateData, null, 2),
+      JSON.stringify({
+        ...updateData,
+        branding: updateData.branding ? '[branding object]' : updateData.branding,
+      }, null, 2),
     );
 
     // Process embedded base64 assets in branding (hero, sections, etc.)
@@ -858,6 +868,8 @@ export class RestaurantsService {
         ? Object.keys(updated.branding as object)
         : [],
       branding: updated.branding,
+      isPublished: updated.isPublished,
+      onboardingIncomplete: updated.onboardingIncomplete,
     });
 
     return updated;
@@ -1379,6 +1391,7 @@ export class RestaurantsService {
     return this.prisma.restaurant.findMany({
       where: {
         status: RestaurantStatus.ACTIVE, // Solo restaurantes activos
+        isPublished: true, // Solo restaurantes publicados
       },
       select: {
         id: true,
@@ -1389,6 +1402,7 @@ export class RestaurantsService {
         city: true,
         country: true,
         logo: true,
+        isPublished: true,
         createdAt: true,
         updatedAt: true,
       },

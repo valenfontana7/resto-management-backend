@@ -2,6 +2,7 @@ import {
   Injectable,
   ConflictException,
   UnauthorizedException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -456,6 +457,15 @@ export class AuthService {
     restaurantId: string,
     adminId: string,
   ): Promise<AuthResponse> {
+    // Verify restaurant exists
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException('Restaurant not found');
+    }
+
     // 1. Find a target user (prefer Owner/Admin)
     const rolesPriority = [
       'OWNER',
@@ -468,7 +478,7 @@ export class AuthService {
 
     let targetUser: any = null;
 
-    // Try finding by role name priority
+    // Try finding by role name priority (active users)
     for (const roleName of rolesPriority) {
       targetUser = await this.prisma.user.findFirst({
         where: {
@@ -490,10 +500,58 @@ export class AuthService {
       });
     }
 
+    // If no active users, try to find and activate an inactive user
     if (!targetUser) {
-      throw new ConflictException(
-        'No active users found in this restaurant to impersonate.',
-      );
+      targetUser = await this.prisma.user.findFirst({
+        where: { restaurantId, isActive: false },
+        include: { role: true, restaurant: true },
+        orderBy: { createdAt: 'asc' },
+      });
+
+      if (targetUser) {
+        // Activate the user
+        targetUser = await this.prisma.user.update({
+          where: { id: targetUser.id },
+          data: { isActive: true },
+          include: { role: true, restaurant: true },
+        });
+      }
+    }
+
+    // If still no user found, create a temporary admin user
+    if (!targetUser) {
+      // Find or create OWNER role
+      let ownerRole = await this.prisma.role.findFirst({
+        where: {
+          restaurantId,
+          name: { in: ['OWNER', 'Owner'] },
+        },
+      });
+
+      if (!ownerRole) {
+        ownerRole = await this.prisma.role.create({
+          data: {
+            restaurantId,
+            name: 'OWNER',
+            permissions: ['all'],
+            color: '#ef4444',
+            isSystemRole: true,
+          },
+        });
+      }
+
+      // Create temporary admin user
+      targetUser = await this.prisma.user.create({
+        data: {
+          email: `admin@${restaurant.slug}.temp`,
+          password: '', // No password needed for impersonation
+          name: `Admin ${restaurant.name}`,
+          restaurantId,
+          roleId: ownerRole.id,
+          isActive: true,
+        },
+        include: { role: true, restaurant: true },
+      });
     }
 
     // 2. Generate Token
