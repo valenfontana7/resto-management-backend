@@ -27,7 +27,18 @@ export class BuilderService {
     // Verify restaurant exists
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { id: restaurantId },
-      select: { id: true },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        email: true,
+        phone: true,
+        address: true,
+        city: true,
+        country: true,
+        postalCode: true,
+        cuisineTypes: true,
+      },
     });
 
     if (!restaurant) {
@@ -42,14 +53,22 @@ export class BuilderService {
     });
 
     if (builderConfig) {
-      return builderConfig.config as unknown as BuilderConfiguration;
+      const config = builderConfig.config as unknown as BuilderConfiguration;
+      // Hydrate restaurant fields from DB (single source of truth)
+      config.restaurant = this.hydrateRestaurantData(
+        config.restaurant || {},
+        restaurant,
+      );
+      return config;
     }
 
-    // Return default config if none exists
-    return {
+    // Return default config if none exists, seeding with restaurant data
+    const base: BuilderConfiguration = {
       ...DEFAULT_BUILDER_CONFIG,
       lastModified: new Date().toISOString(),
     };
+    base.restaurant = this.hydrateRestaurantData({}, restaurant);
+    return base;
   }
 
   /**
@@ -85,7 +104,7 @@ export class BuilderService {
       : { ...DEFAULT_BUILDER_CONFIG };
 
     // Deep merge updates into current config
-    const newConfig = this.deepMerge(currentConfig, updates);
+    const newConfig = this.deepMerge(currentConfig, updates as any);
 
     // Update lastModified
     newConfig.lastModified = new Date().toISOString();
@@ -124,6 +143,7 @@ export class BuilderService {
       this.logger.log(`Config updated successfully`);
     } else {
       this.logger.log(`Creating new config for restaurant ${restaurantId}`);
+
       builderConfig = await this.prisma.builderConfig.create({
         data: {
           restaurantId,
@@ -151,15 +171,6 @@ export class BuilderService {
       where: { id: restaurantId },
       select: { id: true },
     });
-
-    if (!restaurant) {
-      throw new NotFoundException(
-        `Restaurant with ID ${restaurantId} not found`,
-      );
-    }
-
-    // Update lastModified
-    config.lastModified = new Date().toISOString();
 
     // Validate the config
     const validation = validateBuilderConfig(config);
@@ -382,6 +393,17 @@ export class BuilderService {
         restaurantUpdate.postalCode = config.restaurant.postalCode;
       if (config.restaurant.cuisineTypes)
         restaurantUpdate.cuisineTypes = config.restaurant.cuisineTypes;
+      // also honor businessInfo.cuisineTypes.content if provided
+      if (
+        config.restaurant.businessInfo?.cuisineTypes?.content &&
+        typeof config.restaurant.businessInfo.cuisineTypes.content === 'string'
+      ) {
+        const items = config.restaurant.businessInfo.cuisineTypes.content
+          .split(',')
+          .map((s) => s.trim())
+          .filter((s) => s);
+        restaurantUpdate.cuisineTypes = items;
+      }
 
       if (Object.keys(restaurantUpdate).length > 0) {
         await this.prisma.restaurant.update({

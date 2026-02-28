@@ -27,6 +27,17 @@ export class OwnershipService {
     restaurantId: string,
     userId: string,
   ): Promise<void> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        role: { select: { name: true } },
+      },
+    });
+
+    if (user?.role?.name === 'SUPER_ADMIN') {
+      return;
+    }
+
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { id: restaurantId },
       include: {

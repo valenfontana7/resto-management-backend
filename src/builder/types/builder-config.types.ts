@@ -680,6 +680,13 @@ export interface RestaurantConfig {
     taxId?: string;
     businessType?: string;
     foundedYear?: number;
+    cuisineTypes?: {
+      style?: {
+        color?: ColorValue;
+        fontSize?: SizeValue;
+        fontWeight?: string;
+      };
+    };
   };
 
   // Social media

@@ -162,6 +162,11 @@ PREV_ROLE_ID=$(docker exec -i resto-postgres psql -U resto_user -d resto_db -t -
 docker exec -i resto-postgres psql -U resto_user -d resto_db -c "UPDATE \"User\" SET \"roleId\" = '${PREV_ROLE_ID}' WHERE lower(email) = lower('user@example.com');"
 ```
 
+```bash
+# Para setear una configuración de un restaurante en particular
+docker compose exec -T db psql -U resto_user -d resto_db -c "UPDATE \"Restaurant\" SET \"onboardingIncomplete\" = false, \"updatedAt\" = NOW() WHERE \"slug\" = 'slug'; SELECT \"id\",\"slug\",\"onboardingIncomplete\" FROM \"Restaurant\" WHERE \"slug\" = 'slug';"
+```
+
 ### 4) Notas y precauciones
 
 - Ejecutar estas operaciones sólo en entornos de desarrollo o con extremo cuidado en producción.

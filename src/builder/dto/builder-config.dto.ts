@@ -1883,6 +1883,37 @@ export class AdvancedConfigDto {
 
 // ==================== RESTAURANT DTO ====================
 
+export class CuisineTypesStyleDto {
+  @ApiPropertyOptional({ example: '#ffffff' })
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'cuisineTypes.style.color must be a valid hex color',
+  })
+  color?: string;
+
+  @ApiPropertyOptional({
+    example: 'xs',
+    enum: ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'],
+  })
+  @IsOptional()
+  @IsIn(['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'])
+  fontSize?: string;
+
+  @ApiPropertyOptional({ example: 'semibold' })
+  @IsOptional()
+  @IsString()
+  fontWeight?: string;
+}
+
+export class BusinessInfoCuisineTypesDto {
+  @ApiPropertyOptional({ type: CuisineTypesStyleDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CuisineTypesStyleDto)
+  style?: CuisineTypesStyleDto;
+}
+
 export class BusinessInfoDto {
   @ApiPropertyOptional()
   @IsOptional()
@@ -1903,6 +1934,15 @@ export class BusinessInfoDto {
   @IsOptional()
   @IsNumber()
   foundedYear?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Cuisine types presentation settings for business info section.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => BusinessInfoCuisineTypesDto)
+  cuisineTypes?: BusinessInfoCuisineTypesDto;
 }
 
 export class SocialLinksDto {
