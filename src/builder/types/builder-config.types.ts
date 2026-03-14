@@ -286,11 +286,13 @@ export interface HeroConfig {
   backgroundPosition?: string;
   backgroundAttachment?: 'scroll' | 'fixed' | 'local';
 
-  // Overlay
-  overlayEnabled?: boolean;
-  overlayColor?: ColorValue;
-  overlayOpacity?: number; // 0-100
-  overlayGradient?: string;
+  // Overlay (nested, matches branding V2 format)
+  overlay?: {
+    enabled?: boolean;
+    color?: ColorValue;
+    opacity?: number; // 0-100
+    gradient?: string;
+  };
 
   // Dimensions
   height?: 'auto' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
@@ -349,7 +351,9 @@ export interface HeroConfig {
   showRating?: boolean;
   showDeliveryTime?: boolean;
   showPriceRange?: boolean;
-  metaTextColor?: ColorValue;
+  meta?: {
+    color?: ColorValue;
+  };
 
   // Text effects
   textShadow?: boolean;
@@ -431,6 +435,17 @@ export interface MenuConfig {
 
 // ==================== INFO SECTION ====================
 
+export interface CuisineTypesStyleConfig {
+  /** Color del texto del badge */
+  color?: ColorValue;
+  /** Color de fondo del badge */
+  backgroundColor?: ColorValue;
+  /** Tamaño del badge */
+  size?: SizeValue;
+  /** Radio de borde del badge */
+  borderRadius?: BorderRadiusValue;
+}
+
 export interface InfoSectionConfig {
   // Visibility
   showSection?: boolean;
@@ -463,6 +478,9 @@ export interface InfoSectionConfig {
   cardBackgroundColor?: ColorValue;
   cardBorderRadius?: BorderRadiusValue;
   cardShadow?: ShadowValue;
+
+  // Cuisine type badges style
+  cuisineTypesStyle?: CuisineTypesStyleConfig;
 }
 
 // ==================== FOOTER SECTION ====================
@@ -655,56 +673,75 @@ export interface AdvancedConfig {
   experimentalFeatures?: string[];
 }
 
-// ==================== RESTAURANT CONFIGURATION ====================
+// ==================== CHECKOUT SECTION ====================
 
-export interface RestaurantConfig {
-  // Basic info
-  name?: string;
+export interface CheckoutConfig {
+  layout?: 'single-page' | 'multi-step';
+  buttonStyle?: 'solid' | 'outline' | 'ghost';
+  showOrderSummary?: boolean;
+}
+
+// ==================== RESERVATIONS SECTION ====================
+
+export interface ReservationsConfig {
+  formStyle?: 'minimal' | 'card' | 'full';
+  showAvailability?: boolean;
+  requireDeposit?: boolean;
+}
+
+// ==================== RESTAURANT INFO (read-only, from Prisma) ====================
+
+/**
+ * Datos de identidad del restaurante PUBLICADOS (live).
+ * Se leen SIEMPRE desde las columnas Prisma del modelo Restaurant.
+ * Se inyectan en la respuesta del endpoint GET /builder/:id/config
+ * para que el frontend pueda mostrar los valores actuales.
+ */
+export interface RestaurantInfo {
+  id: string;
+  name: string;
+  slug?: string;
   description?: string;
-  slogan?: string;
-
-  // Contact
-  email?: string;
+  email: string;
   phone?: string;
-  website?: string;
-
-  // Location
   address?: string;
   city?: string;
   country?: string;
   postalCode?: string;
+  cuisineTypes: string[];
+  logo?: string;
+  coverImage?: string;
+  type?: string;
+  website?: string;
+  socialMedia?: Record<string, string>;
+  isPublished?: boolean;
+}
 
-  // Business info
-  businessInfo?: {
-    name?: string;
-    taxId?: string;
-    businessType?: string;
-    foundedYear?: number;
-    cuisineTypes?: {
-      style?: {
-        color?: ColorValue;
-        fontSize?: SizeValue;
-        fontWeight?: string;
-      };
-    };
-  };
+// ==================== RESTAURANT DRAFT (editable layer in builder) ====================
 
-  // Social media
-  socialLinks?: {
-    facebook?: string;
-    instagram?: string;
-    twitter?: string;
-    linkedin?: string;
-  };
-
-  // Cuisine and categories
+/**
+ * Capa de borrador para datos de identidad del restaurante.
+ * Se almacena dentro de BuilderConfig.config.restaurant.
+ * Solo contiene los campos que el usuario ha modificado en el builder.
+ * Al publicar, estos valores se aplican a las columnas Prisma del Restaurant.
+ *
+ * Frontend muestra: config.restaurant.name ?? restaurant.name
+ */
+export interface RestaurantDraft {
+  name?: string;
+  description?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  country?: string;
+  postalCode?: string;
   cuisineTypes?: string[];
-  categories?: string[];
-
-  // Operational
-  openingHours?: any; // Flexible structure
-  deliveryRadius?: number;
-  minimumOrder?: number;
+  logo?: string;
+  coverImage?: string;
+  type?: string;
+  website?: string;
+  socialMedia?: Record<string, string>;
 }
 
 // ==================== SECTIONS CONFIGURATION ====================
@@ -716,6 +753,8 @@ export interface SectionsConfig {
   info: InfoSectionConfig;
   footer: FooterConfig;
   cart: CartConfig;
+  checkout?: CheckoutConfig;
+  reservations?: ReservationsConfig;
 }
 
 // ==================== MAIN BUILDER CONFIGURATION ====================
@@ -725,25 +764,25 @@ export interface BuilderConfiguration {
   version: string; // e.g., "1.0.0"
   lastModified: string; // ISO date
 
-  // Core configurations
+  // Core configurations (same shape as branding V2)
   theme: ThemeConfig;
   layout: LayoutConfig;
   assets: AssetsConfig;
-  restaurant?: RestaurantConfig;
 
-  // Section configurations
+  // Section configurations (same shape as branding V2)
   sections: SectionsConfig;
+
+  // Draft de datos del restaurante (se aplica a Prisma al publicar)
+  restaurant?: RestaurantDraft;
 
   // Mobile
   mobileMenu?: MobileMenuConfig;
 
-  // SEO
-  seo?: SEOConfig;
-
   // Advanced
   advanced?: AdvancedConfig;
 
-  // Metadata
+  // Builder-only fields (not copied to branding)
+  seo?: SEOConfig;
   metadata?: {
     createdBy?: string;
     createdAt?: string;
@@ -753,8 +792,21 @@ export interface BuilderConfiguration {
   };
 }
 
+/**
+ * Respuesta del endpoint GET /builder/:id/config.
+ * Contiene la configuración del builder + datos del restaurante leídos de Prisma.
+ */
+export interface BuilderConfigResponse {
+  config: BuilderConfiguration;
+  restaurant: RestaurantInfo;
+}
+
 // ==================== DEFAULTS ====================
 
+/**
+ * Defaults unificados con el formato Branding V2.
+ * Al publicar, estos valores se copian directamente a restaurant.branding.
+ */
 export const DEFAULT_BUILDER_CONFIG: BuilderConfiguration = {
   version: '1.0.0',
   lastModified: new Date().toISOString(),
@@ -762,15 +814,15 @@ export const DEFAULT_BUILDER_CONFIG: BuilderConfiguration = {
   theme: {
     colors: {
       primary: '#3b82f6',
-      primaryText: '#ffffff',
       secondary: '#8b5cf6',
       accent: '#ec4899',
       background: '#ffffff',
-      text: '#0f172a',
+      text: '#1f2937',
+      muted: '#6b7280',
     },
     typography: {
       fontFamily: 'Inter, sans-serif',
-      fontSize: 'md',
+      headingFontFamily: 'Inter, sans-serif',
     },
     spacing: {
       borderRadius: 'md',
@@ -788,23 +840,20 @@ export const DEFAULT_BUILDER_CONFIG: BuilderConfiguration = {
 
   assets: {},
 
-  restaurant: {},
-
   sections: {
     nav: {
       position: 'sticky',
-      sticky: true,
       logoSize: 'md',
       showOpenStatus: true,
-      showContactButton: false,
-      shadow: true,
+      showContactButton: true,
+      sticky: false,
     },
 
     hero: {
       showSection: true,
-      height: 'lg',
+      minHeight: 'lg',
       textAlign: 'center',
-      overlayOpacity: 40,
+      overlay: { enabled: false, opacity: 0 },
       textShadow: false,
     },
 
@@ -823,12 +872,26 @@ export const DEFAULT_BUILDER_CONFIG: BuilderConfiguration = {
     footer: {
       showSection: true,
       showSocialLinks: true,
-      layout: 'detailed',
+      showBusinessInfo: true,
+      showOpeningHours: true,
+      layout: 'simple',
     },
 
     cart: {
-      style: 'sidebar',
+      style: 'drawer',
       position: 'right',
+    },
+
+    checkout: {
+      layout: 'single-page',
+      buttonStyle: 'solid',
+      showOrderSummary: true,
+    },
+
+    reservations: {
+      formStyle: 'card',
+      showAvailability: true,
+      requireDeposit: false,
     },
   },
 };
@@ -1007,6 +1070,8 @@ export const VALID_SECTION_NAMES = [
   'info',
   'footer',
   'cart',
+  'checkout',
+  'reservations',
 ] as const;
 export type SectionName = (typeof VALID_SECTION_NAMES)[number];
 

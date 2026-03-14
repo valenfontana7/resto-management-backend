@@ -7,6 +7,9 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import {
   BuilderConfiguration,
+  BuilderConfigResponse,
+  RestaurantInfo,
+  RestaurantDraft,
   DEFAULT_BUILDER_CONFIG,
   validateBuilderConfig,
   isValidSectionName,
@@ -21,14 +24,17 @@ export class BuilderService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Get builder configuration for a restaurant
+   * Get builder configuration for a restaurant.
+   * Returns the config + restaurant info as separate objects.
+   * Restaurant identity data always comes from Prisma (single source of truth).
    */
-  async getConfig(restaurantId: string): Promise<BuilderConfiguration> {
-    // Verify restaurant exists
+  async getConfig(restaurantId: string): Promise<BuilderConfigResponse> {
+    // Verify restaurant exists and get identity data
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { id: restaurantId },
       select: {
         id: true,
+        slug: true,
         name: true,
         description: true,
         email: true,
@@ -38,6 +44,12 @@ export class BuilderService {
         country: true,
         postalCode: true,
         cuisineTypes: true,
+        logo: true,
+        coverImage: true,
+        type: true,
+        website: true,
+        socialMedia: true,
+        isPublished: true,
       },
     });
 
@@ -52,23 +64,32 @@ export class BuilderService {
       where: { restaurantId },
     });
 
-    if (builderConfig) {
-      const config = builderConfig.config as unknown as BuilderConfiguration;
-      // Hydrate restaurant fields from DB (single source of truth)
-      config.restaurant = this.hydrateRestaurantData(
-        config.restaurant || {},
-        restaurant,
-      );
-      return config;
-    }
+    const config: BuilderConfiguration = builderConfig
+      ? (builderConfig.config as unknown as BuilderConfiguration)
+      : { ...DEFAULT_BUILDER_CONFIG, lastModified: new Date().toISOString() };
 
-    // Return default config if none exists, seeding with restaurant data
-    const base: BuilderConfiguration = {
-      ...DEFAULT_BUILDER_CONFIG,
-      lastModified: new Date().toISOString(),
+    return {
+      config,
+      restaurant: {
+        id: restaurant.id,
+        name: restaurant.name,
+        slug: restaurant.slug,
+        description: restaurant.description ?? undefined,
+        email: restaurant.email,
+        phone: restaurant.phone ?? undefined,
+        address: restaurant.address ?? undefined,
+        city: restaurant.city ?? undefined,
+        country: restaurant.country ?? undefined,
+        postalCode: restaurant.postalCode ?? undefined,
+        cuisineTypes: restaurant.cuisineTypes || [],
+        logo: restaurant.logo ?? undefined,
+        coverImage: restaurant.coverImage ?? undefined,
+        type: restaurant.type ?? undefined,
+        website: restaurant.website ?? undefined,
+        socialMedia: (restaurant.socialMedia as Record<string, string>) ?? undefined,
+        isPublished: restaurant.isPublished,
+      },
     };
-    base.restaurant = this.hydrateRestaurantData({}, restaurant);
-    return base;
   }
 
   /**
@@ -303,12 +324,16 @@ export class BuilderService {
   }
 
   /**
-   * Publish configuration
+   * Publish configuration.
+   * 1. Copies design config (theme, layout, assets, sections, etc.) → restaurant.branding
+   * 2. Applies restaurant draft fields (config.restaurant) → Prisma Restaurant columns
+   * 3. Clears config.restaurant draft after applying (ya está publicado)
    */
   async publishConfig(restaurantId: string): Promise<void> {
     // Verify restaurant exists
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { id: restaurantId },
+      select: { id: true, name: true },
     });
 
     if (!restaurant) {
@@ -323,24 +348,12 @@ export class BuilderService {
     });
 
     if (!builderConfig) {
-      // Create default builder config if it doesn't exist
       this.logger.log(
         `No builder config found for restaurant ${restaurantId}, creating default config`,
       );
 
       const defaultConfig: BuilderConfiguration = {
         ...DEFAULT_BUILDER_CONFIG,
-        restaurant: {
-          name: restaurant.name,
-          description: restaurant.description || '',
-          email: restaurant.email,
-          phone: restaurant.phone,
-          address: restaurant.address,
-          city: restaurant.city,
-          country: restaurant.country,
-          postalCode: restaurant.postalCode || '',
-          cuisineTypes: restaurant.cuisineTypes || [],
-        },
         lastModified: new Date().toISOString(),
       };
 
@@ -356,74 +369,68 @@ export class BuilderService {
 
     const config = builderConfig.config as unknown as BuilderConfiguration;
 
-    // Map builder config to branding V2 format
-    const brandingV2 = this.mapBuilderToBranding(config);
+    // 1. Extract branding data (design config, without builder-only fields)
+    const { version, lastModified, seo, metadata, restaurant: draftData, ...brandingData } = config;
 
-    // Update restaurant branding field and publish status
-    await this.prisma.restaurant.update({
-      where: { id: restaurantId },
-      data: {
-        branding: brandingV2,
-        isPublished: true,
-        ...(brandingV2.assets?.logo && { logo: brandingV2.assets.logo }),
-        ...(brandingV2.assets?.coverImage && {
-          coverImage: brandingV2.assets.coverImage,
-        }),
-      },
-    });
-
-    // Update restaurant fields from builder config
-    if (config.restaurant) {
-      const restaurantUpdate: any = {};
-      if (config.restaurant.name)
-        restaurantUpdate.name = config.restaurant.name;
-      if (config.restaurant.description)
-        restaurantUpdate.description = config.restaurant.description;
-      if (config.restaurant.email)
-        restaurantUpdate.email = config.restaurant.email;
-      if (config.restaurant.phone)
-        restaurantUpdate.phone = config.restaurant.phone;
-      if (config.restaurant.address)
-        restaurantUpdate.address = config.restaurant.address;
-      if (config.restaurant.city)
-        restaurantUpdate.city = config.restaurant.city;
-      if (config.restaurant.country)
-        restaurantUpdate.country = config.restaurant.country;
-      if (config.restaurant.postalCode)
-        restaurantUpdate.postalCode = config.restaurant.postalCode;
-      if (config.restaurant.cuisineTypes)
-        restaurantUpdate.cuisineTypes = config.restaurant.cuisineTypes;
-      // also honor businessInfo.cuisineTypes.content if provided
-      if (
-        config.restaurant.businessInfo?.cuisineTypes?.content &&
-        typeof config.restaurant.businessInfo.cuisineTypes.content === 'string'
-      ) {
-        const items = config.restaurant.businessInfo.cuisineTypes.content
-          .split(',')
-          .map((s) => s.trim())
-          .filter((s) => s);
-        restaurantUpdate.cuisineTypes = items;
-      }
-
-      if (Object.keys(restaurantUpdate).length > 0) {
-        await this.prisma.restaurant.update({
-          where: { id: restaurantId },
-          data: restaurantUpdate,
-        });
-      }
+    // Sync hero title.text with restaurant name if not set
+    if (brandingData.sections?.hero?.title && !brandingData.sections.hero.title.text) {
+      brandingData.sections.hero.title.text = draftData?.name || restaurant.name;
     }
 
-    // Mark as published
+    // 2. Build Prisma update — apply draft restaurant fields to DB columns
+    const restaurantUpdate: Record<string, any> = {
+      branding: brandingData as any,
+      isPublished: true,
+    };
+
+    if (draftData) {
+      // Apply each draft field to the corresponding Prisma column
+      const draftFields: (keyof RestaurantDraft)[] = [
+        'name', 'description', 'email', 'phone', 'address',
+        'city', 'country', 'postalCode', 'cuisineTypes',
+        'logo', 'coverImage', 'type', 'website', 'socialMedia',
+      ];
+
+      for (const field of draftFields) {
+        if (draftData[field] !== undefined) {
+          restaurantUpdate[field] = draftData[field];
+        }
+      }
+
+      this.logger.log(
+        `Applying draft restaurant fields: ${Object.keys(draftData).join(', ')}`,
+      );
+    }
+
+    // Also sync logo/coverImage from assets if present
+    if (brandingData.assets?.logo && !restaurantUpdate.logo) {
+      restaurantUpdate.logo = brandingData.assets.logo;
+    }
+    if (brandingData.assets?.coverImage && !restaurantUpdate.coverImage) {
+      restaurantUpdate.coverImage = brandingData.assets.coverImage;
+    }
+
+    await this.prisma.restaurant.update({
+      where: { id: restaurantId },
+      data: restaurantUpdate,
+    });
+
+    // 3. Clear draft restaurant data (already applied) and mark as published
+    const cleanedConfig = { ...config };
+    delete cleanedConfig.restaurant;
+    cleanedConfig.lastModified = new Date().toISOString();
+
     await this.prisma.builderConfig.update({
       where: { restaurantId },
       data: {
+        config: cleanedConfig as any,
         isPublished: true,
         updatedAt: new Date(),
       },
     });
 
     this.logger.log(
-      `Published builder config for restaurant ${restaurantId} and synced to branding`,
+      `Published builder config for restaurant ${restaurantId}`,
     );
   }
 
@@ -574,7 +581,7 @@ export class BuilderService {
       return this.resetConfig(restaurantId);
     }
 
-    // Map old branding to new builder config
+    // Map old branding to unified builder config (same shape as branding V2)
     const newConfig: BuilderConfiguration = {
       ...DEFAULT_BUILDER_CONFIG,
       version: '1.0.0',
@@ -588,11 +595,13 @@ export class BuilderService {
           accent: oldBranding.theme?.colors?.accent,
           background: oldBranding.theme?.colors?.background,
           text: oldBranding.theme?.colors?.text,
+          muted: oldBranding.theme?.colors?.muted,
         },
         typography: {
           fontFamily:
             oldBranding.theme?.typography?.fontFamily ||
             DEFAULT_BUILDER_CONFIG.theme.typography.fontFamily,
+          headingFontFamily: oldBranding.theme?.typography?.headingFontFamily,
         },
         spacing: {
           borderRadius:
@@ -627,23 +636,32 @@ export class BuilderService {
       },
       sections: {
         nav: {
-          position: oldBranding.sections?.nav?.position || 'sticky',
+          position: 'sticky',
           logoSize: oldBranding.sections?.nav?.logoSize || 'md',
           showOpenStatus: oldBranding.sections?.nav?.showOpenStatus ?? true,
           showContactButton:
-            oldBranding.sections?.nav?.showContactButton ?? false,
+            oldBranding.sections?.nav?.showContactButton ?? true,
+          sticky: oldBranding.sections?.nav?.sticky ?? false,
           ...oldBranding.sections?.nav,
         },
         hero: {
           showSection: oldBranding.sections?.hero?.showSection ?? true,
           textAlign: oldBranding.sections?.hero?.textAlign || 'center',
-          overlayOpacity: oldBranding.sections?.hero?.overlayOpacity || 40,
-          ...oldBranding.sections?.hero,
+          minHeight: oldBranding.sections?.hero?.minHeight || 'lg',
+          overlay: {
+            enabled: oldBranding.sections?.hero?.overlay?.enabled ?? false,
+            color: oldBranding.sections?.hero?.overlay?.color,
+            opacity: oldBranding.sections?.hero?.overlay?.opacity ?? 0,
+          },
+          textShadow: oldBranding.sections?.hero?.textShadow ?? false,
+          title: oldBranding.sections?.hero?.title,
+          subtitle: oldBranding.sections?.hero?.subtitle,
         },
         menu: {
           cardStyle: oldBranding.sections?.menu?.cardStyle || 'elevated',
           showImages: oldBranding.sections?.menu?.showImages ?? true,
           showPrices: oldBranding.sections?.menu?.showPrices ?? true,
+          columns: oldBranding.sections?.menu?.columns || 3,
           ...oldBranding.sections?.menu,
         },
         info: {
@@ -655,13 +673,16 @@ export class BuilderService {
           showSection: oldBranding.sections?.footer?.showSection ?? true,
           showSocialLinks:
             oldBranding.sections?.footer?.showSocialLinks ?? true,
+          layout: oldBranding.sections?.footer?.layout || 'simple',
           ...oldBranding.sections?.footer,
         },
         cart: {
-          style: oldBranding.sections?.cart?.style || 'sidebar',
+          style: oldBranding.sections?.cart?.style || 'drawer',
           position: oldBranding.sections?.cart?.position || 'right',
           ...oldBranding.sections?.cart,
         },
+        checkout: oldBranding.sections?.checkout || DEFAULT_BUILDER_CONFIG.sections.checkout,
+        reservations: oldBranding.sections?.reservations || DEFAULT_BUILDER_CONFIG.sections.reservations,
       },
       mobileMenu: oldBranding.mobileMenu,
       advanced: oldBranding.advanced,
@@ -683,103 +704,5 @@ export class BuilderService {
     });
 
     return newConfig;
-  }
-
-  /**
-   * Map Builder Configuration to Branding V2 format
-   * This is used when publishing to sync builder changes to restaurant.branding
-   * Uses safe property access with defaults
-   */
-  private mapBuilderToBranding(config: BuilderConfiguration): any {
-    return {
-      theme: {
-        colors: {
-          primary: config.theme?.colors?.primary || '#3B82F6',
-          secondary: config.theme?.colors?.secondary || '#1E40AF',
-          accent: config.theme?.colors?.accent || '#F59E0B',
-          background: config.theme?.colors?.background || '#FFFFFF',
-          text: config.theme?.colors?.text || '#1F2937',
-          border: config.theme?.colors?.border || '#E5E7EB',
-        },
-        typography: {
-          fontFamily: config.theme?.typography?.fontFamily || 'Inter',
-        },
-      },
-      assets: {
-        logo: config.assets?.logo || '',
-        favicon: config.assets?.favicon || '',
-        coverImage:
-          config.sections?.hero?.backgroundImage ||
-          config.assets?.coverImage ||
-          '',
-      },
-      sections: {
-        nav: {
-          showLogo: config.sections?.nav?.showLogo ?? true,
-          showSearch: config.sections?.nav?.showSearchButton ?? true,
-          showCart: config.sections?.nav?.showCartButton ?? true,
-          transparent: config.sections?.nav?.transparency ?? false,
-          sticky: config.sections?.nav?.sticky ?? false,
-        },
-        hero: {
-          showSection: true,
-          minHeight: config.sections?.hero?.minHeight || 'lg',
-          textAlign: config.sections?.hero?.textAlign || 'center',
-          overlay: {
-            enabled: true,
-            opacity: config.sections?.hero?.overlayOpacity || 40,
-          },
-          title: {
-            text: config.sections?.hero?.title?.text || '',
-            color: config.sections?.hero?.title?.color || '#FFFFFF',
-          },
-          subtitle: {
-            text: config.sections?.hero?.subtitle?.text || '',
-            color: config.sections?.hero?.subtitle?.color || '#FFFFFF',
-          },
-          textShadow: config.sections?.hero?.textShadow ?? false,
-        },
-        menu: {
-          layout: 'grid',
-          cardStyle: config.sections?.menu?.cardStyle || 'elevated',
-          showImages: config.sections?.menu?.showImages ?? true,
-          showPrices: config.sections?.menu?.showPrices ?? true,
-          showDescriptions: config.sections?.menu?.showDescriptions ?? true,
-          showFilters: config.sections?.menu?.showFilters ?? true,
-        },
-        info: {
-          showSection: config.sections?.info?.showSection ?? true,
-          showAddress: true,
-          showPhone: true,
-          showEmail: true,
-          showHours: true,
-          showMap: true,
-          showSocial: true,
-        },
-        footer: {
-          showSection: true,
-          variant: config.sections?.footer?.layout || 'simple',
-          showLogo: config.sections?.footer?.showLogo ?? true,
-          showSocial: true,
-          backgroundColor:
-            config.sections?.footer?.backgroundColor || '#1F2937',
-          textColor: config.sections?.footer?.textColor || '#F9FAFB',
-        },
-        cart: {
-          style: config.sections?.cart?.style || 'drawer',
-          position: config.sections?.cart?.position || 'right',
-          showThumbnails: true,
-        },
-      },
-      mobileMenu: {
-        variant: 'drawer',
-        position: config.mobileMenu?.position || 'left',
-        showLogo: true,
-      },
-      advanced: {
-        customCSS: config.advanced?.customCSS || '',
-        customJS: config.advanced?.customJS || '',
-      },
-    };
   }
 }

@@ -682,6 +682,43 @@ export class NavigationConfigDto {
 
 // ==================== HERO SECTION DTO ====================
 
+export class HeroOverlayDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'overlay.color must be a valid hex color',
+  })
+  color?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  opacity?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  gradient?: string;
+}
+
+export class HeroMetaDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'meta.color must be a valid hex color',
+  })
+  color?: string;
+}
+
 export class HeroTitleDto {
   @ApiPropertyOptional()
   @IsOptional()
@@ -817,30 +854,11 @@ export class HeroConfigDto {
   @IsIn(['scroll', 'fixed', 'local'])
   backgroundAttachment?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: HeroOverlayDto, description: 'Overlay configuration (nested)' })
   @IsOptional()
-  @IsBoolean()
-  overlayEnabled?: boolean;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @Matches(HEX_COLOR_REGEX, {
-    message: 'overlayColor must be a valid hex color',
-  })
-  overlayColor?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(100)
-  overlayOpacity?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  overlayGradient?: string;
+  @ValidateNested()
+  @Type(() => HeroOverlayDto)
+  overlay?: HeroOverlayDto;
 
   @ApiPropertyOptional({ enum: ['auto', 'sm', 'md', 'lg', 'xl', 'full'] })
   @IsOptional()
@@ -921,13 +939,11 @@ export class HeroConfigDto {
   @IsBoolean()
   showPriceRange?: boolean;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: HeroMetaDto })
   @IsOptional()
-  @IsString()
-  @Matches(HEX_COLOR_REGEX, {
-    message: 'metaTextColor must be a valid hex color',
-  })
-  metaTextColor?: string;
+  @ValidateNested()
+  @Type(() => HeroMetaDto)
+  meta?: HeroMetaDto;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -1195,6 +1211,30 @@ export class MenuConfigDto {
 
 // ==================== INFO SECTION DTO ====================
 
+export class CuisineTypesStyleDto {
+  @ApiPropertyOptional({ example: '#ffffff', description: 'Color del texto del badge' })
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, { message: 'color must be a valid hex color' })
+  color?: string;
+
+  @ApiPropertyOptional({ example: '#3b82f6', description: 'Color de fondo del badge' })
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, { message: 'backgroundColor must be a valid hex color' })
+  backgroundColor?: string;
+
+  @ApiPropertyOptional({ enum: ['xs', 'sm', 'md', 'lg', 'xl'], description: 'Tamaño del badge' })
+  @IsOptional()
+  @IsIn(['xs', 'sm', 'md', 'lg', 'xl'])
+  size?: string;
+
+  @ApiPropertyOptional({ enum: ['none', 'sm', 'md', 'lg', 'xl', 'full'], description: 'Radio de borde del badge' })
+  @IsOptional()
+  @IsIn(['none', 'sm', 'md', 'lg', 'xl', 'full'])
+  borderRadius?: string;
+}
+
 export class InfoSectionConfigDto {
   @ApiPropertyOptional()
   @IsOptional()
@@ -1297,6 +1337,12 @@ export class InfoSectionConfigDto {
   @IsOptional()
   @IsIn(['none', 'sm', 'md', 'lg', 'xl', '2xl'])
   cardShadow?: string;
+
+  @ApiPropertyOptional({ type: CuisineTypesStyleDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CuisineTypesStyleDto)
+  cuisineTypesStyle?: CuisineTypesStyleDto;
 }
 
 // ==================== FOOTER SECTION DTO ====================
@@ -1881,180 +1927,42 @@ export class AdvancedConfigDto {
   experimentalFeatures?: string[];
 }
 
-// ==================== RESTAURANT DTO ====================
+// ==================== CHECKOUT SECTION DTO ====================
 
-export class CuisineTypesStyleDto {
-  @ApiPropertyOptional({ example: '#ffffff' })
+export class CheckoutConfigDto {
+  @ApiPropertyOptional({ enum: ['single-page', 'multi-step'] })
   @IsOptional()
-  @IsString()
-  @Matches(HEX_COLOR_REGEX, {
-    message: 'cuisineTypes.style.color must be a valid hex color',
-  })
-  color?: string;
+  @IsIn(['single-page', 'multi-step'])
+  layout?: string;
 
-  @ApiPropertyOptional({
-    example: 'xs',
-    enum: ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'],
-  })
+  @ApiPropertyOptional({ enum: ['solid', 'outline', 'ghost'] })
   @IsOptional()
-  @IsIn(['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'])
-  fontSize?: string;
+  @IsIn(['solid', 'outline', 'ghost'])
+  buttonStyle?: string;
 
-  @ApiPropertyOptional({ example: 'semibold' })
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
-  fontWeight?: string;
+  @IsBoolean()
+  showOrderSummary?: boolean;
 }
 
-export class BusinessInfoCuisineTypesDto {
-  @ApiPropertyOptional({ type: CuisineTypesStyleDto })
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => CuisineTypesStyleDto)
-  style?: CuisineTypesStyleDto;
-}
+// ==================== RESERVATIONS SECTION DTO ====================
 
-export class BusinessInfoDto {
-  @ApiPropertyOptional()
+export class ReservationsConfigDto {
+  @ApiPropertyOptional({ enum: ['minimal', 'card', 'full'] })
   @IsOptional()
-  @IsString()
-  name?: string;
+  @IsIn(['minimal', 'card', 'full'])
+  formStyle?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
-  taxId?: string;
+  @IsBoolean()
+  showAvailability?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsString()
-  businessType?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsNumber()
-  foundedYear?: number;
-
-  @ApiPropertyOptional({
-    description:
-      'Cuisine types presentation settings for business info section.',
-  })
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => BusinessInfoCuisineTypesDto)
-  cuisineTypes?: BusinessInfoCuisineTypesDto;
-}
-
-export class SocialLinksDto {
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  facebook?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  instagram?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  twitter?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  linkedin?: string;
-}
-
-export class RestaurantConfigDto {
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  name?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  description?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  slogan?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  email?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  phone?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  website?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  address?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  city?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  country?: string;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  postalCode?: string;
-
-  @ApiPropertyOptional({ type: BusinessInfoDto })
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => BusinessInfoDto)
-  businessInfo?: BusinessInfoDto;
-
-  @ApiPropertyOptional({ type: SocialLinksDto })
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => SocialLinksDto)
-  socialLinks?: SocialLinksDto;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  cuisineTypes?: string[];
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  categories?: string[];
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  openingHours?: any;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsNumber()
-  deliveryRadius?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsNumber()
-  minimumOrder?: number;
+  @IsBoolean()
+  requireDeposit?: boolean;
 }
 
 // ==================== SECTIONS DTO ====================
@@ -2095,6 +2003,18 @@ export class SectionsConfigDto {
   @ValidateNested()
   @Type(() => CartConfigDto)
   cart?: CartConfigDto;
+
+  @ApiPropertyOptional({ type: CheckoutConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CheckoutConfigDto)
+  checkout?: CheckoutConfigDto;
+
+  @ApiPropertyOptional({ type: ReservationsConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ReservationsConfigDto)
+  reservations?: ReservationsConfigDto;
 }
 
 // ==================== METADATA DTO ====================
@@ -2127,6 +2047,88 @@ export class MetadataConfigDto {
   notes?: string;
 }
 
+// ==================== RESTAURANT DRAFT DTO ====================
+
+/**
+ * DTO para la capa de borrador de datos del restaurante.
+ * Todos los campos son opcionales — solo se envían los que cambiaron.
+ * Al publicar, estos valores se aplican a las columnas Prisma del Restaurant.
+ */
+export class RestaurantDraftDto {
+  @ApiPropertyOptional({ example: 'Mi Restaurante' })
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'Restaurante de comida artesanal' })
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional({ example: 'info@mirestaurante.com' })
+  @IsOptional()
+  @IsString()
+  email?: string;
+
+  @ApiPropertyOptional({ example: '+5491112345678' })
+  @IsOptional()
+  @IsString()
+  phone?: string;
+
+  @ApiPropertyOptional({ example: 'Av. Corrientes 1234' })
+  @IsOptional()
+  @IsString()
+  address?: string;
+
+  @ApiPropertyOptional({ example: 'Buenos Aires' })
+  @IsOptional()
+  @IsString()
+  city?: string;
+
+  @ApiPropertyOptional({ example: 'Argentina' })
+  @IsOptional()
+  @IsString()
+  country?: string;
+
+  @ApiPropertyOptional({ example: 'C1043' })
+  @IsOptional()
+  @IsString()
+  postalCode?: string;
+
+  @ApiPropertyOptional({ example: ['italiana', 'pastas'] })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  cuisineTypes?: string[];
+
+  @ApiPropertyOptional({ example: 'https://cdn.example.com/logo.png' })
+  @IsOptional()
+  @IsString()
+  logo?: string;
+
+  @ApiPropertyOptional({ example: 'https://cdn.example.com/cover.jpg' })
+  @IsOptional()
+  @IsString()
+  coverImage?: string;
+
+  @ApiPropertyOptional({ example: 'restaurant' })
+  @IsOptional()
+  @IsString()
+  type?: string;
+
+  @ApiPropertyOptional({ example: 'https://mirestaurante.com' })
+  @IsOptional()
+  @IsString()
+  website?: string;
+
+  @ApiPropertyOptional({
+    example: { instagram: 'https://instagram.com/mirestaurante' },
+  })
+  @IsOptional()
+  @IsObject()
+  socialMedia?: Record<string, string>;
+}
+
 // ==================== MAIN UPDATE DTO ====================
 
 export class UpdateBuilderConfigDto {
@@ -2153,17 +2155,20 @@ export class UpdateBuilderConfigDto {
   @Type(() => AssetsConfigDto)
   assets?: AssetsConfigDto;
 
-  @ApiPropertyOptional({ type: RestaurantConfigDto })
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => RestaurantConfigDto)
-  restaurant?: RestaurantConfigDto;
-
   @ApiPropertyOptional({ type: SectionsConfigDto })
   @IsOptional()
   @ValidateNested()
   @Type(() => SectionsConfigDto)
   sections?: SectionsConfigDto;
+
+  @ApiPropertyOptional({
+    type: RestaurantDraftDto,
+    description: 'Borrador de datos del restaurante. Se aplica a DB al publicar.',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => RestaurantDraftDto)
+  restaurant?: RestaurantDraftDto;
 
   @ApiPropertyOptional({ type: MobileMenuConfigDto })
   @IsOptional()
