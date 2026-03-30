@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
@@ -126,7 +127,9 @@ export class PlansService {
   async update(id: string, updatePlanDto: UpdatePlanDto) {
     await this.findOne(id); // Verificar que existe
 
-    const { restrictions, ...planData } = updatePlanDto;
+    const planData = Object.fromEntries(
+      Object.entries(updatePlanDto).filter(([key]) => key !== 'restrictions'),
+    ) as Prisma.SubscriptionPlanUpdateInput;
 
     return this.prisma.subscriptionPlan.update({
       where: { id },

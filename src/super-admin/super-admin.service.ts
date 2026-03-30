@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -13,7 +14,6 @@ import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
-import { ToggleTrialDto } from './dto/toggle-trial.dto';
 import { AuthService } from '../auth/auth.service';
 import { PlanType, RestaurantStatus } from '@prisma/client';
 import { KitchenNotificationsService } from '../kitchen/kitchen-notifications.service';
@@ -22,6 +22,8 @@ import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class SuperAdminService {
+  private readonly logger = new Logger(SuperAdminService.name);
+
   constructor(
     private prisma: PrismaService,
     private authService: AuthService,
@@ -49,10 +51,13 @@ export class SuperAdminService {
             restaurantId: null,
           },
         });
-        console.log('✅ SUPER_ADMIN role created automatically');
+        this.logger.log('SUPER_ADMIN role created automatically');
       }
     } catch (error) {
-      console.error('❌ Failed to create SUPER_ADMIN role:', error);
+      this.logger.error(
+        'Failed to create SUPER_ADMIN role',
+        error instanceof Error ? error.stack : undefined,
+      );
     }
   }
 
@@ -607,6 +612,19 @@ export class SuperAdminService {
       },
     });
 
+    await this.prisma.adminAuditLog.create({
+      data: {
+        adminId,
+        action: 'CREATE_USER',
+        details: {
+          userId: user.id,
+          email: user.email,
+          roleId: dto.roleId,
+          isActive: user.isActive,
+        },
+      },
+    });
+
     return user;
   }
 
@@ -1065,7 +1083,6 @@ export class SuperAdminService {
     const orderNumber = `OD-${dateStr}-${String(ordersCount + 1).padStart(3, '0')}`;
 
     // Generar token de tracking público único
-    const crypto = require('crypto');
     const publicTrackingToken = crypto.randomBytes(32).toString('base64url');
 
     // Crear la orden directamente como PAID (paymentStatus)

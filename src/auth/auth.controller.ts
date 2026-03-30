@@ -21,6 +21,23 @@ import type { Response } from 'express';
 export class AuthController {
   constructor(private authService: AuthService) {}
 
+  private setAuthCookie(res: Response, token: string) {
+    res.cookie('auth-token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+  }
+
+  private clearAuthCookie(res: Response) {
+    res.clearCookie('auth-token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    });
+  }
+
   @Post('impersonate')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SUPER_ADMIN')
@@ -44,13 +61,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.authService.register(dto);
-    // Set auth cookie
-    res.cookie('auth-token', result.token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    this.setAuthCookie(res, result.token);
     return result;
   }
 
@@ -64,13 +75,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.authService.login(dto);
-    // Set auth cookie
-    res.cookie('auth-token', result.token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    this.setAuthCookie(res, result.token);
     return result;
   }
 
@@ -87,9 +92,8 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Logout user' })
   @ApiResponse({ status: 200, description: 'Logout successful' })
-  async logout() {
-    // En un JWT stateless, el logout se maneja en el cliente
-    // Aquí podrías invalidar el token agregándolo a una blacklist
+  async logout(@Res({ passthrough: true }) res: Response) {
+    this.clearAuthCookie(res);
     return { message: 'Logout successful' };
   }
 }

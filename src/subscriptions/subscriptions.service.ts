@@ -214,7 +214,7 @@ export class SubscriptionsService {
           }
         }
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
 
@@ -731,6 +731,7 @@ export class SubscriptionsService {
     dto: UpdateSubscriptionDto,
     user?: RequestUser,
   ) {
+    void user;
     const subscription = await this.prisma.subscription.findUnique({
       where: { restaurantId },
     });

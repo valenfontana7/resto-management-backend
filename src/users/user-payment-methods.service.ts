@@ -131,7 +131,7 @@ export class UserPaymentMethodsService {
           }
         }
       }
-    } catch (e) {
+    } catch {
       // ignore errors fetching issuer
     }
 
@@ -153,7 +153,7 @@ export class UserPaymentMethodsService {
           pm.mpCustomerId,
           pm.mpCardId,
         );
-      } catch (e) {
+      } catch {
         // ignore MP deletion errors; still remove local record
       }
     }

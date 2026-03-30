@@ -1,5 +1,6 @@
 import { Injectable, NestMiddleware, Logger } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
+import { sanitizeForLogs, sanitizeUrlForLogs } from '../logging/sanitize.util';
 
 @Injectable()
 export class RequestLoggingMiddleware implements NestMiddleware {
@@ -7,6 +8,7 @@ export class RequestLoggingMiddleware implements NestMiddleware {
 
   use(req: Request, res: Response, next: NextFunction): void {
     const { method, originalUrl, ip } = req;
+    const sanitizedUrl = sanitizeUrlForLogs(originalUrl);
     const userAgent = req.get('User-Agent') || '';
     const start = Date.now();
 
@@ -17,18 +19,18 @@ export class RequestLoggingMiddleware implements NestMiddleware {
       // Log requests with status >= 400 or slow requests (>5s)
       if (statusCode >= 400 || duration > 5000) {
         this.logger.warn(
-          `${method} ${originalUrl} ${statusCode} - ${duration}ms`,
-          {
+          `${method} ${sanitizedUrl} ${statusCode} - ${duration}ms`,
+          sanitizeForLogs({
             ip,
             userAgent,
             statusCode,
             duration,
-          },
+          }),
         );
       } else if (process.env.NODE_ENV !== 'production') {
         // In development, log all requests
         this.logger.log(
-          `${method} ${originalUrl} ${statusCode} - ${duration}ms`,
+          `${method} ${sanitizedUrl} ${statusCode} - ${duration}ms`,
         );
       }
     });

@@ -7,6 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { sanitizeForLogs, sanitizeUrlForLogs } from '../logging/sanitize.util';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -39,14 +40,19 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       error = exception.name;
     }
 
+    const sanitizedPath = sanitizeUrlForLogs(request.url);
+
     // Log error details
-    this.logger.error(`HTTP ${status} Error: ${message}`, {
-      url: request.url,
-      method: request.method,
-      ip: request.ip,
-      userAgent: request.get('User-Agent'),
-      stack: exception instanceof Error ? exception.stack : undefined,
-    });
+    this.logger.error(
+      `HTTP ${status} Error: ${message}`,
+      sanitizeForLogs({
+        url: sanitizedPath,
+        method: request.method,
+        ip: request.ip,
+        userAgent: request.get('User-Agent'),
+        stack: exception instanceof Error ? exception.stack : undefined,
+      }),
+    );
 
     // Don't expose stack traces in production
     const isProduction = process.env.NODE_ENV === 'production';
@@ -55,7 +61,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message,
       error,
       timestamp: new Date().toISOString(),
-      path: request.url,
+      path: sanitizedPath,
       ...(isProduction
         ? {}
         : { stack: exception instanceof Error ? exception.stack : undefined }),

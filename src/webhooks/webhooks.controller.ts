@@ -71,7 +71,8 @@ export class WebhooksController {
 
     const isDuplicate = !isNew;
     if (isDuplicate) {
-      this.logger.warn(`Duplicate webhook event (will reprocess): ${eventKey}`);
+      this.logger.warn(`Duplicate webhook event ignored: ${eventKey}`);
+      return { received: true, duplicate: true };
     }
 
     // Procesar el webhook
@@ -88,14 +89,24 @@ export class WebhooksController {
           result.checkoutSessionId,
           String(paymentId),
         );
+        await this.webhookService.markWebhookEventProcessed(eventKey);
         this.logger.log(
           `Payment processed successfully for checkout ${result.checkoutSessionId}`,
         );
       } catch (error: any) {
+        await this.webhookService.markWebhookEventProcessed(
+          eventKey,
+          error?.message,
+        );
         this.logger.error(
           `Error processing payment for checkout ${result.checkoutSessionId}: ${error.message}`,
         );
       }
+    } else {
+      await this.webhookService.markWebhookEventProcessed(
+        eventKey,
+        result.error,
+      );
     }
 
     return { ...result, duplicate: isDuplicate };
@@ -136,6 +147,16 @@ export class WebhooksController {
         error: 'Invalid webhook signature',
         reason: signatureValidation.reason,
       });
+    }
+
+    const { isNew, eventKey } = await this.webhookService.recordWebhookEvent(
+      rawBody,
+      body,
+    );
+
+    if (!isNew) {
+      this.logger.warn(`Duplicate subscription webhook ignored: ${eventKey}`);
+      return { received: true, duplicate: true, type };
     }
 
     try {
@@ -179,8 +200,14 @@ export class WebhooksController {
         }
       }
 
+      await this.webhookService.markWebhookEventProcessed(eventKey);
+
       return { received: true, type };
     } catch (error: any) {
+      await this.webhookService.markWebhookEventProcessed(
+        eventKey,
+        error?.message,
+      );
       this.logger.error(
         `Error processing subscription webhook: ${error.message}`,
       );

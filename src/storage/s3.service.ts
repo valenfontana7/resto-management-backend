@@ -1,4 +1,5 @@
 import {
+  Logger,
   Injectable,
   InternalServerErrorException,
   NotFoundException,
@@ -18,6 +19,7 @@ import type { Readable } from 'stream';
 
 @Injectable()
 export class S3Service {
+  private readonly logger = new Logger(S3Service.name);
   private readonly client: S3Client;
   private readonly bucket: string;
   private readonly region: string;
@@ -92,13 +94,9 @@ export class S3Service {
           : undefined,
     });
 
-    console.log('S3Service initialized:', {
-      bucket: this.bucket,
-      region: this.region,
-      endpoint: this.endpoint,
-      keyPrefix: this.keyPrefix,
-      hasCredentials: !!(accessKeyId && secretAccessKey),
-    });
+    this.logger.debug(
+      `S3Service initialized for bucket=${this.bucket}, region=${this.region}, endpoint=${this.endpoint ?? 'default'}, prefix=${this.keyPrefix || '[none]'}, credentials=${accessKeyId && secretAccessKey ? 'configured' : 'implicit'}`,
+    );
   }
 
   async uploadObject(params: {
@@ -112,7 +110,7 @@ export class S3Service {
     // Try to create bucket if not exists (for dev with MinIO)
     try {
       await this.client.send(new CreateBucketCommand({ Bucket: this.bucket }));
-    } catch (error) {
+    } catch {
       // Ignore if bucket already exists
     }
 
@@ -335,7 +333,7 @@ export class S3Service {
         if (/^https?:\/\//i.test(decoded)) {
           return decoded; // Devolver la URL externa decodificada
         }
-      } catch (e) {
+      } catch {
         // Si falla la decodificación, continuar con la lógica normal
       }
     }
@@ -343,7 +341,7 @@ export class S3Service {
     if (/^https?:\/\//i.test(trimmed)) {
       // If it's a localhost URL, replace with current proxy base
       if (trimmed.includes('localhost') || trimmed.includes('127.0.0.1')) {
-        const path = trimmed.replace(/^https?:\/\/[^\/]+/, '');
+        const path = trimmed.replace(/^https?:\/\/[^/]+/, '');
         if (this.proxyBaseUrl) {
           return `${this.proxyBaseUrl.replace(/\/+$/g, '')}${path}`;
         }

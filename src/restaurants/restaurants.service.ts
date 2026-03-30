@@ -5,6 +5,7 @@ import {
   BadRequestException,
   Inject,
   forwardRef,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -21,6 +22,8 @@ import { RestaurantStatus } from '@prisma/client';
 
 @Injectable()
 export class RestaurantsService {
+  private readonly logger = new Logger(RestaurantsService.name);
+
   constructor(
     private prisma: PrismaService,
     private readonly s3: S3Service,
@@ -779,13 +782,13 @@ export class RestaurantsService {
       updateData.onboardingIncomplete = payload.onboardingIncomplete;
     } else {
       // Auto-mark onboarding as complete if essential fields are present
-      const hasEssentialData = 
+      const hasEssentialData =
         (updateData.name || currentRestaurant.name) &&
         (updateData.email || currentRestaurant.email) &&
         (updateData.phone || currentRestaurant.phone) &&
         (updateData.address || currentRestaurant.address) &&
         (updateData.branding || currentRestaurant.branding);
-      
+
       if (hasEssentialData && currentRestaurant.onboardingIncomplete) {
         updateData.onboardingIncomplete = false;
       }
@@ -795,14 +798,6 @@ export class RestaurantsService {
     if (payload.isPublished !== undefined) {
       updateData.isPublished = payload.isPublished;
     }
-
-    console.log(
-      '📝 Updating restaurant with data:',
-      JSON.stringify({
-        ...updateData,
-        branding: updateData.branding ? '[branding object]' : updateData.branding,
-      }, null, 2),
-    );
 
     // Process embedded base64 assets in branding (hero, sections, etc.)
     // Normalize/validate hero and layout primitives before asset processing
@@ -820,7 +815,10 @@ export class RestaurantsService {
           currentRestaurant.branding as any,
         );
       } catch (err) {
-        console.error('Error processing branding assets:', err.message || err);
+        this.logger.error(
+          'Error processing branding assets',
+          err instanceof Error ? err.stack : undefined,
+        );
         throw err;
       }
     }
@@ -855,21 +853,6 @@ export class RestaurantsService {
       include: {
         hours: true,
       },
-    });
-
-    console.log(
-      '🔁 raw updated from prisma (post-update):',
-      JSON.stringify(updated.branding, null, 2),
-    );
-    console.log('✅ Restaurant updated:', {
-      id: updated.id,
-      hasBranding: !!updated.branding,
-      brandingKeys: updated.branding
-        ? Object.keys(updated.branding as object)
-        : [],
-      branding: updated.branding,
-      isPublished: updated.isPublished,
-      onboardingIncomplete: updated.onboardingIncomplete,
     });
 
     return updated;

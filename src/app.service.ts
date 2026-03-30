@@ -24,7 +24,7 @@ export class AppService {
     try {
       await this.prisma.$queryRaw`SELECT 1`;
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }

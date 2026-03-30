@@ -5,7 +5,6 @@ import {
   Patch,
   Post,
   Body,
-  Param,
   UseGuards,
 } from '@nestjs/common';
 import {

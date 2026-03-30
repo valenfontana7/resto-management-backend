@@ -118,9 +118,9 @@ export class MercadoPagoController {
       if (!user) throw new BadRequestException('Unauthorized');
     }
 
-    const key = (await this.credentialsService.getDecryptedToken)
-      ? await this.mercadoPagoService.getPublishableKey(id || undefined)
-      : await this.mercadoPagoService.getPublishableKey(id || undefined);
+    const key = await this.mercadoPagoService.getPublishableKey(
+      id || undefined,
+    );
 
     return { publicKey: key ?? null };
   }

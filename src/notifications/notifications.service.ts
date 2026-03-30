@@ -140,15 +140,6 @@ export class NotificationsService {
       return; // SSE solo para notificaciones de restaurante
     }
 
-    // Convertir a formato SSE
-    const sseData = {
-      type: notification.type,
-      title: notification.title,
-      message: notification.message,
-      data: notification.data,
-      timestamp: notification.createdAt,
-    };
-
     // Usar el servicio de cocina para emitir (adaptar para notificaciones generales)
     // Por ahora, solo para tipos específicos
     if (notification.type.startsWith('ORDER_')) {

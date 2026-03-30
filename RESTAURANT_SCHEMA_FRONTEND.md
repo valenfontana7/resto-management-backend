@@ -1015,9 +1015,25 @@ Authorization: Bearer <token>
 Response:
 {
   "success": true,
-  "config": { /* BuilderConfiguration */ }
+  "data": {
+    "config": { /* BuilderConfiguration raw con draft */ },
+    "restaurant": {
+      /* estado de preview: restaurante live + draft superpuesto */
+      "branding": { /* branding efectivo para preview */ }
+    },
+    "publishedRestaurant": {
+      /* restaurante publicado/live, equivalente conceptual a /restaurants/me */
+    }
+  }
 }
 ```
+
+Notas:
+
+- `data.config` conserva la configuración raw del builder, incluyendo `config.restaurant` cuando existan cambios draft no publicados.
+- `data.restaurant` es el objeto que el frontend debe usar para preview del builder. Ya incluye los cambios draft aplicados sobre el restaurante live y expone `restaurant.branding` con el branding efectivo de preview.
+- `data.publishedRestaurant` expone el estado publicado/live para comparaciones o diff visual.
+- Para renderizar el builder no conviene depender de `/api/restaurants/me`, porque ese endpoint no incluye el estado draft del builder.
 
 ```http
 PATCH  /api/restaurants/:id/builder/config
@@ -1034,6 +1050,10 @@ Content-Type: application/json
 
 Body: { /* Full BuilderConfiguration */ }
 ```
+
+Notas:
+
+- `version` y `lastModified` pueden omitirse en el body del `PUT`; el backend los completa automáticamente.
 
 ```http
 POST   /api/restaurants/:id/builder/publish
@@ -1167,9 +1187,6 @@ await api.patch('/restaurants/abc123/builder/sections/hero', {
 
 ```typescript
 await api.put('/restaurants/abc123/builder/config', {
-  version: '1.0.0',
-  lastModified: new Date().toISOString(),
-
   theme: {
     colors: {
       primary: '#3b82f6',

@@ -98,7 +98,7 @@ export class MercadoPagoService {
               (searchJson?.results && searchJson.results[0]) || null;
             if (found?.id) return String(found.id);
           }
-        } catch (e) {
+        } catch {
           // ignore and fall through to throw original error
         }
       }
@@ -265,7 +265,7 @@ export class MercadoPagoService {
           return full;
         }
       }
-    } catch (e) {
+    } catch {
       // ignore and fall back to original create response
     }
 
@@ -363,7 +363,7 @@ export class MercadoPagoService {
         this.configService.get<string>('MERCADOPAGO_PUBLIC_KEY') ?? ''
       ).trim();
       return globalKey || null;
-    } catch (e) {
+    } catch {
       return null;
     }
   }

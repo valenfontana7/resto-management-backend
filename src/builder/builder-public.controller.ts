@@ -1,6 +1,7 @@
 import { Controller, Get, Param, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { BuilderService } from './builder.service';
+import { BuilderPublishedConfigEnvelopeDto } from './dto/builder-config.dto';
 
 @ApiTags('Builder (Public)')
 @Controller('api/public/restaurants/:restaurantId/builder')
@@ -13,6 +14,7 @@ export class BuilderPublicController {
   @ApiResponse({
     status: 200,
     description: 'Published configuration retrieved',
+    type: BuilderPublishedConfigEnvelopeDto,
   })
   @ApiResponse({ status: 404, description: 'No published configuration found' })
   async getPublishedConfig(@Param('restaurantId') restaurantId: string) {

@@ -48,6 +48,7 @@ export class OrdersService {
     origin?: string,
     role?: string | null,
   ) {
+    void role;
     if (!createDto) {
       throw new BadRequestException('Request body is required');
     }
@@ -813,7 +814,7 @@ export class OrdersService {
     this.ordersGateway.emitOrderUpdate(restaurantId, wsPayload);
 
     // Emitir notificación SSE para cocina
-    this.emitKitchenNotification(updatedOrder, parsed.status);
+    void this.emitKitchenNotification(updatedOrder, parsed.status);
 
     return updatedOrder;
   }

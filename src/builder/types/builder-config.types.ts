@@ -794,11 +794,24 @@ export interface BuilderConfiguration {
 
 /**
  * Respuesta del endpoint GET /builder/:id/config.
- * Contiene la configuración del builder + datos del restaurante leídos de Prisma.
+ * `config` contiene la configuración raw del builder.
+ * `restaurant` contiene el estado efectivo de preview (live + draft).
+ * `publishedRestaurant` conserva el estado publicado/live para referencia.
  */
 export interface BuilderConfigResponse {
   config: BuilderConfiguration;
-  restaurant: RestaurantInfo;
+  restaurant: BuilderPreviewRestaurant;
+  publishedRestaurant: RestaurantInfo;
+}
+
+export type BuilderPreviewBranding = Omit<
+  BuilderConfiguration,
+  'restaurant' | 'seo' | 'metadata' | 'version' | 'lastModified'
+>;
+
+export interface BuilderPreviewRestaurant extends RestaurantInfo {
+  // Branding efectivo de preview para que el frontend no dependa de /restaurants/me.
+  branding: BuilderPreviewBranding;
 }
 
 // ==================== DEFAULTS ====================

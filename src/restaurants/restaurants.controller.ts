@@ -253,52 +253,13 @@ export class RestaurantsController {
     @Body() updateDto: UpdateRestaurantSettingsDto,
     @CurrentUser() user: RequestUser,
   ) {
-    try {
-      console.log('🔵 Controller received update request:', {
-        id: restaurantId,
-        payload: updateDto,
-        hasBranding: !!updateDto.branding,
-        brandingKeys: updateDto.branding ? Object.keys(updateDto.branding) : [],
-        colorsKeys: updateDto.branding?.colors
-          ? Object.keys(updateDto.branding.colors)
-          : [],
-        isPublished: updateDto.isPublished,
-        onboardingIncomplete: updateDto.onboardingIncomplete,
-      });
+    const restaurant = await this.restaurantsService.update(
+      restaurantId,
+      updateDto,
+      user?.userId,
+    );
 
-      const restaurant = await this.restaurantsService.update(
-        restaurantId,
-        updateDto,
-        user?.userId,
-      );
-
-      console.log('🟢 Controller returning restaurant:', {
-        id: restaurant.id,
-        hasBranding: !!restaurant.branding,
-        brandingType: typeof restaurant.branding,
-        branding: restaurant.branding,
-        isPublished: restaurant.isPublished,
-        onboardingIncomplete: restaurant.onboardingIncomplete,
-      });
-
-      return { restaurant };
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : typeof error === 'string'
-            ? error
-            : JSON.stringify(error);
-      const stack = error instanceof Error ? error.stack : undefined;
-
-      console.error('❌ Error updating restaurant:', {
-        id: restaurantId,
-        error: message,
-        stack,
-        payload: updateDto,
-      });
-      throw error;
-    }
+    return { restaurant };
   }
 
   @Post(':id/complete-onboarding')
@@ -309,13 +270,10 @@ export class RestaurantsController {
     status: 200,
     description: 'Onboarding marked as complete.',
   })
-  async completeOnboarding(
-    @VerifyRestaurantAccess('id') restaurantId: string,
-  ) {
-    const restaurant = await this.restaurantsService.update(
-      restaurantId,
-      { onboardingIncomplete: false },
-    );
+  async completeOnboarding(@VerifyRestaurantAccess('id') restaurantId: string) {
+    const restaurant = await this.restaurantsService.update(restaurantId, {
+      onboardingIncomplete: false,
+    });
     return { restaurant };
   }
 
@@ -526,8 +484,6 @@ export class RestaurantsController {
     @VerifyRestaurantAccess('id') restaurantId: string,
     @Body() dto: InviteUserDto,
   ) {
-    console.log('Received invite user DTO:', dto);
-
     // Support both roleId (new) and role name (legacy)
     const newUser = await this.usersService.inviteUser(restaurantId, {
       email: dto.email,

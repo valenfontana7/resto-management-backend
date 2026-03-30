@@ -10,10 +10,10 @@ import {
   Matches,
   Min,
   Max,
-  IsUrl,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { plainToInstance, Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { normalizeRestaurantDraftPayload } from '../utils/restaurant-draft.util';
 
 // ==================== BASE DTOs ====================
 
@@ -854,7 +854,10 @@ export class HeroConfigDto {
   @IsIn(['scroll', 'fixed', 'local'])
   backgroundAttachment?: string;
 
-  @ApiPropertyOptional({ type: HeroOverlayDto, description: 'Overlay configuration (nested)' })
+  @ApiPropertyOptional({
+    type: HeroOverlayDto,
+    description: 'Overlay configuration (nested)',
+  })
   @IsOptional()
   @ValidateNested()
   @Type(() => HeroOverlayDto)
@@ -1212,24 +1215,38 @@ export class MenuConfigDto {
 // ==================== INFO SECTION DTO ====================
 
 export class CuisineTypesStyleDto {
-  @ApiPropertyOptional({ example: '#ffffff', description: 'Color del texto del badge' })
+  @ApiPropertyOptional({
+    example: '#ffffff',
+    description: 'Color del texto del badge',
+  })
   @IsOptional()
   @IsString()
   @Matches(HEX_COLOR_REGEX, { message: 'color must be a valid hex color' })
   color?: string;
 
-  @ApiPropertyOptional({ example: '#3b82f6', description: 'Color de fondo del badge' })
+  @ApiPropertyOptional({
+    example: '#3b82f6',
+    description: 'Color de fondo del badge',
+  })
   @IsOptional()
   @IsString()
-  @Matches(HEX_COLOR_REGEX, { message: 'backgroundColor must be a valid hex color' })
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'backgroundColor must be a valid hex color',
+  })
   backgroundColor?: string;
 
-  @ApiPropertyOptional({ enum: ['xs', 'sm', 'md', 'lg', 'xl'], description: 'Tamaño del badge' })
+  @ApiPropertyOptional({
+    enum: ['xs', 'sm', 'md', 'lg', 'xl'],
+    description: 'Tamaño del badge',
+  })
   @IsOptional()
   @IsIn(['xs', 'sm', 'md', 'lg', 'xl'])
   size?: string;
 
-  @ApiPropertyOptional({ enum: ['none', 'sm', 'md', 'lg', 'xl', 'full'], description: 'Radio de borde del badge' })
+  @ApiPropertyOptional({
+    enum: ['none', 'sm', 'md', 'lg', 'xl', 'full'],
+    description: 'Radio de borde del badge',
+  })
   @IsOptional()
   @IsIn(['none', 'sm', 'md', 'lg', 'xl', 'full'])
   borderRadius?: string;
@@ -1319,6 +1336,12 @@ export class InfoSectionConfigDto {
   @IsOptional()
   @IsIn(['outline', 'filled', 'duotone'])
   iconStyle?: string;
+
+  @ApiPropertyOptional({ type: MenuTitleDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => MenuTitleDto)
+  title?: MenuTitleDto;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -2137,6 +2160,11 @@ export class UpdateBuilderConfigDto {
   @IsString()
   version?: string;
 
+  @ApiPropertyOptional({ example: '2026-03-26T12:00:00.000Z' })
+  @IsOptional()
+  @IsString()
+  lastModified?: string;
+
   @ApiPropertyOptional({ type: ThemeConfigDto })
   @IsOptional()
   @ValidateNested()
@@ -2163,9 +2191,21 @@ export class UpdateBuilderConfigDto {
 
   @ApiPropertyOptional({
     type: RestaurantDraftDto,
-    description: 'Borrador de datos del restaurante. Se aplica a DB al publicar.',
+    description:
+      'Borrador de datos del restaurante. Se aplica a DB al publicar.',
   })
   @IsOptional()
+  @Transform(({ value }) => {
+    const normalized = normalizeRestaurantDraftPayload(value);
+
+    if (!normalized || typeof normalized !== 'object') {
+      return normalized;
+    }
+
+    return plainToInstance(RestaurantDraftDto, normalized);
+  }, {
+    toClassOnly: true,
+  })
   @ValidateNested()
   @Type(() => RestaurantDraftDto)
   restaurant?: RestaurantDraftDto;
@@ -2201,4 +2241,114 @@ export class PublishBuilderConfigDto {
   @ApiProperty({ example: true })
   @IsBoolean()
   isPublished: boolean;
+}
+
+// ==================== RESPONSE DTOs ====================
+
+export class RestaurantInfoDto extends RestaurantDraftDto {
+  @ApiProperty({ example: 'clx123abc456def' })
+  declare id: string;
+
+  @ApiProperty({ example: 'Mi Restaurante' })
+  declare name: string;
+
+  @ApiPropertyOptional({ example: 'mi-restaurante' })
+  declare slug?: string;
+
+  @ApiProperty({ example: 'info@mirestaurante.com' })
+  declare email: string;
+
+  @ApiProperty({ example: ['italiana', 'pastas'] })
+  declare cuisineTypes: string[];
+
+  @ApiPropertyOptional({ example: true })
+  declare isPublished?: boolean;
+}
+
+export class BuilderPreviewBrandingDto {
+  @ApiProperty({ type: ThemeConfigDto })
+  declare theme: ThemeConfigDto;
+
+  @ApiProperty({ type: LayoutConfigDto })
+  declare layout: LayoutConfigDto;
+
+  @ApiProperty({ type: AssetsConfigDto })
+  declare assets: AssetsConfigDto;
+
+  @ApiProperty({ type: SectionsConfigDto })
+  declare sections: SectionsConfigDto;
+
+  @ApiPropertyOptional({ type: MobileMenuConfigDto })
+  declare mobileMenu?: MobileMenuConfigDto;
+
+  @ApiPropertyOptional({ type: AdvancedConfigDto })
+  declare advanced?: AdvancedConfigDto;
+}
+
+export class BuilderPreviewRestaurantDto extends RestaurantInfoDto {
+  @ApiProperty({
+    type: BuilderPreviewBrandingDto,
+    description:
+      'Estado efectivo de preview usado por el builder (live + draft aplicado).',
+  })
+  declare branding: BuilderPreviewBrandingDto;
+}
+
+export class BuilderConfigurationResponseDto extends UpdateBuilderConfigDto {
+  @ApiProperty({ example: '1.0.0' })
+  declare version: string;
+
+  @ApiProperty({ example: '2026-03-26T12:00:00.000Z' })
+  declare lastModified: string;
+
+  @ApiProperty({ type: ThemeConfigDto })
+  declare theme: ThemeConfigDto;
+
+  @ApiProperty({ type: LayoutConfigDto })
+  declare layout: LayoutConfigDto;
+
+  @ApiProperty({ type: AssetsConfigDto })
+  declare assets: AssetsConfigDto;
+
+  @ApiProperty({ type: SectionsConfigDto })
+  declare sections: SectionsConfigDto;
+}
+
+export class BuilderConfigResponseDto {
+  @ApiProperty({
+    type: BuilderConfigurationResponseDto,
+    description: 'Configuracion raw persistida del builder.',
+  })
+  declare config: BuilderConfigurationResponseDto;
+
+  @ApiProperty({
+    type: BuilderPreviewRestaurantDto,
+    description: 'Estado efectivo de preview consumido por el editor.',
+  })
+  declare restaurant: BuilderPreviewRestaurantDto;
+
+  @ApiProperty({
+    type: RestaurantInfoDto,
+    description: 'Estado publicado/live del restaurante para referencia.',
+  })
+  declare publishedRestaurant: RestaurantInfoDto;
+}
+
+export class BuilderConfigEnvelopeDto {
+  @ApiProperty({ example: true })
+  declare success: boolean;
+
+  @ApiProperty({ type: BuilderConfigResponseDto })
+  declare data: BuilderConfigResponseDto;
+}
+
+export class BuilderPublishedConfigEnvelopeDto {
+  @ApiProperty({ example: true })
+  declare success: boolean;
+
+  @ApiProperty({
+    type: BuilderConfigurationResponseDto,
+    description: 'Configuracion publicada expuesta al frontend publico.',
+  })
+  declare data: BuilderConfigurationResponseDto;
 }

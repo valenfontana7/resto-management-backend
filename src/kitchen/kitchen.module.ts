@@ -4,12 +4,13 @@ import { ConfigModule } from '@nestjs/config';
 import { KitchenController } from './kitchen.controller';
 import { KitchenNotificationsService } from './kitchen-notifications.service';
 import { OrdersModule } from '../orders/orders.module';
+import { getJwtSecret } from '../common/config/jwt.config';
 
 @Module({
   imports: [
     ConfigModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'fallback-secret',
+      secret: getJwtSecret(process.env.JWT_SECRET),
       signOptions: { expiresIn: '24h' },
     }),
     forwardRef(() => OrdersModule),

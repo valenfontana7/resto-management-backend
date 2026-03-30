@@ -1,7 +1,6 @@
 import {
   Controller,
   Get,
-  Post,
   Patch,
   Delete,
   Body,
@@ -17,7 +16,6 @@ import {
 } from '@nestjs/swagger';
 import { ReservationsService } from './reservations.service';
 import {
-  CreateReservationDto,
   UpdateReservationDto,
   ReservationFiltersDto,
   ReservationStatus,

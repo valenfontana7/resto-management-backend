@@ -33,12 +33,17 @@ export class MercadoPagoWebhookService {
     dataId: string | undefined,
     rawBody?: Buffer,
   ): { valid: boolean; reason?: string } {
+    void rawBody;
     const webhookSecret = this.configService.get<string>(
       'MERCADOPAGO_WEBHOOK_SECRET',
     );
 
-    // Si no hay secret configurado, skip validación (desarrollo)
+    // Si no hay secret configurado, skip validación solo en desarrollo.
     if (!webhookSecret) {
+      if (process.env.NODE_ENV === 'production') {
+        return { valid: false, reason: 'missing_webhook_secret' };
+      }
+
       this.logger.warn(
         'MERCADOPAGO_WEBHOOK_SECRET not configured - webhook signature validation skipped (unsafe for production)',
       );
@@ -73,7 +78,14 @@ export class MercadoPagoWebhookService {
       .update(manifest)
       .digest('hex');
 
-    if (hmac !== v1) {
+    const expected = Buffer.from(hmac, 'hex');
+    const received = /^[0-9a-f]+$/i.test(v1) ? Buffer.from(v1, 'hex') : null;
+
+    if (
+      !received ||
+      expected.length !== received.length ||
+      !crypto.timingSafeEqual(expected, received)
+    ) {
       this.logger.warn(
         `Webhook signature mismatch: expected ${hmac.substring(0, 10)}..., got ${v1.substring(0, 10)}...`,
       );
@@ -346,5 +358,18 @@ export class MercadoPagoWebhookService {
     });
 
     return { isNew: !existing, eventKey };
+  }
+
+  async markWebhookEventProcessed(
+    eventKey: string,
+    error?: string,
+  ): Promise<void> {
+    await this.prisma.webhookEvent.update({
+      where: { eventKey },
+      data: {
+        processedAt: new Date(),
+        error: error ?? null,
+      },
+    });
   }
 }

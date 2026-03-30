@@ -14,6 +14,16 @@ GET {{baseUrl}}/api/restaurants/{{restaurantId}}/builder/config
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
+### Response shape:
+### {
+###   "success": true,
+###   "data": {
+###     "config": { ... },
+###     "restaurant": { ...previewState, "branding": { ...effectivePreviewBranding } },
+###     "publishedRestaurant": { ...livePublishedState }
+###   }
+### }
+
 ###
 
 ### Get Builder Metadata (version, dates, publish status)
@@ -24,7 +34,7 @@ Content-Type: application/json
 ###
 
 ### Partial Update - Theme Colors Only
-PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/config
+PATCH {{baseUrl}}/api/restaurants/{{restaurantId}}/builder/config
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
@@ -43,7 +53,7 @@ Content-Type: application/json
 ###
 
 ### Partial Update - Multiple Sections
-PATCH {{baseUrl}}/restaurants/{{restaurantId}}/builder/config
+PATCH {{baseUrl}}/api/restaurants/{{restaurantId}}/builder/config
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
@@ -70,12 +80,15 @@ Content-Type: application/json
 ###
 
 ### Replace Entire Config (PUT)
-PUT {{baseUrl}}/restaurants/{{restaurantId}}/builder/config
+PUT {{baseUrl}}/api/restaurants/{{restaurantId}}/builder/config
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
+### Notes:
+### - version y lastModified son opcionales; el backend los completa.
+### - si querés preview draft, usá data.restaurant y no /restaurants/me.
+
 {
-  "version": "1.0.0",
   "theme": {
     "colors": {
       "primary": "#3B82F6",

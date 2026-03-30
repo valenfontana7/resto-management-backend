@@ -26,15 +26,20 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Public } from '../auth/decorators/public.decorator';
 import { S3Service } from '../storage/s3.service';
-import { HeadObjectCommand } from '@aws-sdk/client-s3';
 
 @ApiTags('Uploads')
 @Controller('api/uploads')
 export class UploadsController {
   private readonly logger = new Logger(UploadsController.name);
-  constructor(private readonly s3: S3Service) {
-    console.log('[DEBUG] UploadsController constructor called');
-  }
+  private static readonly ALLOWED_IMAGE_MIME_TYPES = new Set([
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+  ]);
+
+  constructor(private readonly s3: S3Service) {}
 
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a presigned GET URL (optional)' })
@@ -57,15 +62,11 @@ export class UploadsController {
   })
   @Get('*')
   async proxyGet(@Req() req, @Res() res: Response) {
-    console.log(`[DEBUG] proxyGet called`);
-    console.log(`[DEBUG] req.url: ${req.url}`);
-    console.log(`[DEBUG] req.originalUrl: ${req.originalUrl}`);
     // El parámetro wildcard puede tener slashes reemplazados por comas, obtener la URL real
     const originalUrl = req.url;
     const keyFromUrl = originalUrl.replace(/^\/api\/uploads\//, '');
     const actualKey = keyFromUrl.split('?')[0]; // Remover query params si existen
 
-    console.log(`[DEBUG] Received request for key: ${actualKey}`);
     try {
       const key = this.normalizeAndValidateKey(actualKey);
       this.logger.debug(`Normalized key: ${key}`);
@@ -88,7 +89,7 @@ export class UploadsController {
             head = await this.s3.headObjectRaw(keyWithoutPrefix);
             finalKey = keyWithoutPrefix;
             usedFallback = true;
-          } catch (fallbackError) {
+          } catch {
             // Re-throw the original error
             throw error;
           }
@@ -152,13 +153,12 @@ export class UploadsController {
   @Head('*')
   async proxyHead(@Req() req, @Res() res: Response) {
     try {
-      const originalUrl = res.req.url;
+      const originalUrl = req.url;
       const keyFromUrl = originalUrl.replace(/^\/api\/uploads\//, '');
       const actualKey = keyFromUrl.split('?')[0];
       const key = this.normalizeAndValidateKey(actualKey);
 
       let head;
-      let finalKey = key;
 
       try {
         // Try with normalized key (with prefix)
@@ -175,8 +175,7 @@ export class UploadsController {
           );
           try {
             head = await this.s3.headObjectRaw(keyWithoutPrefix);
-            finalKey = keyWithoutPrefix;
-          } catch (fallbackError) {
+          } catch {
             // Re-throw the original error
             throw error;
           }
@@ -224,6 +223,13 @@ export class UploadsController {
       throw new BadRequestException('File is required');
     }
 
+    const normalizedMimeType = file.mimetype.toLowerCase();
+    if (!UploadsController.ALLOWED_IMAGE_MIME_TYPES.has(normalizedMimeType)) {
+      throw new BadRequestException(
+        'Unsupported file type. Allowed types: JPEG, PNG, WebP, GIF',
+      );
+    }
+
     const safeFolder =
       (folder || 'images')
         .replace(/[^a-z0-9-_/]/gi, '')
@@ -236,12 +242,11 @@ export class UploadsController {
       .toLowerCase()
       .match(/\.(jpg|jpeg|png|webp|gif|svg)$/)?.[0];
     const extFromType = (() => {
-      const ct = (file.mimetype || '').toLowerCase();
+      const ct = normalizedMimeType;
       if (ct === 'image/jpeg' || ct === 'image/jpg') return '.jpg';
       if (ct === 'image/png') return '.png';
       if (ct === 'image/webp') return '.webp';
       if (ct === 'image/gif') return '.gif';
-      if (ct === 'image/svg+xml') return '.svg';
       return '';
     })();
 

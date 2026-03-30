@@ -1,14 +1,13 @@
 import { APP_GUARD, APP_FILTER } from '@nestjs/core';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { Reflector } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './auth/auth.module';
-import { JwtModule, JwtService } from '@nestjs/jwt';
+import { JwtModule } from '@nestjs/jwt';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { RestaurantsModule } from './restaurants/restaurants.module';
 import { MenuModule } from './menu/menu.module';
@@ -35,11 +34,14 @@ import { SuperAdminModule } from './super-admin/super-admin.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PlansModule } from './subscriptions/plans/plans.module';
 import { BuilderModule } from './builder/builder.module';
+import { getJwtSecret } from './common/config/jwt.config';
+import { validateEnvironment } from './common/config/env.validation';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      validate: validateEnvironment,
     }),
     ThrottlerModule.forRoot([
       {
@@ -49,7 +51,7 @@ import { BuilderModule } from './builder/builder.module';
     ]),
     JwtModule.register({
       global: true,
-      secret: process.env.JWT_SECRET || 'fallback-secret',
+      secret: getJwtSecret(process.env.JWT_SECRET),
       signOptions: { expiresIn: '24h' },
     }),
     PrismaModule,

@@ -243,6 +243,7 @@ export class TrackingController {
     @Param('orderId') orderId: string,
     @Query('token') token: string,
   ) {
+    void token;
     return this.deliveryService.getPublicTracking(orderId);
   }
 }

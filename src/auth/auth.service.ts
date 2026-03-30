@@ -41,10 +41,18 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
+  }
+
   async register(dto: RegisterDto): Promise<AuthResponse> {
+    const normalizedEmail = this.normalizeEmail(dto.email);
+
     // Verificar si el email ya existe
     const existingUser = await this.prisma.user.findFirst({
-      where: { email: dto.email },
+      where: {
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+      },
     });
 
     if (existingUser) {
@@ -71,7 +79,7 @@ export class AuthService {
     if (!dto.restaurantName) {
       const user = await this.prisma.user.create({
         data: {
-          email: dto.email,
+          email: normalizedEmail,
           password: hashedPassword,
           name: dto.name,
           isActive: true,
@@ -96,7 +104,7 @@ export class AuthService {
           slug: slug as string,
           type: 'restaurant',
           cuisineTypes: [],
-          email: dto.email,
+          email: normalizedEmail,
           phone: '',
           address: '',
           city: '',
@@ -163,7 +171,7 @@ export class AuthService {
       // 3. Crear usuario con rol Admin
       const user = await tx.user.create({
         data: {
-          email: dto.email,
+          email: normalizedEmail,
           password: hashedPassword,
           name: dto.name,
           restaurantId: restaurant.id,
@@ -178,9 +186,11 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<AuthResponse> {
+    const normalizedEmail = this.normalizeEmail(dto.email);
+
     const user = await this.prisma.user.findFirst({
       where: {
-        email: dto.email,
+        email: { equals: normalizedEmail, mode: 'insensitive' },
       },
       include: {
         restaurant: {

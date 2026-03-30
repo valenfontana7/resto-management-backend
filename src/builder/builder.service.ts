@@ -8,87 +8,70 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   BuilderConfiguration,
   BuilderConfigResponse,
-  RestaurantInfo,
+  BuilderPreviewBranding,
+  BuilderPreviewRestaurant,
   RestaurantDraft,
+  RestaurantInfo,
   DEFAULT_BUILDER_CONFIG,
   validateBuilderConfig,
   isValidSectionName,
-  SectionName,
 } from './types/builder-config.types';
 import { UpdateBuilderConfigDto } from './dto/builder-config.dto';
+import { normalizeRestaurantDraftPayload } from './utils/restaurant-draft.util';
 
 @Injectable()
 export class BuilderService {
   private readonly logger = new Logger(BuilderService.name);
 
+  private readonly restaurantInfoSelect = {
+    id: true,
+    slug: true,
+    name: true,
+    description: true,
+    email: true,
+    phone: true,
+    address: true,
+    city: true,
+    country: true,
+    postalCode: true,
+    cuisineTypes: true,
+    logo: true,
+    coverImage: true,
+    type: true,
+    website: true,
+    socialMedia: true,
+    isPublished: true,
+  } as const;
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Get builder configuration for a restaurant.
-   * Returns the config + restaurant info as separate objects.
-   * Restaurant identity data always comes from Prisma (single source of truth).
+    * Returns the raw builder config plus two restaurant views:
+    * - `restaurant`: preview state with draft fields applied
+    * - `publishedRestaurant`: live state from Prisma
    */
   async getConfig(restaurantId: string): Promise<BuilderConfigResponse> {
-    // Verify restaurant exists and get identity data
-    const restaurant = await this.prisma.restaurant.findUnique({
-      where: { id: restaurantId },
-      select: {
-        id: true,
-        slug: true,
-        name: true,
-        description: true,
-        email: true,
-        phone: true,
-        address: true,
-        city: true,
-        country: true,
-        postalCode: true,
-        cuisineTypes: true,
-        logo: true,
-        coverImage: true,
-        type: true,
-        website: true,
-        socialMedia: true,
-        isPublished: true,
-      },
-    });
-
-    if (!restaurant) {
-      throw new NotFoundException(
-        `Restaurant with ID ${restaurantId} not found`,
-      );
-    }
+    const publishedRestaurant = await this.getRestaurantInfoOrThrow(
+      restaurantId,
+    );
 
     // Try to get existing config
     const builderConfig = await this.prisma.builderConfig.findUnique({
       where: { restaurantId },
     });
 
-    const config: BuilderConfiguration = builderConfig
-      ? (builderConfig.config as unknown as BuilderConfiguration)
+    const config = builderConfig
+      ? this.removeRedundantRestaurantDraft(
+          builderConfig.config as unknown as BuilderConfiguration,
+          publishedRestaurant,
+        )
       : { ...DEFAULT_BUILDER_CONFIG, lastModified: new Date().toISOString() };
 
     return {
       config,
-      restaurant: {
-        id: restaurant.id,
-        name: restaurant.name,
-        slug: restaurant.slug,
-        description: restaurant.description ?? undefined,
-        email: restaurant.email,
-        phone: restaurant.phone ?? undefined,
-        address: restaurant.address ?? undefined,
-        city: restaurant.city ?? undefined,
-        country: restaurant.country ?? undefined,
-        postalCode: restaurant.postalCode ?? undefined,
-        cuisineTypes: restaurant.cuisineTypes || [],
-        logo: restaurant.logo ?? undefined,
-        coverImage: restaurant.coverImage ?? undefined,
-        type: restaurant.type ?? undefined,
-        website: restaurant.website ?? undefined,
-        socialMedia: (restaurant.socialMedia as Record<string, string>) ?? undefined,
-        isPublished: restaurant.isPublished,
-      },
+      restaurant: this.buildPreviewRestaurant(config, publishedRestaurant),
+      publishedRestaurant,
     };
   }
 
@@ -100,20 +83,12 @@ export class BuilderService {
     updates: UpdateBuilderConfigDto,
     userId?: string,
   ): Promise<BuilderConfiguration> {
+    const normalizedUpdates = this.normalizeBuilderConfigInput(updates);
+
     this.logger.log(`Updating config for restaurant ${restaurantId}`);
-    this.logger.debug(`Updates: ${JSON.stringify(updates, null, 2)}`);
+    this.logger.debug(`Updates: ${JSON.stringify(normalizedUpdates, null, 2)}`);
 
-    // Verify restaurant exists
-    const restaurant = await this.prisma.restaurant.findUnique({
-      where: { id: restaurantId },
-      select: { id: true },
-    });
-
-    if (!restaurant) {
-      throw new NotFoundException(
-        `Restaurant with ID ${restaurantId} not found`,
-      );
-    }
+    const restaurant = await this.getRestaurantInfoOrThrow(restaurantId);
 
     // Get existing config or create new one
     let builderConfig = await this.prisma.builderConfig.findUnique({
@@ -121,17 +96,25 @@ export class BuilderService {
     });
 
     const currentConfig = builderConfig
-      ? (builderConfig.config as unknown as BuilderConfiguration)
+      ? this.removeRedundantRestaurantDraft(
+          builderConfig.config as unknown as BuilderConfiguration,
+          restaurant,
+        )
       : { ...DEFAULT_BUILDER_CONFIG };
 
     // Deep merge updates into current config
-    const newConfig = this.deepMerge(currentConfig, updates as any);
+    const newConfig = this.deepMerge(currentConfig, normalizedUpdates as any);
 
     // Update lastModified
     newConfig.lastModified = new Date().toISOString();
 
+    const sanitizedConfig = this.removeRedundantRestaurantDraft(
+      newConfig,
+      restaurant,
+    );
+
     // Validate the new config
-    const validation = validateBuilderConfig(newConfig);
+    const validation = validateBuilderConfig(sanitizedConfig);
     if (!validation.isValid) {
       const errorMessages = validation.errors
         .filter((e) => e.severity === 'error')
@@ -156,8 +139,8 @@ export class BuilderService {
       builderConfig = await this.prisma.builderConfig.update({
         where: { restaurantId },
         data: {
-          config: newConfig as any,
-          version: newConfig.version || builderConfig.version,
+          config: sanitizedConfig as any,
+          version: sanitizedConfig.version || builderConfig.version,
           updatedAt: new Date(),
         },
       });
@@ -168,8 +151,8 @@ export class BuilderService {
       builderConfig = await this.prisma.builderConfig.create({
         data: {
           restaurantId,
-          config: newConfig as any,
-          version: newConfig.version || '1.0.0',
+          config: sanitizedConfig as any,
+          version: sanitizedConfig.version || '1.0.0',
           createdBy: userId,
         },
       });
@@ -187,14 +170,27 @@ export class BuilderService {
     config: BuilderConfiguration,
     userId?: string,
   ): Promise<BuilderConfiguration> {
-    // Verify restaurant exists
-    const restaurant = await this.prisma.restaurant.findUnique({
-      where: { id: restaurantId },
-      select: { id: true },
+    const normalizedConfig = this.normalizeBuilderConfigInput(config);
+
+    const restaurant = await this.getRestaurantInfoOrThrow(restaurantId);
+
+    const existingBuilderConfig = await this.prisma.builderConfig.findUnique({
+      where: { restaurantId },
+      select: { version: true },
     });
 
+    const configToSave = this.withRequiredConfigMetadata(
+      normalizedConfig,
+      existingBuilderConfig?.version,
+    );
+
+    const sanitizedConfig = this.removeRedundantRestaurantDraft(
+      configToSave,
+      restaurant,
+    );
+
     // Validate the config
-    const validation = validateBuilderConfig(config);
+    const validation = validateBuilderConfig(sanitizedConfig);
     if (!validation.isValid) {
       const errorMessages = validation.errors
         .filter((e) => e.severity === 'error')
@@ -208,13 +204,13 @@ export class BuilderService {
       where: { restaurantId },
       create: {
         restaurantId,
-        config: config as any,
-        version: config.version || '1.0.0',
+        config: sanitizedConfig as any,
+        version: sanitizedConfig.version,
         createdBy: userId,
       },
       update: {
-        config: config as any,
-        version: config.version,
+        config: sanitizedConfig as any,
+        version: sanitizedConfig.version,
         updatedAt: new Date(),
       },
     });
@@ -281,7 +277,7 @@ export class BuilderService {
       },
     });
 
-    return config.sections[sectionName as SectionName];
+    return config.sections[sectionName];
   }
 
   /**
@@ -337,9 +333,7 @@ export class BuilderService {
     });
 
     if (!restaurant) {
-      throw new NotFoundException(
-        `Restaurant ${restaurantId} not found`,
-      );
+      throw new NotFoundException(`Restaurant ${restaurantId} not found`);
     }
 
     // Get or create builder config
@@ -370,11 +364,15 @@ export class BuilderService {
     const config = builderConfig.config as unknown as BuilderConfiguration;
 
     // 1. Extract branding data (design config, without builder-only fields)
-    const { version, lastModified, seo, metadata, restaurant: draftData, ...brandingData } = config;
+    const { restaurant: draftData, ...brandingData } = config;
 
     // Sync hero title.text with restaurant name if not set
-    if (brandingData.sections?.hero?.title && !brandingData.sections.hero.title.text) {
-      brandingData.sections.hero.title.text = draftData?.name || restaurant.name;
+    if (
+      brandingData.sections?.hero?.title &&
+      !brandingData.sections.hero.title.text
+    ) {
+      brandingData.sections.hero.title.text =
+        draftData?.name || restaurant.name;
     }
 
     // 2. Build Prisma update — apply draft restaurant fields to DB columns
@@ -386,9 +384,20 @@ export class BuilderService {
     if (draftData) {
       // Apply each draft field to the corresponding Prisma column
       const draftFields: (keyof RestaurantDraft)[] = [
-        'name', 'description', 'email', 'phone', 'address',
-        'city', 'country', 'postalCode', 'cuisineTypes',
-        'logo', 'coverImage', 'type', 'website', 'socialMedia',
+        'name',
+        'description',
+        'email',
+        'phone',
+        'address',
+        'city',
+        'country',
+        'postalCode',
+        'cuisineTypes',
+        'logo',
+        'coverImage',
+        'type',
+        'website',
+        'socialMedia',
       ];
 
       for (const field of draftFields) {
@@ -429,9 +438,7 @@ export class BuilderService {
       },
     });
 
-    this.logger.log(
-      `Published builder config for restaurant ${restaurantId}`,
-    );
+    this.logger.log(`Published builder config for restaurant ${restaurantId}`);
   }
 
   /**
@@ -559,6 +566,263 @@ export class BuilderService {
     return result;
   }
 
+  private normalizeBuilderConfigInput<T extends { restaurant?: unknown }>(
+    input: T,
+  ): T {
+    if (!input || input.restaurant === undefined) {
+      return input;
+    }
+
+    const normalizedRestaurant = normalizeRestaurantDraftPayload(
+      input.restaurant,
+    );
+
+    if (normalizedRestaurant === input.restaurant) {
+      return input;
+    }
+
+    return {
+      ...input,
+      restaurant: normalizedRestaurant,
+    };
+  }
+
+  private withRequiredConfigMetadata<T extends Partial<BuilderConfiguration>>(
+    config: T,
+    existingVersion?: string,
+  ): T & Pick<BuilderConfiguration, 'version' | 'lastModified'> {
+    return {
+      ...config,
+      version: config.version || existingVersion || '1.0.0',
+      lastModified: new Date().toISOString(),
+    };
+  }
+
+  private async getRestaurantInfoOrThrow(
+    restaurantId: string,
+  ): Promise<RestaurantInfo> {
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: this.restaurantInfoSelect,
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException(
+        `Restaurant with ID ${restaurantId} not found`,
+      );
+    }
+
+    return {
+      id: restaurant.id,
+      name: restaurant.name,
+      slug: restaurant.slug,
+      description: restaurant.description ?? undefined,
+      email: restaurant.email,
+      phone: restaurant.phone ?? undefined,
+      address: restaurant.address ?? undefined,
+      city: restaurant.city ?? undefined,
+      country: restaurant.country ?? undefined,
+      postalCode: restaurant.postalCode ?? undefined,
+      cuisineTypes: restaurant.cuisineTypes || [],
+      logo: restaurant.logo ?? undefined,
+      coverImage: restaurant.coverImage ?? undefined,
+      type: restaurant.type ?? undefined,
+      website: restaurant.website ?? undefined,
+      socialMedia:
+        (restaurant.socialMedia as Record<string, string>) ?? undefined,
+      isPublished: restaurant.isPublished,
+    };
+  }
+
+  private removeRedundantRestaurantDraft(
+    config: BuilderConfiguration,
+    restaurant: RestaurantInfo,
+  ): BuilderConfiguration {
+    const draft = this.pruneRestaurantDraft(config.restaurant, restaurant);
+
+    if (draft === config.restaurant) {
+      return config;
+    }
+
+    if (!draft) {
+      const { restaurant: _restaurant, ...rest } = config;
+      return rest as BuilderConfiguration;
+    }
+
+    return {
+      ...config,
+      restaurant: draft,
+    };
+  }
+
+  private buildPreviewRestaurant(
+    config: BuilderConfiguration,
+    publishedRestaurant: RestaurantInfo,
+  ): BuilderPreviewRestaurant {
+    const restaurantDraft = config.restaurant;
+
+    return {
+      ...publishedRestaurant,
+      ...restaurantDraft,
+      branding: this.buildPreviewBranding(config, {
+        ...publishedRestaurant,
+        ...restaurantDraft,
+      }),
+    };
+  }
+
+  private buildPreviewBranding(
+    config: BuilderConfiguration,
+    previewRestaurant: RestaurantInfo,
+  ): BuilderPreviewBranding {
+    const {
+      restaurant: _restaurant,
+      seo: _seo,
+      metadata: _metadata,
+      version: _version,
+      lastModified: _lastModified,
+      ...branding
+    } = config;
+
+    const previewBranding: BuilderPreviewBranding = {
+      ...branding,
+    };
+
+    if (
+      previewBranding.sections?.hero?.title &&
+      !previewBranding.sections.hero.title.text
+    ) {
+      previewBranding.sections = {
+        ...previewBranding.sections,
+        hero: {
+          ...previewBranding.sections.hero,
+          title: {
+            ...previewBranding.sections.hero.title,
+            text: previewRestaurant.name,
+          },
+        },
+      };
+    }
+
+    return previewBranding;
+  }
+
+  private pruneRestaurantDraft(
+    draft: RestaurantDraft | undefined,
+    restaurant: RestaurantInfo,
+  ): RestaurantDraft | undefined {
+    if (!draft) {
+      return undefined;
+    }
+
+    const cleanedDraft = Object.entries(draft).reduce<RestaurantDraft>(
+      (result, [key, value]) => {
+        const draftKey = key as keyof RestaurantDraft;
+        const liveValue = restaurant[draftKey as keyof RestaurantInfo];
+
+        if (!this.areEquivalentRestaurantValues(draftKey, value, liveValue)) {
+          (result as Record<string, unknown>)[draftKey] = value;
+        }
+
+        return result;
+      },
+      {},
+    );
+
+    return Object.keys(cleanedDraft).length > 0 ? cleanedDraft : undefined;
+  }
+
+  private areEquivalentRestaurantValues(
+    field: keyof RestaurantDraft,
+    draftValue: unknown,
+    liveValue: unknown,
+  ): boolean {
+    if (field === 'cuisineTypes') {
+      return this.areStringArraysEqual(draftValue, liveValue);
+    }
+
+    if (field === 'socialMedia') {
+      return this.areObjectsEqual(draftValue, liveValue);
+    }
+
+    if (field === 'logo' || field === 'coverImage') {
+      return (
+        this.normalizeAssetReference(draftValue) ===
+        this.normalizeAssetReference(liveValue)
+      );
+    }
+
+    return this.normalizeScalarValue(draftValue) === this.normalizeScalarValue(liveValue);
+  }
+
+  private normalizeScalarValue(value: unknown): unknown {
+    if (typeof value !== 'string') {
+      return value ?? undefined;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+
+  private normalizeAssetReference(value: unknown): string | undefined {
+    const normalized = this.normalizeScalarValue(value);
+    if (typeof normalized !== 'string') {
+      return undefined;
+    }
+
+    try {
+      const url = new URL(normalized);
+      const uploadPathMatch = url.pathname.match(
+        /\/api\/(?:proxy\/)?uploads\/(.+)$/i,
+      );
+      if (uploadPathMatch) {
+        return decodeURIComponent(uploadPathMatch[1]);
+      }
+
+      return url.href;
+    } catch {
+      const localUploadPathMatch = normalized.match(
+        /^\/?api\/(?:proxy\/)?uploads\/(.+)$/i,
+      );
+      if (localUploadPathMatch) {
+        return decodeURIComponent(localUploadPathMatch[1]);
+      }
+
+      return normalized.replace(/^\/+/, '');
+    }
+  }
+
+  private areStringArraysEqual(left: unknown, right: unknown): boolean {
+    if (!Array.isArray(left) || !Array.isArray(right)) {
+      return left == null && right == null;
+    }
+
+    return JSON.stringify(left) === JSON.stringify(right);
+  }
+
+  private areObjectsEqual(left: unknown, right: unknown): boolean {
+    const normalizedLeft = this.normalizeObjectForCompare(left);
+    const normalizedRight = this.normalizeObjectForCompare(right);
+
+    return JSON.stringify(normalizedLeft) === JSON.stringify(normalizedRight);
+  }
+
+  private normalizeObjectForCompare(value: unknown): Record<string, unknown> | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+
+    return Object.keys(value as Record<string, unknown>)
+      .sort()
+      .reduce<Record<string, unknown>>((result, key) => {
+        const entry = (value as Record<string, unknown>)[key];
+        if (entry !== undefined) {
+          result[key] = entry;
+        }
+        return result;
+      }, {});
+  }
+
   /**
    * Migrate from old branding format to new builder config
    */
@@ -681,8 +945,12 @@ export class BuilderService {
           position: oldBranding.sections?.cart?.position || 'right',
           ...oldBranding.sections?.cart,
         },
-        checkout: oldBranding.sections?.checkout || DEFAULT_BUILDER_CONFIG.sections.checkout,
-        reservations: oldBranding.sections?.reservations || DEFAULT_BUILDER_CONFIG.sections.reservations,
+        checkout:
+          oldBranding.sections?.checkout ||
+          DEFAULT_BUILDER_CONFIG.sections.checkout,
+        reservations:
+          oldBranding.sections?.reservations ||
+          DEFAULT_BUILDER_CONFIG.sections.reservations,
       },
       mobileMenu: oldBranding.mobileMenu,
       advanced: oldBranding.advanced,

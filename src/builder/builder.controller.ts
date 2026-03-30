@@ -34,7 +34,7 @@ import {
   MobileMenuConfigDto,
   SEOConfigDto,
   AdvancedConfigDto,
-  PublishBuilderConfigDto,
+  BuilderConfigEnvelopeDto,
 } from './dto/builder-config.dto';
 
 @ApiTags('Builder')
@@ -52,6 +52,7 @@ export class BuilderController {
   @ApiResponse({
     status: 200,
     description: 'Configuration retrieved successfully',
+    type: BuilderConfigEnvelopeDto,
   })
   @ApiResponse({ status: 404, description: 'Restaurant not found' })
   async getConfig(@Param('restaurantId') restaurantId: string) {
@@ -72,6 +73,7 @@ export class BuilderController {
   @ApiResponse({
     status: 200,
     description: 'Configuration updated successfully',
+    type: BuilderConfigEnvelopeDto,
   })
   @ApiResponse({ status: 400, description: 'Invalid configuration' })
   @ApiResponse({ status: 404, description: 'Restaurant not found' })
@@ -100,6 +102,7 @@ export class BuilderController {
   @ApiResponse({
     status: 200,
     description: 'Configuration replaced successfully',
+    type: BuilderConfigEnvelopeDto,
   })
   @ApiResponse({ status: 400, description: 'Invalid configuration' })
   @ApiResponse({ status: 404, description: 'Restaurant not found' })

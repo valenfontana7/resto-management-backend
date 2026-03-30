@@ -10,7 +10,6 @@ import {
   UpdateCouponDto,
   CouponFiltersDto,
   ValidateCouponDto,
-  CouponType,
 } from './dto/coupon.dto';
 
 @Injectable()
@@ -277,12 +276,13 @@ export class CouponsService {
       case 'day':
         startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         break;
-      case 'week':
+      case 'week': {
         const weekStart = new Date(now);
         weekStart.setDate(now.getDate() - now.getDay());
         weekStart.setHours(0, 0, 0, 0);
         startDate = weekStart;
         break;
+      }
       case 'month':
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
         break;

@@ -15,9 +15,7 @@ export class JwtAuthGuard implements CanActivate {
     private reflector: Reflector,
     private jwtService: JwtService,
     private moduleRef: ModuleRef,
-  ) {
-    console.log('JwtAuthGuard: Using CanActivate implementation');
-  }
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -71,7 +69,7 @@ export class JwtAuthGuard implements CanActivate {
         restaurantSlug: freshUser.restaurant?.slug ?? null,
       };
       return true;
-    } catch (error) {
+    } catch {
       throw new UnauthorizedException('Invalid token');
     }
   }

@@ -4,56 +4,20 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import * as bodyParser from 'body-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import compression from 'compression';
-import * as winston from 'winston';
-import timeout = require('express-timeout-handler');
+import timeout from 'express-timeout-handler';
+import {
+  createWinstonLogger,
+  WinstonNestLogger,
+} from './common/logging/winston-nest.logger';
 
 async function bootstrap() {
-  // Configure Winston logger
-  const winstonLogger = winston.createLogger({
-    level: process.env.LOG_LEVEL || 'info',
-    levels: {
-      error: 0,
-      warn: 1,
-      info: 2,
-      http: 3,
-      verbose: 4,
-      debug: 5,
-      silly: 6,
-      log: 2, // Map NestJS "log" to "info"
-    },
-    format: winston.format.combine(
-      winston.format.timestamp(),
-      winston.format.errors({ stack: true }),
-      winston.format.json(),
-    ),
-    defaultMeta: { service: 'resto-management-backend' },
-    transports: [
-      new winston.transports.Console({
-        format: winston.format.combine(
-          winston.format.colorize(),
-          winston.format.simple(),
-        ),
-      }),
-      // In production, add file transport
-      ...(process.env.NODE_ENV === 'production'
-        ? [
-            new winston.transports.File({
-              filename: 'logs/error.log',
-              level: 'error',
-            }),
-            new winston.transports.File({
-              filename: 'logs/combined.log',
-            }),
-          ]
-        : []),
-    ],
-  });
+  const winstonLogger = createWinstonLogger();
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
-    logger: winstonLogger,
+    logger: new WinstonNestLogger(winstonLogger),
   });
 
   // Trust proxy for accurate IP addresses behind load balancers
@@ -233,14 +197,22 @@ async function bootstrap() {
   await app.listen(process.env.PORT ?? 4000);
 
   // Graceful shutdown
-  process.on('SIGTERM', async () => {
-    winstonLogger.info('SIGTERM received, shutting down gracefully');
-    await app.close();
-  });
+  const registerShutdownHandler = (signal: 'SIGTERM' | 'SIGINT') => {
+    process.on(signal, () => {
+      void (async () => {
+        winstonLogger.info(`${signal} received, shutting down gracefully`);
+        await app.close();
+      })();
+    });
+  };
 
-  process.on('SIGINT', async () => {
-    winstonLogger.info('SIGINT received, shutting down gracefully');
-    await app.close();
-  });
+  registerShutdownHandler('SIGTERM');
+  registerShutdownHandler('SIGINT');
 }
-bootstrap().catch((err) => console.error('Error starting server:', err));
+bootstrap().catch((err) => {
+  const logger = createWinstonLogger();
+  logger.error('Error starting server', {
+    stack: err instanceof Error ? err.stack : err,
+  });
+  process.exit(1);
+});

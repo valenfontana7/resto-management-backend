@@ -749,17 +749,17 @@ export class UpdateRestaurantSettingsDto {
   @Type(() => SocialMediaDto)
   socialMedia?: SocialMediaDto;
 
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     description: 'Whether the restaurant onboarding is incomplete',
-    example: false 
+    example: false,
   })
   @IsOptional()
   @IsBoolean()
   onboardingIncomplete?: boolean;
 
-  @ApiPropertyOptional({ 
+  @ApiPropertyOptional({
     description: 'Whether the restaurant public website is published',
-    example: false 
+    example: false,
   })
   @IsOptional()
   @IsBoolean()
