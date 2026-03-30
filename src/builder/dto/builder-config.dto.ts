@@ -2195,17 +2195,20 @@ export class UpdateBuilderConfigDto {
       'Borrador de datos del restaurante. Se aplica a DB al publicar.',
   })
   @IsOptional()
-  @Transform(({ value }) => {
-    const normalized = normalizeRestaurantDraftPayload(value);
+  @Transform(
+    ({ value }) => {
+      const normalized = normalizeRestaurantDraftPayload(value);
 
-    if (!normalized || typeof normalized !== 'object') {
-      return normalized;
-    }
+      if (!normalized || typeof normalized !== 'object') {
+        return normalized;
+      }
 
-    return plainToInstance(RestaurantDraftDto, normalized);
-  }, {
-    toClassOnly: true,
-  })
+      return plainToInstance(RestaurantDraftDto, normalized);
+    },
+    {
+      toClassOnly: true,
+    },
+  )
   @ValidateNested()
   @Type(() => RestaurantDraftDto)
   restaurant?: RestaurantDraftDto;

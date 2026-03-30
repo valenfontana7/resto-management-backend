@@ -47,14 +47,13 @@ export class BuilderService {
 
   /**
    * Get builder configuration for a restaurant.
-    * Returns the raw builder config plus two restaurant views:
-    * - `restaurant`: preview state with draft fields applied
-    * - `publishedRestaurant`: live state from Prisma
+   * Returns the raw builder config plus two restaurant views:
+   * - `restaurant`: preview state with draft fields applied
+   * - `publishedRestaurant`: live state from Prisma
    */
   async getConfig(restaurantId: string): Promise<BuilderConfigResponse> {
-    const publishedRestaurant = await this.getRestaurantInfoOrThrow(
-      restaurantId,
-    );
+    const publishedRestaurant =
+      await this.getRestaurantInfoOrThrow(restaurantId);
 
     // Try to get existing config
     const builderConfig = await this.prisma.builderConfig.findUnique({
@@ -752,7 +751,10 @@ export class BuilderService {
       );
     }
 
-    return this.normalizeScalarValue(draftValue) === this.normalizeScalarValue(liveValue);
+    return (
+      this.normalizeScalarValue(draftValue) ===
+      this.normalizeScalarValue(liveValue)
+    );
   }
 
   private normalizeScalarValue(value: unknown): unknown {
@@ -807,7 +809,9 @@ export class BuilderService {
     return JSON.stringify(normalizedLeft) === JSON.stringify(normalizedRight);
   }
 
-  private normalizeObjectForCompare(value: unknown): Record<string, unknown> | undefined {
+  private normalizeObjectForCompare(
+    value: unknown,
+  ): Record<string, unknown> | undefined {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return undefined;
     }
