@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AnalyticsPeriod } from './dto/analytics.dto';
 import { OrderStatus } from '@prisma/client';
@@ -27,46 +27,36 @@ export class AnalyticsService {
   ) {
     const { start, end } = this.getDateRange(period, startDate, endDate);
 
-    const orders = await this.prisma.order.findMany({
-      where: {
-        restaurantId,
-        status: OrderStatus.DELIVERED,
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
-      },
-      select: {
-        createdAt: true,
-        total: true,
-      },
+    // Usar query raw para agrupar por fecha en la DB en vez de cargar todo en memoria
+    const rows = await this.prisma.$queryRaw<
+      Array<{ date: string; sales: bigint | number; orders: bigint | number }>
+    >`
+      SELECT
+        DATE("createdAt") AS "date",
+        SUM("total") AS "sales",
+        COUNT(*)::int AS "orders"
+      FROM "Order"
+      WHERE "restaurantId" = ${restaurantId}
+        AND "status" = 'DELIVERED'
+        AND "createdAt" >= ${start}
+        AND "createdAt" <= ${end}
+      GROUP BY DATE("createdAt")
+      ORDER BY "date" ASC
+    `;
+
+    const salesData = rows.map((r) => {
+      const sales = Number(r.sales);
+      const orders = Number(r.orders);
+      return {
+        date:
+          typeof r.date === 'string'
+            ? r.date
+            : new Date(r.date).toISOString().split('T')[0],
+        sales,
+        orders,
+        avgTicket: orders > 0 ? Math.round(sales / orders) : 0,
+      };
     });
-
-    const salesByDate = new Map<
-      string,
-      { sales: number; orders: number; avgTicket: number }
-    >();
-
-    orders.forEach((order) => {
-      const dateKey = order.createdAt.toISOString().split('T')[0];
-
-      if (!salesByDate.has(dateKey)) {
-        salesByDate.set(dateKey, { sales: 0, orders: 0, avgTicket: 0 });
-      }
-
-      const data = salesByDate.get(dateKey)!;
-      data.sales += order.total;
-      data.orders += 1;
-    });
-
-    const salesData = Array.from(salesByDate.entries()).map(([date, data]) => ({
-      date,
-      sales: data.sales,
-      orders: data.orders,
-      avgTicket: data.orders > 0 ? Math.round(data.sales / data.orders) : 0,
-    }));
-
-    salesData.sort((a, b) => a.date.localeCompare(b.date));
 
     return { salesData };
   }
@@ -152,32 +142,32 @@ export class AnalyticsService {
   ) {
     const { start, end } = this.getDateRange(period, startDate, endDate);
 
-    const orders = await this.prisma.order.findMany({
-      where: {
-        restaurantId,
-        status: OrderStatus.DELIVERED,
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
-      },
-      select: {
-        createdAt: true,
-        total: true,
-      },
-    });
+    const rows = await this.prisma.$queryRaw<
+      Array<{ hour: number; orders: bigint | number; sales: bigint | number }>
+    >`
+      SELECT
+        EXTRACT(HOUR FROM "createdAt")::int AS "hour",
+        COUNT(*)::int AS "orders",
+        COALESCE(SUM("total"), 0) AS "sales"
+      FROM "Order"
+      WHERE "restaurantId" = ${restaurantId}
+        AND "status" = 'DELIVERED'
+        AND "createdAt" >= ${start}
+        AND "createdAt" <= ${end}
+      GROUP BY EXTRACT(HOUR FROM "createdAt")
+      ORDER BY "hour" ASC
+    `;
 
     const hourlyMap = new Map<number, { orders: number; sales: number }>();
     for (let h = 0; h < 24; h++) {
       hourlyMap.set(h, { orders: 0, sales: 0 });
     }
-
-    orders.forEach((order) => {
-      const hour = order.createdAt.getHours();
-      const data = hourlyMap.get(hour)!;
-      data.orders += 1;
-      data.sales += order.total;
-    });
+    for (const r of rows) {
+      hourlyMap.set(Number(r.hour), {
+        orders: Number(r.orders),
+        sales: Number(r.sales),
+      });
+    }
 
     const hourlyData = Array.from(hourlyMap.entries()).map(([hour, data]) => ({
       hour,
@@ -470,62 +460,42 @@ export class AnalyticsService {
   ) {
     const { start, end } = this.getDateRange(period, startDate, endDate);
 
-    const orderItems = await this.prisma.orderItem.findMany({
-      where: {
-        order: {
-          restaurantId,
-          status: OrderStatus.DELIVERED,
-          createdAt: {
-            gte: start,
-            lte: end,
-          },
-        },
-      },
-      include: {
-        dish: {
-          include: {
-            category: true,
-          },
-        },
-      },
-    });
-
-    const dishMap = new Map<
-      string,
-      {
+    const rows = await this.prisma.$queryRaw<
+      Array<{
         dishId: string;
-        name: string;
-        category: string;
-        orders: number;
-        revenue: number;
-      }
-    >();
+        dishName: string;
+        categoryName: string | null;
+        totalQty: bigint | number;
+        totalRevenue: bigint | number;
+      }>
+    >`
+      SELECT
+        oi."dishId",
+        d."name" AS "dishName",
+        c."name" AS "categoryName",
+        SUM(oi."quantity")::int AS "totalQty",
+        COALESCE(SUM(oi."subtotal"), 0) AS "totalRevenue"
+      FROM "OrderItem" oi
+      JOIN "Order" o ON o."id" = oi."orderId"
+      LEFT JOIN "Dish" d ON d."id" = oi."dishId"
+      LEFT JOIN "Category" c ON c."id" = d."categoryId"
+      WHERE o."restaurantId" = ${restaurantId}
+        AND o."status" = 'DELIVERED'
+        AND o."createdAt" >= ${start}
+        AND o."createdAt" <= ${end}
+      GROUP BY oi."dishId", d."name", c."name"
+      ORDER BY "totalQty" DESC
+      LIMIT ${limit}
+    `;
 
-    orderItems.forEach((item) => {
-      if (!item.dish) return;
-
-      if (!dishMap.has(item.dishId)) {
-        dishMap.set(item.dishId, {
-          dishId: item.dishId,
-          name: item.dish.name,
-          category: item.dish.category?.name || 'Sin categoría',
-          orders: 0,
-          revenue: 0,
-        });
-      }
-
-      const dish = dishMap.get(item.dishId)!;
-      dish.orders += item.quantity;
-      dish.revenue += item.subtotal;
-    });
-
-    const topDishes = Array.from(dishMap.values())
-      .map((dish) => ({
-        ...dish,
-        avgRating: 4.5,
-      }))
-      .sort((a, b) => b.orders - a.orders)
-      .slice(0, limit);
+    const topDishes = rows.map((r) => ({
+      dishId: r.dishId,
+      name: r.dishName || 'Plato eliminado',
+      category: r.categoryName || 'Sin categoría',
+      orders: Number(r.totalQty),
+      revenue: Number(r.totalRevenue),
+      avgRating: 4.5,
+    }));
 
     return { topDishes };
   }
@@ -541,61 +511,43 @@ export class AnalyticsService {
   ) {
     const { start, end } = this.getDateRange(period, startDate, endDate);
 
-    const orders = await this.prisma.order.findMany({
-      where: {
-        restaurantId,
-        status: OrderStatus.DELIVERED,
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
-      },
-      select: {
-        type: true,
-        total: true,
-      },
-    });
-
-    const typeMap = new Map<
-      string,
-      { type: string; label: string; orders: number; revenue: number }
-    >();
-
     const typeLabels: Record<string, string> = {
       DINE_IN: 'Para comer aquí',
       PICKUP: 'Para llevar',
       DELIVERY: 'Delivery',
     };
 
-    orders.forEach((order) => {
-      if (!typeMap.has(order.type)) {
-        typeMap.set(order.type, {
-          type: order.type,
-          label: typeLabels[order.type] || order.type,
-          orders: 0,
-          revenue: 0,
-        });
-      }
+    const rows = await this.prisma.$queryRaw<
+      Array<{ type: string; orders: bigint | number; revenue: bigint | number }>
+    >`
+      SELECT
+        "type",
+        COUNT(*)::int AS "orders",
+        COALESCE(SUM("total"), 0) AS "revenue"
+      FROM "Order"
+      WHERE "restaurantId" = ${restaurantId}
+        AND "status" = 'DELIVERED'
+        AND "createdAt" >= ${start}
+        AND "createdAt" <= ${end}
+      GROUP BY "type"
+      ORDER BY "revenue" DESC
+    `;
 
-      const data = typeMap.get(order.type)!;
-      data.orders += 1;
-      data.revenue += order.total;
+    const totalRevenue = rows.reduce((sum, r) => sum + Number(r.revenue), 0);
+
+    const revenueBreakdown = rows.map((r) => {
+      const revenue = Number(r.revenue);
+      return {
+        type: r.type,
+        label: typeLabels[r.type] || r.type,
+        orders: Number(r.orders),
+        revenue,
+        percentage:
+          totalRevenue > 0
+            ? parseFloat(((revenue / totalRevenue) * 100).toFixed(1))
+            : 0,
+      };
     });
-
-    const totalRevenue = Array.from(typeMap.values()).reduce(
-      (sum, t) => sum + t.revenue,
-      0,
-    );
-
-    const revenueBreakdown = Array.from(typeMap.values()).map((type) => ({
-      ...type,
-      percentage:
-        totalRevenue > 0
-          ? parseFloat(((type.revenue / totalRevenue) * 100).toFixed(1))
-          : 0,
-    }));
-
-    revenueBreakdown.sort((a, b) => b.revenue - a.revenue);
 
     return { revenueBreakdown };
   }
@@ -658,7 +610,9 @@ export class AnalyticsService {
 
       case AnalyticsPeriod.CUSTOM:
         if (!startDate || !endDate) {
-          throw new Error('startDate and endDate required for custom period');
+          throw new BadRequestException(
+            'startDate and endDate required for custom period',
+          );
         }
         start = new Date(startDate);
         end = new Date(endDate);
@@ -680,28 +634,20 @@ export class AnalyticsService {
     start: Date,
     end: Date,
   ): Promise<{ sales: number; orders: number; avgTicket: number }> {
-    const orders = await this.prisma.order.findMany({
+    const result = await this.prisma.order.aggregate({
       where: {
         restaurantId,
         status: OrderStatus.DELIVERED,
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
+        createdAt: { gte: start, lte: end },
       },
-      select: {
-        total: true,
-      },
+      _sum: { total: true },
+      _count: { id: true },
     });
 
-    const sales = orders.reduce((sum, order) => sum + order.total, 0);
-    const count = orders.length;
+    const sales = result._sum.total ?? 0;
+    const count = result._count.id ?? 0;
     const avgTicket = count > 0 ? Math.round(sales / count) : 0;
 
-    return {
-      sales,
-      orders: count,
-      avgTicket,
-    };
+    return { sales, orders: count, avgTicket };
   }
 }

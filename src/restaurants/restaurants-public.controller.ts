@@ -1,4 +1,5 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, UseInterceptors } from '@nestjs/common';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
 import { RestaurantsService } from './restaurants.service';
@@ -10,6 +11,8 @@ export class RestaurantsPublicController {
 
   @Get('api/public/restaurants')
   @Public()
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(300_000) // 5 min
   @ApiOperation({ summary: 'Listar restaurantes públicos para sitemap' })
   @ApiResponse({ status: 200, description: 'Lista de restaurantes' })
   async getPublicRestaurants() {

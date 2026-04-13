@@ -8,6 +8,7 @@ import { Public } from '../auth/decorators/public.decorator';
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
+  @Public()
   @Post('create-preference/:orderId')
   @ApiOperation({ summary: 'Create MercadoPago preference for an order' })
   @ApiResponse({ status: 201, description: 'Preference created successfully' })
@@ -24,6 +25,7 @@ export class PaymentsController {
     return this.paymentsService.handleWebhook(body);
   }
 
+  @Public()
   @Get('status/:orderId')
   @ApiOperation({ summary: 'Get payment status for an order' })
   @ApiResponse({ status: 200, description: 'Payment status retrieved' })

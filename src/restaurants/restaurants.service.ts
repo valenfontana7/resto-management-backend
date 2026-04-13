@@ -8,15 +8,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  UpdatePaymentMethodsDto,
-  UpdateDeliveryZonesDto,
-} from './dto/restaurant-settings.dto';
-import { UpdateBrandingV2Dto } from './dto/branding-v2.dto';
 import * as path from 'path';
 import { S3Service } from '../storage/s3.service';
-import { RestaurantUsersService } from './services/restaurant-users.service';
-import { RestaurantBrandingV2Service } from './services/restaurant-branding-v2.service';
 import { RestaurantSettingsService } from './services/restaurant-settings.service';
 import { RestaurantStatus } from '@prisma/client';
 
@@ -27,10 +20,6 @@ export class RestaurantsService {
   constructor(
     private prisma: PrismaService,
     private readonly s3: S3Service,
-    @Inject(forwardRef(() => RestaurantUsersService))
-    private readonly usersService: RestaurantUsersService,
-    @Inject(forwardRef(() => RestaurantBrandingV2Service))
-    private readonly brandingService: RestaurantBrandingV2Service,
     @Inject(forwardRef(() => RestaurantSettingsService))
     private readonly settingsService: RestaurantSettingsService,
   ) {}
@@ -166,20 +155,6 @@ export class RestaurantsService {
     }
 
     return normalized;
-  }
-
-  /**
-   * @deprecated Usa RestaurantSettingsService.logVisit() directamente
-   */
-  async logVisit(
-    restaurantId: string,
-    meta?: {
-      ip?: string | null;
-      userAgent?: string | null;
-      referrer?: string | null;
-    },
-  ) {
-    return this.settingsService.logVisit(restaurantId, meta);
   }
 
   async getVisitsCount(restaurantId: string, from?: Date, to?: Date) {
@@ -858,13 +833,6 @@ export class RestaurantsService {
     return updated;
   }
 
-  /**
-   * @deprecated Usa RestaurantSettingsService.updateHours() directamente
-   */
-  async updateHours(id: string, hours: any[]) {
-    return this.settingsService.updateHours(id, hours);
-  }
-
   private convertHoursObjectToArray(hours: any): any[] {
     const hoursData: any[] = [];
     const daysMap = {
@@ -1195,74 +1163,6 @@ export class RestaurantsService {
   }
 
   /**
-   * @deprecated Usa RestaurantBrandingV2Service.updateBranding() directamente
-   */
-  async updateBranding(id: string, branding: UpdateBrandingV2Dto) {
-    return this.brandingService.updateBranding(id, branding);
-  }
-
-  /**
-   * @deprecated Usa RestaurantSettingsService.updatePaymentMethods() directamente
-   */
-  async updatePaymentMethods(id: string, config: UpdatePaymentMethodsDto) {
-    return this.settingsService.updatePaymentMethods(id, config);
-  }
-
-  /**
-   * @deprecated Usa RestaurantSettingsService.updateDeliveryZones() directamente
-   */
-  async updateDeliveryZones(id: string, config: UpdateDeliveryZonesDto) {
-    return this.settingsService.updateDeliveryZones(id, config);
-  }
-
-  /**
-   * @deprecated Usa RestaurantUsersService.getRoles() directamente
-   */
-  async getRoles(restaurantId: string) {
-    return this.usersService.getRoles(restaurantId);
-  }
-
-  /**
-   * @deprecated Usa RestaurantUsersService.getRestaurantUsers() directamente
-   */
-  async getRestaurantUsers(restaurantId: string) {
-    return this.usersService.getRestaurantUsers(restaurantId);
-  }
-
-  /**
-   * @deprecated Usa RestaurantUsersService.inviteUser() directamente
-   */
-  async inviteUser(
-    restaurantId: string,
-    inviteDto: {
-      email: string;
-      roleId?: string;
-      roleName?: string;
-      name?: string;
-    },
-  ) {
-    return this.usersService.inviteUser(restaurantId, inviteDto);
-  }
-
-  /**
-   * @deprecated Usa RestaurantUsersService.updateUserRole() directamente
-   */
-  async updateUserRole(
-    restaurantId: string,
-    userId: string,
-    updateDto: { roleId?: string; isActive?: boolean },
-  ) {
-    return this.usersService.updateUserRole(restaurantId, userId, updateDto);
-  }
-
-  /**
-   * @deprecated Usa RestaurantUsersService.removeUser() directamente
-   */
-  async removeUser(restaurantId: string, userId: string) {
-    return this.usersService.removeUser(restaurantId, userId);
-  }
-
-  /**
    * Soft-delete a restaurant. Checks for active orders/reservations and
    * then marks the restaurant as INACTIVE, renames the slug to avoid
    * unique constraint collisions and deactivates/disassociates users.
@@ -1340,31 +1240,6 @@ export class RestaurantsService {
       id,
       redirect: '/onboarding',
     };
-  }
-
-  /**
-   * @deprecated Usa RestaurantBrandingV2Service.deleteAsset() directamente
-   */
-  async deleteAsset(id: string, type?: string) {
-    return this.brandingService.deleteAsset(id, type);
-  }
-
-  /**
-   * @deprecated Usa RestaurantBrandingV2Service.presignAssetUpload() directamente
-   */
-  async presignAssetUpload(
-    id: string,
-    type: string,
-    opts?: { contentType?: string; filename?: string },
-  ) {
-    return this.brandingService.presignAssetUpload(id, type, opts);
-  }
-
-  /**
-   * @deprecated Usa RestaurantBrandingV2Service.saveUploadedAsset() directamente
-   */
-  async saveUploadedAsset(id: string, file: Express.Multer.File, type: string) {
-    return this.brandingService.saveUploadedAsset(id, file, type);
   }
 
   /**

@@ -8,14 +8,9 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
 import { MercadoPagoService } from '../mercadopago/mercadopago.service';
-import {
-  EmailService,
-  OrderData,
-  RestaurantData,
-} from '../email/email.service';
-import { OrdersGateway, OrderUpdatePayload } from '../websocket/orders.gateway';
-import { KitchenNotificationsService } from '../kitchen/kitchen-notifications.service';
-import { NotificationsService } from '../notifications/notifications.service';
+import { OrderNotificationsService } from './services/order-notifications.service';
+import { OrderAnalyticsService } from './services/order-analytics.service';
+import { CouponsService } from '../coupons/coupons.service';
 import * as crypto from 'crypto';
 import {
   CreateOrderDto,
@@ -35,11 +30,10 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
     private readonly mercadopagoService: MercadoPagoService,
-    private readonly emailService: EmailService,
-    private readonly ordersGateway: OrdersGateway,
     private readonly configService: ConfigService,
-    private readonly kitchenNotifications: KitchenNotificationsService,
-    private readonly notificationsService: NotificationsService,
+    private readonly notifications: OrderNotificationsService,
+    private readonly analytics: OrderAnalyticsService,
+    private readonly couponsService: CouponsService,
   ) {}
 
   async create(
@@ -75,7 +69,6 @@ export class OrdersService {
       throw new BadRequestException('items is required');
     }
 
-    // Validar que todos los dishes existan y pertenezcan al restaurante
     const dishIds = createDto.items.map((item) => item.dishId);
     const dishes = await this.prisma.dish.findMany({
       where: {
@@ -91,7 +84,6 @@ export class OrdersService {
       );
     }
 
-    // Obtener restaurant para el slug
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { id: restaurantId },
       select: {
@@ -108,18 +100,24 @@ export class OrdersService {
       throw new NotFoundException('Restaurant not found');
     }
 
-    // Calcular totales
     const orderItems = createDto.items.map((item) => {
       const dish = dishes.find((d) => d.id === item.dishId);
       if (!dish) throw new BadRequestException(`Dish ${item.dishId} not found`);
+
+      const modifierExtra = (item.selectedModifiers || []).reduce(
+        (sum, m) => sum + m.priceAdjustment,
+        0,
+      );
+      const unitPrice = (item.unitPrice ?? dish.price) + modifierExtra;
 
       return {
         dishId: item.dishId,
         name: dish.name,
         quantity: item.quantity,
-        unitPrice: item.unitPrice ?? dish.price,
-        subtotal: (item.unitPrice ?? dish.price) * item.quantity,
+        unitPrice,
+        subtotal: unitPrice * item.quantity,
         notes: item.notes,
+        selectedModifiers: item.selectedModifiers,
       };
     });
 
@@ -129,12 +127,29 @@ export class OrdersService {
     const deliveryFee =
       createDto.deliveryFee ?? (orderType === OrderType.DELIVERY ? 500 : 0);
     const tip = createDto.tip || 0;
-    const total = createDto.total ?? subtotal + deliveryFee + tip;
+
+    // Validate and apply coupon if provided
+    let discount = 0;
+    let couponId: string | null = null;
+    let couponCode: string | null = null;
+    if (createDto.couponCode) {
+      const validation = await this.couponsService.validate(restaurantId, {
+        code: createDto.couponCode,
+        orderAmount: subtotal,
+      });
+      if (!validation.valid) {
+        throw new BadRequestException(validation.message);
+      }
+      discount = Math.round(validation.discountAmount);
+      couponId = validation.coupon!.id;
+      couponCode = createDto.couponCode;
+    }
+
+    const total = createDto.total ?? subtotal + deliveryFee + tip - discount;
 
     const publicTrackingToken = crypto.randomBytes(32).toString('base64url');
     const orderNumber = await this.generateOrderNumber(restaurantId);
 
-    // Si NO es MercadoPago, persistimos la Order directamente (no hay webhook para crearla luego)
     const isMercadoPago =
       String(paymentMethod) === this.MERCADOPAGO_PAYMENT_METHOD;
     if (!isMercadoPago) {
@@ -152,6 +167,9 @@ export class OrdersService {
           paymentStatus: PaymentStatus.PENDING,
           subtotal,
           deliveryFee,
+          discount,
+          couponId,
+          couponCode,
           tip,
           total,
           deliveryAddress: createDto.deliveryAddress,
@@ -165,6 +183,17 @@ export class OrdersService {
               unitPrice: item.unitPrice,
               subtotal: item.subtotal,
               notes: item.notes,
+              ...(item.selectedModifiers?.length
+                ? {
+                    selectedModifiers: {
+                      create: item.selectedModifiers.map((m) => ({
+                        modifierId: m.modifierId,
+                        name: m.name,
+                        priceAdjustment: m.priceAdjustment,
+                      })),
+                    },
+                  }
+                : {}),
             })),
           },
           statusHistory: {
@@ -185,6 +214,19 @@ export class OrdersService {
         },
       });
 
+      // Auto-create DeliveryOrder for DELIVERY type
+      if (orderType === OrderType.DELIVERY) {
+        await this.createDeliveryOrder(order.id, createDto, deliveryFee);
+      }
+
+      // Record coupon usage
+      if (couponId && discount > 0) {
+        await this.couponsService.incrementUsage(couponId);
+        await this.prisma.couponUsage.create({
+          data: { couponId, orderId: order.id, discountAmount: discount },
+        });
+      }
+
       return {
         order: {
           id: order.id,
@@ -200,7 +242,7 @@ export class OrdersService {
       };
     }
 
-    // MercadoPago: crear checkout session (NO persistimos Order todavía)
+    // MercadoPago: crear checkout session
     const checkout = await this.prisma.checkoutSession.create({
       data: {
         restaurantId,
@@ -220,9 +262,13 @@ export class OrdersService {
           unitPrice: item.unitPrice,
           subtotal: item.subtotal,
           notes: item.notes,
-        })),
+          selectedModifiers: item.selectedModifiers,
+        })) as any,
         subtotal,
         deliveryFee,
+        discount,
+        couponId,
+        couponCode,
         tip,
         total,
         deliveryAddress: createDto.deliveryAddress,
@@ -232,7 +278,6 @@ export class OrdersService {
       },
     });
 
-    // Crear preferencia
     let paymentUrl: string | undefined;
     let sandboxPaymentUrl: string | undefined;
     let isSandbox = false;
@@ -257,7 +302,6 @@ export class OrdersService {
         },
       );
 
-      // Guardar preferenceId e isSandbox en la checkout session
       await this.prisma.checkoutSession.update({
         where: { id: checkout.id },
         data: {
@@ -266,11 +310,8 @@ export class OrdersService {
         },
       });
 
-      // Asignar URLs y modo sandbox
       isSandbox = preferenceResult.isSandbox;
       sandboxPaymentUrl = preferenceResult.preference.sandbox_init_point;
-
-      // paymentUrl es la URL que el frontend debe usar según el modo
       paymentUrl = isSandbox
         ? preferenceResult.preference.sandbox_init_point
         : preferenceResult.preference.init_point;
@@ -278,7 +319,6 @@ export class OrdersService {
       this.logger.error(
         `Error creating MercadoPago preference: ${error.message}`,
       );
-      // No fallamos el checkout
     }
 
     return {
@@ -303,13 +343,11 @@ export class OrdersService {
     const day = String(today.getDate()).padStart(2, '0');
     const dateStr = `${year}${month}${day}`;
 
-    // Inicio y fin del día
     const startOfDay = new Date(today);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(today);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // Contar órdenes + checkout sessions del día para evitar colisiones
     const [ordersCount, sessionsCount] = await Promise.all([
       this.prisma.order.count({
         where: {
@@ -414,7 +452,6 @@ export class OrdersService {
       },
     });
 
-    // Responder como "no existe" para evitar enumeración.
     if (order && order.publicTrackingToken) {
       if (order.publicTrackingToken !== normalizedToken) {
         throw new NotFoundException('Order not found');
@@ -445,7 +482,7 @@ export class OrdersService {
       };
     }
 
-    // Fallback: todavía no existe Order (checkout pendiente)
+    // Fallback: checkout session pendiente
     const checkout = await this.prisma.checkoutSession.findFirst({
       where: {
         id: orderId,
@@ -514,7 +551,6 @@ export class OrdersService {
     userId: string,
     filters: OrderFiltersDto,
   ) {
-    // Verificar que el usuario pertenece al restaurante
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const where: any = {
@@ -522,7 +558,6 @@ export class OrdersService {
     };
 
     if (filters.status) {
-      // Support comma-separated statuses and normalize to uppercase for Prisma enum
       const statuses = filters.status
         .split(',')
         .map((s) => s.trim().toUpperCase());
@@ -553,7 +588,6 @@ export class OrdersService {
       }
     }
 
-    // If date is provided, filter by that specific date (overrides startDate/endDate)
     if (filters.date) {
       const date = new Date(filters.date);
       const startOfDay = new Date(date);
@@ -566,7 +600,6 @@ export class OrdersService {
       };
     }
 
-    // Pagination
     const page = filters.page || 1;
     const limit = filters.limit || 50;
     const skip = (page - 1) * limit;
@@ -611,6 +644,14 @@ export class OrdersService {
   }
 
   private async getOrderStats(restaurantId: string, baseWhere?: any) {
+    const whereBase = baseWhere || { restaurantId };
+
+    const grouped = await this.prisma.order.groupBy({
+      by: ['status'],
+      where: whereBase,
+      _count: { id: true },
+    });
+
     const statuses = [
       'PENDING',
       'PAID',
@@ -621,25 +662,12 @@ export class OrdersService {
       'CANCELLED',
     ];
 
-    // Si hay filtros aplicados (como fecha, tipo, etc), usar baseWhere
-    // Si solo se está filtrando por status, mostrar stats globales
-    const whereBase = baseWhere || { restaurantId };
-
-    const counts = await Promise.all(
-      statuses.map((status) =>
-        this.prisma.order.count({
-          where: { ...whereBase, status: status as any },
-        }),
-      ),
-    );
-
-    return statuses.reduce(
-      (acc, status, index) => {
-        acc[status.toLowerCase()] = counts[index];
-        return acc;
-      },
-      {} as Record<string, number>,
-    );
+    const result: Record<string, number> = {};
+    for (const s of statuses) {
+      const found = grouped.find((g) => g.status === s);
+      result[s.toLowerCase()] = found?._count?.id ?? 0;
+    }
+    return result;
   }
 
   async findOne(id: string, restaurantId: string, userId: string) {
@@ -717,7 +745,7 @@ export class OrdersService {
 
     const parsed = this.parseOrderStatusOrPaymentStatus(updateDto.status);
 
-    // Caso especial: marcar como pagado (UI suele enviar status=paid)
+    // Payment status update
     if (parsed.kind === 'payment') {
       const updatedOrder = await this.prisma.order.update({
         where: { id },
@@ -746,10 +774,8 @@ export class OrdersService {
       return updatedOrder;
     }
 
-    // Validar transiciones de estado válidas
     this.validateStatusTransition(order.status as OrderStatus, parsed.status);
 
-    // Preparar datos de actualización
     const updateData: any = {
       status: parsed.status,
       statusHistory: {
@@ -762,7 +788,6 @@ export class OrdersService {
       },
     };
 
-    // Actualizar timestamp correspondiente
     const timestampField = this.getTimestampField(parsed.status);
     if (timestampField) {
       updateData[timestampField] = new Date();
@@ -786,7 +811,7 @@ export class OrdersService {
       },
     });
 
-    // Enviar notificación por email al cliente si es relevante
+    // Send notifications via extracted service
     if (
       [
         'PAID',
@@ -797,24 +822,14 @@ export class OrdersService {
         'CANCELLED',
       ].includes(parsed.status)
     ) {
-      const orderData = this.mapOrderToEmailData(updatedOrder);
-      const restaurantData = this.mapRestaurantToEmailData(order.restaurant);
-
-      this.emailService
-        .sendStatusUpdate(orderData, restaurantData)
-        .catch((err) => {
-          this.logger.error(
-            `Failed to send status update email: ${err.message}`,
-          );
-        });
+      this.notifications.sendStatusUpdateEmail(updatedOrder, order.restaurant);
     }
 
-    // Emitir WebSocket
-    const wsPayload = this.mapOrderToWebSocketPayload(updatedOrder);
-    this.ordersGateway.emitOrderUpdate(restaurantId, wsPayload);
-
-    // Emitir notificación SSE para cocina
-    void this.emitKitchenNotification(updatedOrder, parsed.status);
+    this.notifications.emitOrderUpdate(restaurantId, updatedOrder);
+    void this.notifications.emitKitchenNotification(
+      updatedOrder,
+      parsed.status,
+    );
 
     return updatedOrder;
   }
@@ -840,10 +855,8 @@ export class OrdersService {
       throw new BadRequestException('status is required');
     }
     const raw = value.trim();
-
     const normalized = raw.toUpperCase();
 
-    // Alias comunes
     if (normalized === 'CANCELED') {
       return { kind: 'status', status: OrderStatus.CANCELLED };
     }
@@ -858,289 +871,39 @@ export class OrdersService {
     return { kind: 'status', status: normalized as OrderStatus };
   }
 
-  async getStats(restaurantId: string, userId: string) {
-    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const [totalOrders, todayOrders, pendingOrders, revenue] =
-      await Promise.all([
-        this.prisma.order.count({
-          where: { restaurantId },
-        }),
-        this.prisma.order.count({
-          where: {
-            restaurantId,
-            createdAt: { gte: today },
-          },
-        }),
-        this.prisma.order.count({
-          where: {
-            restaurantId,
-            status: {
-              in: [
-                OrderStatus.PENDING,
-                OrderStatus.PAID,
-                OrderStatus.CONFIRMED,
-                OrderStatus.PREPARING,
-              ],
-            },
-          },
-        }),
-        this.prisma.order.aggregate({
-          where: {
-            restaurantId,
-            status: { not: OrderStatus.CANCELLED },
-          },
-          _sum: {
-            total: true,
-          },
-        }),
-      ]);
-
-    return {
-      totalOrders,
-      todayOrders,
-      pendingOrders,
-      revenue: revenue._sum.total || 0,
-    };
-  }
-
-  async getTodayStats(restaurantId: string, userId: string) {
-    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    const tomorrowStart = new Date(today);
-    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-
-    // Stats de hoy
-    const [todayRevenue, todayOrders, todayReservations] = await Promise.all([
-      this.prisma.order.aggregate({
-        where: {
-          restaurantId,
-          createdAt: { gte: today, lt: tomorrowStart },
-          status: { not: OrderStatus.CANCELLED },
-        },
-        _sum: { total: true },
-      }),
-      this.prisma.order.count({
-        where: {
-          restaurantId,
-          createdAt: { gte: today, lt: tomorrowStart },
-          status: { not: OrderStatus.CANCELLED },
-        },
-      }),
-      this.prisma.reservation.count({
-        where: {
-          restaurantId,
-          date: { gte: today, lt: tomorrowStart },
-          status: 'CONFIRMED',
-        },
-      }),
-    ]);
-
-    // Stats de ayer
-    const [yesterdayRevenue, yesterdayOrders, yesterdayReservations] =
-      await Promise.all([
-        this.prisma.order.aggregate({
-          where: {
-            restaurantId,
-            createdAt: { gte: yesterday, lt: today },
-            status: { not: OrderStatus.CANCELLED },
-          },
-          _sum: { total: true },
-        }),
-        this.prisma.order.count({
-          where: {
-            restaurantId,
-            createdAt: { gte: yesterday, lt: today },
-            status: { not: OrderStatus.CANCELLED },
-          },
-        }),
-        this.prisma.reservation.count({
-          where: {
-            restaurantId,
-            date: { gte: yesterday, lt: today },
-            status: 'CONFIRMED',
-          },
-        }),
-      ]);
-
-    const todayRev = todayRevenue._sum.total || 0;
-    const yesterdayRev = yesterdayRevenue._sum.total || 0;
-    const todayAvg = todayOrders > 0 ? todayRev / todayOrders : 0;
-    const yesterdayAvg =
-      yesterdayOrders > 0 ? yesterdayRev / yesterdayOrders : 0;
-
-    const calculateChange = (current: number, previous: number) => {
-      if (previous === 0) return current > 0 ? 100 : 0;
-      return ((current - previous) / previous) * 100;
-    };
-
-    return {
-      today: {
-        revenue: todayRev,
-        orders: todayOrders,
-        averageOrder: Math.round(todayAvg),
-        reservations: todayReservations,
-      },
-      yesterday: {
-        revenue: yesterdayRev,
-        orders: yesterdayOrders,
-        averageOrder: Math.round(yesterdayAvg),
-        reservations: yesterdayReservations,
-      },
-      percentageChange: {
-        revenue: Number(calculateChange(todayRev, yesterdayRev).toFixed(1)),
-        orders: Number(
-          calculateChange(todayOrders, yesterdayOrders).toFixed(1),
-        ),
-        averageOrder: Number(
-          calculateChange(todayAvg, yesterdayAvg).toFixed(1),
-        ),
-        reservations: Number(
-          calculateChange(todayReservations, yesterdayReservations).toFixed(1),
-        ),
-      },
-    };
-  }
-
-  async getTopDishes(restaurantId: string, userId: string, period: string) {
-    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
-
-    const startDate = new Date();
-    startDate.setHours(0, 0, 0, 0);
-
-    if (period === 'week') {
-      startDate.setDate(startDate.getDate() - 7);
-    } else if (period === 'month') {
-      startDate.setMonth(startDate.getMonth() - 1);
-    }
-
-    // Obtener items de órdenes agrupados por plato
-    const orderItems = await this.prisma.orderItem.findMany({
-      where: {
-        order: {
-          restaurantId,
-          createdAt: { gte: startDate },
-          status: { not: OrderStatus.CANCELLED },
-        },
-      },
-      include: {
-        dish: {
-          include: {
-            category: true,
-          },
-        },
-      },
-    });
-
-    // Agrupar y calcular totales
-    const dishesMap = new Map<
-      string,
-      {
-        dishId: string;
-        dishName: string;
-        categoryName: string;
-        quantity: number;
-        revenue: number;
-      }
-    >();
-
-    orderItems.forEach((item) => {
-      const existing = dishesMap.get(item.dishId);
-      if (existing) {
-        existing.quantity += item.quantity;
-        existing.revenue += item.subtotal;
-      } else {
-        dishesMap.set(item.dishId, {
-          dishId: item.dishId,
-          dishName: item.dish.name,
-          categoryName: item.dish.category.name,
-          quantity: item.quantity,
-          revenue: item.subtotal,
-        });
-      }
-    });
-
-    // Convertir a array y ordenar por cantidad
-    const topDishes = Array.from(dishesMap.values())
-      .sort((a, b) => b.quantity - a.quantity)
-      .slice(0, 10);
-
-    // Calcular porcentajes
-    const totalRevenue = topDishes.reduce((sum, dish) => sum + dish.revenue, 0);
-
-    return {
-      topDishes: topDishes.map((dish) => ({
-        ...dish,
-        percentage:
-          totalRevenue > 0
-            ? Number(((dish.revenue / totalRevenue) * 100).toFixed(1))
-            : 0,
-      })),
-    };
-  }
-
   private validateStatusTransition(
     currentStatus: OrderStatus,
     newStatus: OrderStatus,
   ) {
-    // Transiciones relajadas para manejar imprevistos en cocina
-    // Reglas básicas:
-    // 1. DELIVERED y CANCELLED son estados finales (no se pueden cambiar)
-    // 2. Desde cualquier estado activo se puede cancelar
-    // 3. Permite retroceder entre estados de cocina (PREPARING ↔ CONFIRMED ↔ READY)
-    // 4. Permite avanzar y retroceder en el flujo de trabajo
-
     const validTransitions: Record<OrderStatus, OrderStatus[]> = {
-      // PENDING: puede avanzar a PAID o cancelarse
       [OrderStatus.PENDING]: [
         OrderStatus.PAID,
-        OrderStatus.CONFIRMED, // Skip directo si ya pagado externamente
-        OrderStatus.CANCELLED,
-      ],
-
-      // PAID: puede confirmar, volver a pending si hubo error, o cancelarse
-      [OrderStatus.PAID]: [
-        OrderStatus.PENDING, // Retroceder si hubo error en pago
         OrderStatus.CONFIRMED,
         OrderStatus.CANCELLED,
       ],
-
-      // CONFIRMED: máxima flexibilidad para cocina
-      [OrderStatus.CONFIRMED]: [
-        OrderStatus.PAID, // Volver si necesita reprocesar
-        OrderStatus.PREPARING,
-        OrderStatus.READY, // Skip directo si ya está listo
+      [OrderStatus.PAID]: [
+        OrderStatus.PENDING,
+        OrderStatus.CONFIRMED,
         OrderStatus.CANCELLED,
       ],
-
-      // PREPARING: puede retroceder a CONFIRMED, avanzar a READY, o cancelarse
-      [OrderStatus.PREPARING]: [
-        OrderStatus.CONFIRMED, // Volver si hubo error o falta ingrediente
+      [OrderStatus.CONFIRMED]: [
+        OrderStatus.PAID,
+        OrderStatus.PREPARING,
         OrderStatus.READY,
         OrderStatus.CANCELLED,
       ],
-
-      // READY: puede retroceder a PREPARING, avanzar a DELIVERED, o cancelarse
+      [OrderStatus.PREPARING]: [
+        OrderStatus.CONFIRMED,
+        OrderStatus.READY,
+        OrderStatus.CANCELLED,
+      ],
       [OrderStatus.READY]: [
-        OrderStatus.PREPARING, // Volver si necesita recalentarse o ajustes
-        OrderStatus.CONFIRMED, // Volver más atrás si hay problema mayor
+        OrderStatus.PREPARING,
+        OrderStatus.CONFIRMED,
         OrderStatus.DELIVERED,
         OrderStatus.CANCELLED,
       ],
-
-      // DELIVERED: estado final, no se puede cambiar
       [OrderStatus.DELIVERED]: [],
-
-      // CANCELLED: estado final, no se puede cambiar
       [OrderStatus.CANCELLED]: [],
     };
 
@@ -1150,6 +913,22 @@ export class OrdersService {
         `Cannot transition from ${currentStatus} to ${newStatus}. Allowed: ${allowed.join(', ')}`,
       );
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // Analytics (delegated)
+  // ─────────────────────────────────────────────────────────────
+
+  getStats(restaurantId: string, userId: string) {
+    return this.analytics.getStats(restaurantId, userId);
+  }
+
+  getTodayStats(restaurantId: string, userId: string) {
+    return this.analytics.getTodayStats(restaurantId, userId);
+  }
+
+  getTopDishes(restaurantId: string, userId: string, period: string) {
+    return this.analytics.getTopDishes(restaurantId, userId, period);
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -1182,7 +961,6 @@ export class OrdersService {
       return null;
     }
 
-    // Idempotencia: si ya existe la Order (misma id), no recrear
     const existingOrder = await this.prisma.order.findUnique({
       where: { id: checkoutSessionId },
     });
@@ -1194,7 +972,6 @@ export class OrdersService {
       return existingOrder;
     }
 
-    // Marcar checkout como pagado
     await this.prisma.checkoutSession.update({
       where: { id: checkoutSessionId },
       data: {
@@ -1208,7 +985,6 @@ export class OrdersService {
       ? (checkout.items as any[])
       : [];
 
-    // Crear Order (usando el mismo id que la checkout session)
     const createdOrder = await this.prisma.order.create({
       data: {
         id: checkout.id,
@@ -1227,6 +1003,8 @@ export class OrdersService {
         subtotal: checkout.subtotal,
         deliveryFee: checkout.deliveryFee,
         discount: checkout.discount,
+        couponId: checkout.couponId,
+        couponCode: checkout.couponCode,
         tip: checkout.tip,
         total: checkout.total,
         deliveryAddress: checkout.deliveryAddress,
@@ -1241,6 +1019,18 @@ export class OrdersService {
             unitPrice: Number(it.unitPrice),
             subtotal: Number(it.subtotal),
             notes: it.notes ? String(it.notes) : null,
+            ...(Array.isArray(it.selectedModifiers) &&
+            it.selectedModifiers.length
+              ? {
+                  selectedModifiers: {
+                    create: it.selectedModifiers.map((m: any) => ({
+                      modifierId: String(m.modifierId),
+                      name: String(m.name),
+                      priceAdjustment: Number(m.priceAdjustment),
+                    })),
+                  },
+                }
+              : {}),
           })),
         },
         statusHistory: {
@@ -1275,219 +1065,63 @@ export class OrdersService {
       },
     });
 
-    // Preparar datos para emails
-    const orderData = this.mapOrderToEmailData(createdOrder);
-    const restaurantData = this.mapRestaurantToEmailData(checkout.restaurant);
+    // Auto-create DeliveryOrder for DELIVERY type
+    if (checkout.type === 'DELIVERY') {
+      await this.createDeliveryOrder(
+        createdOrder.id,
+        {
+          deliveryAddress: checkout.deliveryAddress,
+          deliveryNotes: checkout.deliveryNotes,
+        } as any,
+        checkout.deliveryFee,
+      );
+    }
 
-    // Enviar email al cliente
-    this.emailService
-      .sendOrderConfirmation(orderData, restaurantData)
-      .catch((err) => {
-        this.logger.error(
-          `Failed to send order confirmation email: ${err.message}`,
-        );
+    // Record coupon usage from checkout
+    if (checkout.couponId && checkout.discount > 0) {
+      await this.couponsService.incrementUsage(checkout.couponId);
+      await this.prisma.couponUsage.create({
+        data: {
+          couponId: checkout.couponId,
+          orderId: createdOrder.id,
+          discountAmount: checkout.discount,
+        },
       });
+    }
 
-    // Enviar email al restaurante
-    this.emailService
-      .sendNewOrderNotification(orderData, restaurantData)
-      .catch((err) => {
-        this.logger.error(
-          `Failed to send new order notification: ${err.message}`,
-        );
-      });
-
-    // Emitir WebSocket
-    const wsPayload = this.mapOrderToWebSocketPayload(createdOrder);
-    this.ordersGateway.emitPaymentConfirmed(checkout.restaurantId, wsPayload);
-    this.ordersGateway.emitNewOrder(checkout.restaurantId, wsPayload);
+    // Send notifications via extracted service
+    this.notifications.sendOrderConfirmationEmails(
+      createdOrder,
+      checkout.restaurant,
+    );
+    this.notifications.emitPaymentConfirmed(
+      checkout.restaurantId,
+      createdOrder,
+    );
 
     return createdOrder;
   }
 
-  private mapOrderToEmailData(order: any): OrderData {
-    return {
-      id: order.id,
-      orderNumber: order.orderNumber,
-      customerName: order.customerName,
-      customerEmail: order.customerEmail,
-      customerPhone: order.customerPhone,
-      type: order.type,
-      status: order.status,
-      subtotal: order.subtotal,
-      deliveryFee: order.deliveryFee,
-      tip: order.tip,
-      total: order.total,
-      deliveryAddress: order.deliveryAddress,
-      deliveryNotes: order.deliveryNotes,
-      publicTrackingToken: order.publicTrackingToken,
-      items: order.items.map((item: any) => ({
-        name: item.dish?.name || item.name || 'Item',
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        notes: item.notes,
-      })),
-    };
-  }
-
-  private mapRestaurantToEmailData(restaurant: any): RestaurantData {
-    return {
-      id: restaurant.id,
-      name: restaurant.name,
-      email: restaurant.email,
-      phone: restaurant.phone,
-      address: restaurant.address,
-    };
-  }
-
-  private mapOrderToWebSocketPayload(order: any): OrderUpdatePayload {
-    return {
-      id: order.id,
-      orderNumber: order.orderNumber,
-      status: order.status,
-      paymentStatus: order.paymentStatus,
-      customerName: order.customerName,
-      customerPhone: order.customerPhone,
-      type: order.type,
-      total: order.total,
-      items: order.items.map((item: any) => ({
-        name: item.dish?.name || item.name || 'Item',
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-      })),
-      createdAt: order.createdAt,
-      updatedAt: order.updatedAt,
-    };
-  }
-
-  /**
-   * Emite notificaciones SSE para la cocina basadas en cambios de estado de pedidos
-   */
-  private async emitKitchenNotification(order: any, newStatus: OrderStatus) {
-    let notificationType:
-      | 'order_created'
-      | 'order_updated'
-      | 'order_cancelled'
-      | 'order_ready';
-
-    switch (newStatus) {
-      case OrderStatus.CONFIRMED:
-        notificationType = 'order_created';
-        break;
-      case OrderStatus.PREPARING:
-      case OrderStatus.READY:
-        notificationType = 'order_updated';
-        break;
-      case OrderStatus.CANCELLED:
-        notificationType = 'order_cancelled';
-        break;
-      default:
-        // No emitir notificación para otros estados
-        return;
-    }
-
-    // Solo emitir para pedidos que requieren preparación en cocina
-    if (
-      order.type === OrderType.DINE_IN ||
-      order.type === OrderType.PICKUP ||
-      order.type === OrderType.DELIVERY
-    ) {
-      this.kitchenNotifications.emitNotification(order.restaurantId, {
-        type: notificationType,
-        orderId: order.id,
-        data: {
-          orderNumber: order.orderNumber,
-          status: newStatus,
-          customerName: order.customerName,
-          type: order.type,
-          items:
-            order.items?.map((item: any) => ({
-              name: item.dish?.name || item.name || 'Item',
-              quantity: item.quantity,
-              notes: item.notes,
-            })) || [],
-          total: order.total,
-          createdAt: order.createdAt,
-          updatedAt: order.updatedAt,
-        },
-      });
-
-      // Enviar notificaciones a usuarios del restaurante
-      await this.sendOrderNotificationsToUsers(order, newStatus);
-    }
-  }
-
-  private async sendOrderNotificationsToUsers(
-    order: any,
-    newStatus: OrderStatus,
+  private async createDeliveryOrder(
+    orderId: string,
+    dto: { deliveryAddress?: string; deliveryNotes?: string },
+    deliveryFee: number,
   ) {
     try {
-      // Obtener usuarios del restaurante con roles que deberían recibir notificaciones
-      const restaurantUsers = await this.prisma.user.findMany({
-        where: {
-          restaurantId: order.restaurantId,
-          isActive: true,
-        },
-        select: {
-          id: true,
-          name: true,
-          role: {
-            select: {
-              name: true,
-            },
-          },
+      await this.prisma.deliveryOrder.create({
+        data: {
+          orderId,
+          deliveryAddress: dto.deliveryAddress || '',
+          deliveryFee: deliveryFee ?? 0,
+          customerNotes: dto.deliveryNotes || null,
+          status: 'READY',
         },
       });
-
-      // Determinar tipo de notificación
-      let notificationType:
-        | 'ORDER_CREATED'
-        | 'ORDER_UPDATED'
-        | 'ORDER_CANCELLED'
-        | 'ORDER_READY';
-
-      switch (newStatus) {
-        case OrderStatus.CONFIRMED:
-          notificationType = 'ORDER_CREATED';
-          break;
-        case OrderStatus.PREPARING:
-          notificationType = 'ORDER_UPDATED';
-          break;
-        case OrderStatus.READY:
-          notificationType = 'ORDER_READY';
-          break;
-        case OrderStatus.CANCELLED:
-          notificationType = 'ORDER_CANCELLED';
-          break;
-        default:
-          return; // No enviar notificación para otros estados
-      }
-
-      // Enviar notificación a cada usuario del restaurante
-      for (const user of restaurantUsers) {
-        try {
-          await this.notificationsService.createOrderNotification(
-            user.id,
-            order.restaurantId,
-            order.id,
-            notificationType,
-            {
-              orderNumber: order.orderNumber,
-              status: newStatus,
-              customerName: order.customerName,
-              type: order.type,
-              total: order.total,
-            },
-          );
-        } catch (error) {
-          this.logger.error(
-            `Error enviando notificación a usuario ${user.id}:`,
-            error,
-          );
-        }
-      }
     } catch (error) {
-      this.logger.error('Error enviando notificaciones de orden:', error);
+      this.logger.error(
+        `Failed to create DeliveryOrder for order ${orderId}`,
+        error,
+      );
     }
   }
 }

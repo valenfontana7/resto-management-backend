@@ -34,6 +34,8 @@ export const PLAN_FEATURES: Record<PlanType, string[]> = {
     'kitchen_display',
     'analytics',
     'whatsapp_integration',
+    'reviews',
+    'loyalty',
   ],
   [PlanType.ENTERPRISE]: [
     'menu_digital',
@@ -45,6 +47,8 @@ export const PLAN_FEATURES: Record<PlanType, string[]> = {
     'kitchen_display',
     'analytics',
     'whatsapp_integration',
+    'reviews',
+    'loyalty',
     'multi_branch',
     'delivery_integration',
     'pedidosya_rappi',

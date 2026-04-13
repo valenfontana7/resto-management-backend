@@ -87,6 +87,11 @@ export class JwtAuthGuard implements CanActivate {
       return request.query.token;
     }
 
+    // Try httpOnly cookie (set by auth.controller)
+    if (request.cookies && request.cookies['auth-token']) {
+      return request.cookies['auth-token'];
+    }
+
     return null;
   }
 }

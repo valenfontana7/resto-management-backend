@@ -38,6 +38,10 @@ model Restaurant {
   verificationStatus    VerificationStatus     @default(UNVERIFIED)
   onboardingIncomplete  Boolean                @default(true)
   isPublished           Boolean                @default(false)
+  // Multi-branch support
+  parentId              String?
+  parent                Restaurant?            @relation("RestaurantBranches", fields: [parentId], references: [id])
+  branches              Restaurant[]           @relation("RestaurantBranches")
   adminAuditLogs        AdminAuditLog[]
   hours                 BusinessHour[]
   categories            Category[]
@@ -55,6 +59,11 @@ model Restaurant {
   tableAreas            TableArea[]
   users                 User[]
   builderConfig         BuilderConfig?
+  reviews               Review[]
+  deliveryPlatforms     DeliveryPlatform[]
+  externalOrders        ExternalOrder[]
+  experiments           Experiment[]
+  digestPreferences     DigestPreference[]
 
   @@index([slug])
   @@index([status])
@@ -123,13 +132,47 @@ model Dish {
   updatedAt       DateTime    @updatedAt
   deletedAt       DateTime?
   tags            String[]    @default([])
+  avgRating       Float       @default(0)
+  reviewCount     Int         @default(0)
   category        Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   restaurant      Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   orderItems      OrderItem[]
+  reviews         Review[]
+  modifierGroups  ModifierGroup[]
 
   @@index([restaurantId])
   @@index([categoryId])
   @@index([restaurantId, isAvailable])
+}
+
+model ModifierGroup {
+  id          String     @id @default(cuid())
+  dishId      String
+  name        String
+  required    Boolean    @default(false)
+  minSelect   Int        @default(0)
+  maxSelect   Int        @default(1)
+  order       Int        @default(0)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  dish        Dish       @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  modifiers   Modifier[]
+
+  @@index([dishId])
+}
+
+model Modifier {
+  id              String              @id @default(cuid())
+  groupId         String
+  name            String
+  priceAdjustment Int                 @default(0)
+  isDefault       Boolean             @default(false)
+  isAvailable     Boolean             @default(true)
+  order           Int                 @default(0)
+  group           ModifierGroup       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  orderItemMods   OrderItemModifier[]
+
+  @@index([groupId])
 }
 
 model Order {
@@ -145,6 +188,8 @@ model Order {
   subtotal            Int
   deliveryFee         Int                  @default(0)
   discount            Int                  @default(0)
+  couponId            String?
+  couponCode          String?
   tip                 Int                  @default(0)
   total               Int
   deliveryAddress     String?
@@ -174,6 +219,8 @@ model Order {
   items               OrderItem[]
   statusHistory       OrderStatusHistory[]
   currentTable        Table?               @relation("CurrentTableOrder")
+  reviews             Review[]
+  externalOrder       ExternalOrder?
 
   @@unique([restaurantId, orderNumber])
   @@index([restaurantId])
@@ -200,6 +247,8 @@ model CheckoutSession {
   subtotal            Int
   deliveryFee         Int           @default(0)
   discount            Int           @default(0)
+  couponId            String?
+  couponCode          String?
   tip                 Int           @default(0)
   total               Int
   deliveryAddress     String?
@@ -217,17 +266,30 @@ model CheckoutSession {
 }
 
 model OrderItem {
-  id        String  @id @default(cuid())
-  orderId   String
-  dishId    String
-  quantity  Int
-  unitPrice Int
-  subtotal  Int
-  notes     String?
-  dish      Dish    @relation(fields: [dishId], references: [id])
-  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id                String              @id @default(cuid())
+  orderId           String
+  dishId            String
+  quantity          Int
+  unitPrice         Int
+  subtotal          Int
+  notes             String?
+  dish              Dish                @relation(fields: [dishId], references: [id])
+  order             Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  selectedModifiers OrderItemModifier[]
 
   @@index([orderId])
+}
+
+model OrderItemModifier {
+  id          String    @id @default(cuid())
+  orderItemId String
+  modifierId  String
+  name        String
+  priceAdj    Int       @default(0)
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  modifier    Modifier  @relation(fields: [modifierId], references: [id])
+
+  @@index([orderItemId])
 }
 
 model OrderStatusHistory {
@@ -406,6 +468,64 @@ model DeliveryOrder {
   @@index([createdAt])
   @@index([status, createdAt])
   @@index([driverId, status])
+}
+
+model DeliveryPlatform {
+  id             String           @id @default(cuid())
+  restaurantId   String
+  platform       PlatformType
+  isActive       Boolean          @default(false)
+  apiKey         String?
+  apiSecret      String?
+  storeId        String?
+  webhookSecret  String?
+  config         Json?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  restaurant     Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  externalOrders ExternalOrder[]
+
+  @@unique([restaurantId, platform])
+  @@index([restaurantId])
+  @@index([platform, isActive])
+}
+
+model ExternalOrder {
+  id                 String           @id @default(cuid())
+  platformId         String
+  restaurantId       String
+  externalOrderId    String
+  externalStatus     String
+  internalOrderId    String?          @unique
+  customerName       String
+  customerPhone      String?
+  deliveryAddress    String?
+  items              Json
+  subtotal           Int
+  deliveryFee        Int              @default(0)
+  platformFee        Int              @default(0)
+  total              Int
+  rawPayload         Json?
+  syncedAt           DateTime?
+  rejectedAt         DateTime?
+  rejectionReason    String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  platform           DeliveryPlatform @relation(fields: [platformId], references: [id])
+  restaurant         Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  internalOrder      Order?           @relation(fields: [internalOrderId], references: [id])
+
+  @@unique([platformId, externalOrderId])
+  @@index([restaurantId])
+  @@index([externalStatus])
+  @@index([createdAt])
+}
+
+enum PlatformType {
+  PEDIDOS_YA
+  RAPPI
+  UBER_EATS
+  CUSTOM
 }
 
 model DriverLocation {
@@ -820,4 +940,138 @@ enum NotificationChannel {
   PUSH
   IN_APP
   SSE
+}
+
+model Review {
+  id             String     @id @default(cuid())
+  restaurantId   String
+  orderId        String?
+  dishId         String?
+  customerName   String
+  customerEmail  String?
+  rating         Int        // 1-5
+  comment        String?
+  isApproved     Boolean    @default(false)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  order          Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  dish           Dish?      @relation(fields: [dishId], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId])
+  @@index([restaurantId, isApproved])
+  @@index([dishId])
+  @@index([orderId])
+}
+
+model LoyaltyAccount {
+  id             String               @id @default(cuid())
+  restaurantId   String
+  customerEmail  String
+  customerName   String
+  customerPhone  String?
+  points         Int                  @default(0)
+  totalEarned    Int                  @default(0)
+  totalRedeemed  Int                  @default(0)
+  tier           LoyaltyTier          @default(BRONZE)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  transactions   LoyaltyTransaction[]
+
+  @@unique([restaurantId, customerEmail])
+  @@index([restaurantId])
+}
+
+model LoyaltyTransaction {
+  id          String              @id @default(cuid())
+  accountId   String
+  type        LoyaltyTxType
+  points      Int
+  description String?
+  orderId     String?
+  createdAt   DateTime            @default(now())
+  account     LoyaltyAccount      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId])
+  @@index([accountId, createdAt])
+}
+
+enum LoyaltyTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum LoyaltyTxType {
+  EARN
+  REDEEM
+  BONUS
+  EXPIRE
+}
+
+// A/B Testing
+model Experiment {
+  id              String            @id @default(cuid())
+  restaurantId    String
+  name            String
+  description     String?
+  type            ExperimentType
+  targetEntity    String?
+  targetEntityId  String?
+  isActive        Boolean           @default(false)
+  startDate       DateTime?
+  endDate         DateTime?
+  trafficSplit    Int               @default(50)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  restaurant      Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  variants        ExperimentVariant[]
+
+  @@index([restaurantId])
+  @@index([isActive])
+}
+
+model ExperimentVariant {
+  id             String              @id @default(cuid())
+  experimentId   String
+  name           String
+  isControl      Boolean             @default(false)
+  config         Json
+  impressions    Int                 @default(0)
+  conversions    Int                 @default(0)
+  revenue        Int                 @default(0)
+  createdAt      DateTime            @default(now())
+  experiment     Experiment          @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+
+  @@index([experimentId])
+}
+
+enum ExperimentType {
+  PRICE
+  MENU_LAYOUT
+  DISH_DESCRIPTION
+  DISH_IMAGE
+}
+
+model DigestPreference {
+  id            String          @id @default(cuid())
+  restaurantId  String
+  email         String
+  frequency     DigestFrequency @default(WEEKLY)
+  isActive      Boolean         @default(true)
+  lastSentAt    DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  restaurant    Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, email])
+  @@index([restaurantId])
+  @@index([frequency, isActive])
+}
+
+enum DigestFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
 }

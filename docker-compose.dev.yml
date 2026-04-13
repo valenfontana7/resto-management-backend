@@ -20,6 +20,21 @@ services:
       timeout: 5s
       retries: 5
 
+  # Redis for job queues and caching
+  redis:
+    image: redis:7-alpine
+    container_name: resto-redis-dev
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # MinIO for local development S3-compatible storage
   minio:
     image: minio/minio:latest
@@ -43,6 +58,8 @@ services:
 
 volumes:
   postgres_data:
+    driver: local
+  redis_data:
     driver: local
   minio_data:
     driver: local

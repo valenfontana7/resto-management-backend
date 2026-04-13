@@ -236,14 +236,14 @@ export class TrackingController {
   @Public()
   @Get(':orderId')
   @ApiOperation({
-    summary: 'Tracking público del pedido (no requiere autenticación)',
+    summary: 'Tracking público del pedido (requiere token de tracking)',
   })
   @ApiResponse({ status: 200, description: 'Estado del pedido' })
+  @ApiResponse({ status: 403, description: 'Token inválido o faltante' })
   async getPublicTracking(
     @Param('orderId') orderId: string,
     @Query('token') token: string,
   ) {
-    void token;
-    return this.deliveryService.getPublicTracking(orderId);
+    return this.deliveryService.getPublicTracking(orderId, token);
   }
 }

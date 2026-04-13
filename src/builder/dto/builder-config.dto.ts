@@ -678,6 +678,18 @@ export class NavigationConfigDto {
   @IsOptional()
   @IsIn(['left', 'right', 'top', 'bottom'])
   mobileMenuPosition?: string;
+
+  @ApiPropertyOptional({
+    enum: ['xs', 'sm', 'md', 'base', 'lg', 'xl', '2xl', '3xl'],
+  })
+  @IsOptional()
+  @IsIn(['xs', 'sm', 'md', 'base', 'lg', 'xl', '2xl', '3xl'])
+  titleSize?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  titleWeight?: number;
 }
 
 // ==================== HERO SECTION DTO ====================
@@ -731,9 +743,35 @@ export class HeroTitleDto {
   @Matches(HEX_COLOR_REGEX, { message: 'color must be a valid hex color' })
   color?: string;
 
-  @ApiPropertyOptional({ enum: ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'] })
+  @ApiPropertyOptional({
+    enum: [
+      'xs',
+      'sm',
+      'md',
+      'base',
+      'lg',
+      'xl',
+      '2xl',
+      '3xl',
+      '4xl',
+      '5xl',
+      '6xl',
+    ],
+  })
   @IsOptional()
-  @IsIn(['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl'])
+  @IsIn([
+    'xs',
+    'sm',
+    'md',
+    'base',
+    'lg',
+    'xl',
+    '2xl',
+    '3xl',
+    '4xl',
+    '5xl',
+    '6xl',
+  ])
   size?: string;
 
   @ApiPropertyOptional()
@@ -758,6 +796,11 @@ export class HeroTitleDto {
   @IsOptional()
   @IsIn(['none', 'fade-in', 'slide-up', 'scale-in'])
   animation?: string;
+
+  @ApiPropertyOptional({ enum: ['left', 'center', 'right'] })
+  @IsOptional()
+  @IsIn(['left', 'center', 'right'])
+  align?: string;
 }
 
 export class HeroSubtitleDto {
@@ -772,9 +815,35 @@ export class HeroSubtitleDto {
   @Matches(HEX_COLOR_REGEX, { message: 'color must be a valid hex color' })
   color?: string;
 
-  @ApiPropertyOptional({ enum: ['xs', 'sm', 'md', 'lg', 'xl'] })
+  @ApiPropertyOptional({
+    enum: [
+      'xs',
+      'sm',
+      'md',
+      'base',
+      'lg',
+      'xl',
+      '2xl',
+      '3xl',
+      '4xl',
+      '5xl',
+      '6xl',
+    ],
+  })
   @IsOptional()
-  @IsIn(['xs', 'sm', 'md', 'lg', 'xl'])
+  @IsIn([
+    'xs',
+    'sm',
+    'md',
+    'base',
+    'lg',
+    'xl',
+    '2xl',
+    '3xl',
+    '4xl',
+    '5xl',
+    '6xl',
+  ])
   size?: string;
 
   @ApiPropertyOptional()
@@ -786,6 +855,11 @@ export class HeroSubtitleDto {
   @IsOptional()
   @IsBoolean()
   shadow?: boolean;
+
+  @ApiPropertyOptional({ enum: ['left', 'center', 'right'] })
+  @IsOptional()
+  @IsIn(['left', 'center', 'right'])
+  align?: string;
 }
 
 export class HeroCtaButtonDto {
@@ -968,10 +1042,41 @@ export class MenuTitleDto {
   @Matches(HEX_COLOR_REGEX, { message: 'color must be a valid hex color' })
   color?: string;
 
-  @ApiPropertyOptional({ enum: ['xs', 'sm', 'md', 'lg', 'xl'] })
+  @ApiPropertyOptional({
+    enum: [
+      'xs',
+      'sm',
+      'md',
+      'base',
+      'lg',
+      'xl',
+      '2xl',
+      '3xl',
+      '4xl',
+      '5xl',
+      '6xl',
+    ],
+  })
   @IsOptional()
-  @IsIn(['xs', 'sm', 'md', 'lg', 'xl'])
+  @IsIn([
+    'xs',
+    'sm',
+    'md',
+    'base',
+    'lg',
+    'xl',
+    '2xl',
+    '3xl',
+    '4xl',
+    '5xl',
+    '6xl',
+  ])
   size?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  weight?: number;
 
   @ApiPropertyOptional({ enum: ['left', 'center', 'right'] })
   @IsOptional()

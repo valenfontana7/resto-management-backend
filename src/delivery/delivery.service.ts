@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
   Inject,
   forwardRef,
 } from '@nestjs/common';
@@ -627,8 +628,25 @@ export class DeliveryService {
   // PUBLIC TRACKING
   // ============================================
 
-  async getPublicTracking(orderId: string) {
-    // TODO: Implementar validación de token
+  async getPublicTracking(orderId: string, token?: string) {
+    // Validar token de tracking: HMAC del orderId
+    if (!token) {
+      throw new ForbiddenException('Token de tracking requerido');
+    }
+    const crypto = await import('crypto');
+    const secret = process.env.JWT_SECRET || 'default-secret';
+    const expected = crypto
+      .createHmac('sha256', secret)
+      .update(orderId)
+      .digest('hex')
+      .slice(0, 16);
+    const valid =
+      token.length === expected.length &&
+      crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected));
+    if (!valid) {
+      throw new ForbiddenException('Token de tracking inválido');
+    }
+
     const delivery = await this.prisma.deliveryOrder.findFirst({
       where: { orderId },
       include: {
@@ -720,6 +738,21 @@ export class DeliveryService {
   // ============================================
   // HELPERS
   // ============================================
+
+  /**
+   * Genera un token de tracking HMAC para un orderId dado.
+   * Usar para crear URLs públicas de tracking.
+   */
+  static generateTrackingToken(orderId: string): string {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const crypto = require('crypto');
+    const secret = process.env.JWT_SECRET || 'default-secret';
+    return crypto
+      .createHmac('sha256', secret)
+      .update(orderId)
+      .digest('hex')
+      .slice(0, 16);
+  }
 
   private validateStatusTransition(
     currentStatus: string,

@@ -187,8 +187,16 @@ async function bootstrap() {
   if (process.env.NODE_ENV !== 'production') {
     const config = new DocumentBuilder()
       .setTitle('Resto Management API')
-      .setDescription('The Resto Management API description')
+      .setDescription(
+        'API para la gestión de restaurantes: autenticación, menús, pedidos, reservas, entregas y más.',
+      )
       .setVersion('1.0')
+      .addBearerAuth(
+        { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+        'JWT',
+      )
+      .addCookieAuth('auth-token')
+      .addServer('http://localhost:4000', 'Local development')
       .build();
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api/docs', app, document);

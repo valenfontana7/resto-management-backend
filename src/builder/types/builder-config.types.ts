@@ -18,7 +18,17 @@
 export type ColorValue = string; // Hex, RGB, RGBA
 export type ImageUrl = string | null;
 export type FontFamily = string;
-export type SizeValue = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl';
+export type SizeValue =
+  | 'xs'
+  | 'sm'
+  | 'md'
+  | 'lg'
+  | 'xl'
+  | '2xl'
+  | '3xl'
+  | '4xl'
+  | '5xl'
+  | '6xl';
 export type SpacingValue = 'none' | 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl';
 export type BorderRadiusValue = 'none' | 'sm' | 'md' | 'lg' | 'xl' | 'full';
 export type ShadowValue = 'none' | 'sm' | 'md' | 'lg' | 'xl' | '2xl';
@@ -313,6 +323,7 @@ export interface HeroConfig {
     shadow?: boolean;
     shadowColor?: ColorValue;
     animation?: 'none' | 'fade-in' | 'slide-up' | 'scale-in';
+    align?: AlignmentValue;
   };
 
   // Subtitle/Description
@@ -322,6 +333,7 @@ export interface HeroConfig {
     size?: SizeValue;
     weight?: number;
     shadow?: boolean;
+    align?: AlignmentValue;
   };
 
   // CTA Button

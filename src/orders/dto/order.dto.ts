@@ -35,6 +35,19 @@ export enum PaymentStatus {
   REFUNDED = 'REFUNDED',
 }
 
+export class SelectedModifierDto {
+  @IsString()
+  @IsNotEmpty()
+  modifierId: string;
+
+  @IsString()
+  @IsNotEmpty()
+  name: string;
+
+  @IsNumber()
+  priceAdjustment: number;
+}
+
 export class OrderItemDto {
   @IsString()
   @IsNotEmpty()
@@ -56,6 +69,12 @@ export class OrderItemDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => SelectedModifierDto)
+  selectedModifiers?: SelectedModifierDto[];
 }
 
 export class CreateOrderDto {
@@ -118,6 +137,10 @@ export class CreateOrderDto {
   @ValidateNested({ each: true })
   @Type(() => OrderItemDto)
   items: OrderItemDto[];
+
+  @IsOptional()
+  @IsString()
+  couponCode?: string;
 }
 
 export class UpdateOrderStatusDto {

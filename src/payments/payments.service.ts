@@ -1,10 +1,11 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
   private client: MercadoPagoConfig;
 
   constructor(
@@ -16,7 +17,7 @@ export class PaymentsService {
     );
 
     if (!accessToken) {
-      console.warn('MercadoPago access token not configured');
+      this.logger.warn('MercadoPago access token not configured');
     } else {
       this.client = new MercadoPagoConfig({
         accessToken,
@@ -111,7 +112,7 @@ export class PaymentsService {
       const orderId = paymentInfo.external_reference;
 
       if (!orderId) {
-        console.error('No order ID in payment');
+        this.logger.error('No order ID in payment webhook');
         return;
       }
 
@@ -120,7 +121,7 @@ export class PaymentsService {
       });
 
       if (!order) {
-        console.error('Order not found:', orderId);
+        this.logger.error(`Order not found for payment webhook: ${orderId}`);
         return;
       }
 

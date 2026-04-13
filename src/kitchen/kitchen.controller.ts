@@ -7,6 +7,7 @@ import {
   Req,
   UseGuards,
   Query,
+  Logger,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -29,6 +30,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 @ApiBearerAuth()
 @Controller('api/restaurants/:restaurantId/kitchen')
 export class KitchenController {
+  private readonly logger = new Logger(KitchenController.name);
+
   constructor(
     private jwtService: JwtService,
     private kitchenNotifications: KitchenNotificationsService,
@@ -67,15 +70,15 @@ export class KitchenController {
         );
       }
 
-      console.log(
-        `✅ Conexión SSE autorizada para restaurante ${restaurantId} - Usuario: ${payload.email}`,
+      this.logger.log(
+        `Conexión SSE autorizada para restaurante ${restaurantId} - Usuario: ${payload.email}`,
       );
 
       return this.kitchenNotifications.getNotificationsForRestaurant(
         restaurantId,
       );
     } catch (error) {
-      console.error('❌ Error al verificar token SSE:', error.message);
+      this.logger.warn(`Error al verificar token SSE: ${error.message}`);
       throw new UnauthorizedException('Token inválido o expirado');
     }
   }

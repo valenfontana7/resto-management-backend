@@ -4,16 +4,22 @@ import {
   Get,
   Param,
   Query,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { AnalyticsService } from './analytics.service';
+import { AnalyticsPdfService } from './analytics-pdf.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AnalyticsQueryDto, TopItemsQueryDto } from './dto/analytics.dto';
 
 @Controller('api/analytics')
 @UseGuards(JwtAuthGuard)
 export class AnalyticsController {
-  constructor(private readonly analyticsService: AnalyticsService) {}
+  constructor(
+    private readonly analyticsService: AnalyticsService,
+    private readonly pdfService: AnalyticsPdfService,
+  ) {}
 
   @Get('restaurant/:restaurantId/visits')
   async getVisits(
@@ -144,5 +150,50 @@ export class AnalyticsController {
       query.startDate,
       query.endDate,
     );
+  }
+
+  @Get('restaurant/:restaurantId/export-pdf')
+  async exportPdf(
+    @Param('restaurantId') restaurantId: string,
+    @Query() query: AnalyticsQueryDto,
+    @Res() res: Response,
+  ) {
+    const [sales, topDishes, categories, performance] = await Promise.all([
+      this.analyticsService.getSales(
+        restaurantId,
+        query.period,
+        query.startDate,
+        query.endDate,
+      ),
+      this.analyticsService.getTopDishes(restaurantId, query.period, 10),
+      this.analyticsService.getCategoryBreakdown(
+        restaurantId,
+        query.period,
+        query.startDate,
+        query.endDate,
+      ),
+      this.analyticsService.getPerformance(
+        restaurantId,
+        query.period,
+        query.startDate,
+        query.endDate,
+      ),
+    ]);
+
+    const buffer = await this.pdfService.generateReport({
+      period: query.period || '30d',
+      sales,
+      topDishes,
+      categories,
+      performance,
+    });
+
+    const filename = `analytics-${query.period || '30d'}-${Date.now()}.pdf`;
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
   }
 }

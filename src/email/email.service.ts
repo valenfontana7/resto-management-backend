@@ -1,6 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { Resend } from 'resend';
+import { EMAIL_QUEUE, type EmailJobData } from './email.processor';
 
 export interface OrderData {
   id: string;
@@ -134,8 +137,14 @@ export class EmailService {
   private resend: Resend | null = null;
   private readonly fromEmail: string;
   private readonly frontendUrl: string;
+  private useQueue = false;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    @Optional()
+    @InjectQueue(EMAIL_QUEUE)
+    private readonly emailQueue: Queue<EmailJobData> | null,
+  ) {
     const apiKey = this.configService.get<string>('RESEND_API_KEY');
     if (apiKey) {
       this.resend = new Resend(apiKey);
@@ -149,6 +158,10 @@ export class EmailService {
       this.configService.get<string>('EMAIL_FROM') || 'pedidos@example.com';
     this.frontendUrl =
       this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+
+    // Queue is enabled if Redis is available and queue was injected
+    this.useQueue =
+      !!this.configService.get<string>('REDIS_URL') && !!this.emailQueue;
   }
 
   async sendOrderConfirmation(
@@ -225,12 +238,45 @@ export class EmailService {
     });
   }
 
+  /**
+   * Send a generic email (used by digest, notifications, etc.)
+   */
+  async sendGenericEmail(
+    to: string,
+    subject: string,
+    html: string,
+    fromName?: string,
+  ): Promise<boolean> {
+    const from = fromName ? `${fromName} <${this.fromEmail}>` : this.fromEmail;
+    return this.sendEmail({ from, to, subject, html });
+  }
+
   private async sendEmail(params: {
     from: string;
     to: string;
     subject: string;
     html: string;
   }): Promise<boolean> {
+    // If queue is available, enqueue with retry instead of sending directly
+    if (this.useQueue) {
+      try {
+        await this.emailQueue!.add('send', params, {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+          removeOnComplete: 100,
+          removeOnFail: 200,
+        });
+        this.logger.log(`Email queued for ${params.to}: ${params.subject}`);
+        return true;
+      } catch (error: unknown) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown error';
+        this.logger.warn(`Failed to queue email, sending directly: ${message}`);
+        // Fall through to direct send
+      }
+    }
+
+    // Direct send (no Redis or queue failure)
     if (!this.resend) {
       this.logger.log(
         `[EMAIL MOCK] To: ${params.to} | Subject: ${params.subject}`,

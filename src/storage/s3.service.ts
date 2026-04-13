@@ -16,6 +16,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Readable } from 'stream';
+import { withRetry } from '../common/utils/retry';
 
 @Injectable()
 export class S3Service {
@@ -114,15 +115,20 @@ export class S3Service {
       // Ignore if bucket already exists
     }
 
-    await this.client.send(
-      new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: physicalKey,
-        Body: params.body,
-        ContentType: params.contentType,
-        CacheControl: params.cacheControl,
-        ACL: this.objectAcl,
-      }),
+    await withRetry(
+      `S3 upload ${physicalKey}`,
+      () =>
+        this.client.send(
+          new PutObjectCommand({
+            Bucket: this.bucket,
+            Key: physicalKey,
+            Body: params.body,
+            ContentType: params.contentType,
+            CacheControl: params.cacheControl,
+            ACL: this.objectAcl,
+          }),
+        ),
+      { attempts: 3, baseDelay: 1000 },
     );
 
     const logicalKey = this.stripPrefix(physicalKey);

@@ -22,11 +22,14 @@
     "prisma:migrate": "prisma migrate deploy",
     "build:seed": "tsc prisma/seed.ts --outDir dist/prisma --module commonjs --target es2020 --esModuleInterop --skipLibCheck",
     "prisma:seed": "node dist/prisma/seed.js",
-    "deploy:setup": "npm ci && npx prisma generate && npx prisma migrate deploy && npm run build && npm run build:seed"
+    "deploy:setup": "npm ci && npx prisma generate && npx prisma migrate deploy && npm run build && npm run build:seed",
+    "prepare": "husky"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.879.0",
     "@aws-sdk/s3-request-presigner": "^3.879.0",
+    "@nestjs/bullmq": "^11.0.4",
+    "@nestjs/cache-manager": "^3.1.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -41,6 +44,8 @@
     "@prisma/adapter-pg": "7.5.0",
     "@prisma/client": "7.5.0",
     "bcrypt": "^6.0.0",
+    "bullmq": "^5.73.3",
+    "cache-manager": "^7.2.8",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "compression": "^1.8.1",
@@ -49,10 +54,12 @@
     "eventsource": "^4.1.0",
     "express-timeout-handler": "^2.2.2",
     "helmet": "^8.1.0",
+    "ioredis": "^5.10.1",
     "mercadopago": "^2.11.0",
     "multer": "^2.0.2",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "pdfkit": "^0.18.0",
     "pg": "^8.16.3",
     "reflect-metadata": "^0.2.2",
     "resend": "^6.7.0",
@@ -72,12 +79,15 @@
     "@types/multer": "^2.0.0",
     "@types/node": "^22.19.1",
     "@types/passport-jwt": "^4.0.1",
+    "@types/pdfkit": "^0.17.5",
     "@types/supertest": "^6.0.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
     "eslint-plugin-prettier": "^5.2.2",
     "globals": "^16.0.0",
+    "husky": "^9.1.7",
     "jest": "^30.0.0",
+    "lint-staged": "^16.4.0",
     "nodemon": "^3.1.11",
     "prettier": "^3.4.2",
     "prisma": "7.5.0",
@@ -109,5 +119,11 @@
   },
   "prisma": {
     "seed": "node dist/prisma/seed.js"
+  },
+  "lint-staged": {
+    "src/**/*.ts": [
+      "prettier --write",
+      "eslint --fix --no-warn-ignored"
+    ]
   }
 }

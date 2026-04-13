@@ -8,7 +8,10 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Logger } from '@nestjs/common';
+import { Logger, UseGuards } from '@nestjs/common';
+import { WsJwtGuard } from './ws-jwt.guard';
+import { JwtService } from '@nestjs/jwt';
+import { PrismaService } from '../prisma/prisma.service';
 
 export interface OrderUpdatePayload {
   id: string;
@@ -30,7 +33,9 @@ export interface OrderUpdatePayload {
 
 @WebSocketGateway({
   cors: {
-    origin: '*',
+    origin: process.env.CORS_ORIGINS
+      ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim())
+      : true, // reflejar origin cuando no está configurado (seguro en dev)
     credentials: true,
   },
   namespace: '/orders',
@@ -44,8 +49,70 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // Track which clients are listening to which restaurants
   private restaurantClients = new Map<string, Set<string>>();
 
-  handleConnection(client: Socket) {
-    this.logger.log(`Client connected: ${client.id}`);
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly prisma: PrismaService,
+  ) {}
+
+  async handleConnection(client: Socket) {
+    try {
+      const token = this.extractToken(client);
+      if (!token) {
+        this.logger.warn(`Client ${client.id} rejected: no token`);
+        client.emit('error', { message: 'Authentication required' });
+        client.disconnect();
+        return;
+      }
+
+      const payload = await this.jwtService.verifyAsync(token);
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: {
+          id: true,
+          email: true,
+          restaurantId: true,
+          roleId: true,
+          role: { select: { name: true } },
+        },
+      });
+
+      if (!user) {
+        this.logger.warn(`Client ${client.id} rejected: user not found`);
+        client.emit('error', { message: 'User not found' });
+        client.disconnect();
+        return;
+      }
+
+      client.data.user = {
+        userId: user.id,
+        email: user.email,
+        restaurantId: user.restaurantId,
+        roleId: user.roleId,
+        role: user.role?.name ?? null,
+      };
+
+      this.logger.log(`Client connected: ${client.id} (user: ${user.email})`);
+    } catch {
+      this.logger.warn(`Client ${client.id} rejected: invalid token`);
+      client.emit('error', { message: 'Invalid or expired token' });
+      client.disconnect();
+    }
+  }
+
+  private extractToken(client: Socket): string | null {
+    const authHeader =
+      client.handshake.headers.authorization ??
+      (client.handshake.headers as any).Authorization;
+    if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+      return authHeader.slice(7);
+    }
+    if (client.handshake.auth?.token) {
+      return client.handshake.auth.token;
+    }
+    if (client.handshake.query?.token) {
+      return client.handshake.query.token as string;
+    }
+    return null;
   }
 
   handleDisconnect(client: Socket) {
@@ -60,6 +127,7 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
     });
   }
 
+  @UseGuards(WsJwtGuard)
   @SubscribeMessage('join-restaurant')
   async handleJoinRestaurant(
     @ConnectedSocket() client: Socket,
@@ -69,6 +137,15 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     if (!restaurantId) {
       return { error: 'restaurantId is required' };
+    }
+
+    // Validate user belongs to this restaurant
+    const user = client.data.user;
+    if (user.role !== 'SUPER_ADMIN' && user.restaurantId !== restaurantId) {
+      this.logger.warn(
+        `Client ${client.id} (user: ${user.email}) denied access to restaurant ${restaurantId}`,
+      );
+      return { error: 'Access denied: you do not belong to this restaurant' };
     }
 
     // Join the socket room for this restaurant

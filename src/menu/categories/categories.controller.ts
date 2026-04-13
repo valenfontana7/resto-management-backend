@@ -9,7 +9,9 @@ import {
   NotFoundException,
   HttpCode,
   HttpStatus,
+  UseInterceptors,
 } from '@nestjs/common';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import {
   ApiTags,
   ApiOperation,
@@ -42,6 +44,8 @@ export class CategoriesController {
 
   @Public()
   @Get('api/public/:slug/menu')
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(120_000) // 2 min — menu updates are semi-frequent
   @ApiOperation({ summary: 'Get menu by restaurant slug (public)' })
   @ApiParam({ name: 'slug', description: 'The slug of the restaurant' })
   @ApiResponse({
@@ -71,6 +75,17 @@ export class CategoriesController {
             deletedAt: null,
           },
           orderBy: { name: 'asc' },
+          include: {
+            modifierGroups: {
+              orderBy: { order: 'asc' },
+              include: {
+                modifiers: {
+                  where: { isAvailable: true },
+                  orderBy: { order: 'asc' },
+                },
+              },
+            },
+          },
         },
       },
       orderBy: { order: 'asc' },
@@ -119,6 +134,17 @@ export class CategoriesController {
             deletedAt: null,
           },
           orderBy: { name: 'asc' },
+          include: {
+            modifierGroups: {
+              orderBy: { order: 'asc' },
+              include: {
+                modifiers: {
+                  where: { isAvailable: true },
+                  orderBy: { order: 'asc' },
+                },
+              },
+            },
+          },
         },
       },
       orderBy: { order: 'asc' },

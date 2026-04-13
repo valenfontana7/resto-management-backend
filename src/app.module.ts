@@ -1,7 +1,9 @@
 import { APP_GUARD, APP_FILTER } from '@nestjs/core';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { BullModule } from '@nestjs/bullmq';
+import { CacheModule } from '@nestjs/cache-manager';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -34,6 +36,11 @@ import { SuperAdminModule } from './super-admin/super-admin.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PlansModule } from './subscriptions/plans/plans.module';
 import { BuilderModule } from './builder/builder.module';
+import { ReviewsModule } from './reviews/reviews.module';
+import { LoyaltyModule } from './loyalty/loyalty.module';
+import { IntegrationsModule } from './integrations/integrations.module';
+import { ExperimentsModule } from './experiments/experiments.module';
+import { DigestModule } from './digest/digest.module';
 import { getJwtSecret } from './common/config/jwt.config';
 import { validateEnvironment } from './common/config/env.validation';
 
@@ -42,6 +49,32 @@ import { validateEnvironment } from './common/config/env.validation';
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnvironment,
+    }),
+    // Redis-backed job queue (BullMQ) — only registered when REDIS_URL is set
+    ...(process.env.REDIS_URL
+      ? [
+          BullModule.forRootAsync({
+            imports: [ConfigModule],
+            useFactory: (config: ConfigService) => {
+              const url = new URL(config.get<string>('REDIS_URL')!);
+              return {
+                connection: {
+                  host: url.hostname,
+                  port: parseInt(url.port || '6379', 10),
+                  password: url.password || undefined,
+                  maxRetriesPerRequest: null,
+                },
+              };
+            },
+            inject: [ConfigService],
+          }),
+        ]
+      : []),
+    // In-memory cache (swap to Redis store when ready)
+    CacheModule.register({
+      isGlobal: true,
+      ttl: 60_000, // 60s default TTL
+      max: 500, // max 500 items in memory
     }),
     ThrottlerModule.forRoot([
       {
@@ -78,6 +111,11 @@ import { validateEnvironment } from './common/config/env.validation';
     NotificationsModule,
     PlansModule, // Importar PlansModule aquí para exponer endpoints públicos
     BuilderModule, // Website Builder module
+    ReviewsModule,
+    LoyaltyModule,
+    IntegrationsModule,
+    ExperimentsModule,
+    DigestModule,
   ],
   controllers: [AppController],
   providers: [

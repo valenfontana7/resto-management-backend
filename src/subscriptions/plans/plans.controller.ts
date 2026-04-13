@@ -9,7 +9,9 @@ import {
   HttpCode,
   HttpStatus,
   NotFoundException,
+  UseInterceptors,
 } from '@nestjs/common';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import { PlansService } from './plans.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
@@ -22,6 +24,7 @@ import { Public } from '../../auth/decorators/public.decorator';
  * Ruta base: /api/plans
  */
 @Public()
+@UseInterceptors(CacheInterceptor)
 @Controller('api/plans')
 export class PublicPlansController {
   constructor(private readonly plansService: PlansService) {}
@@ -31,6 +34,7 @@ export class PublicPlansController {
    * Obtener planes activos disponibles (público)
    */
   @Get()
+  @CacheTTL(300_000) // 5 min — plans rarely change
   async getAvailablePlans() {
     return this.plansService.findActive();
   }

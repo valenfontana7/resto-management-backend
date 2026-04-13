@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -17,6 +18,8 @@ import {
  */
 @Injectable()
 export class RestaurantSettingsService {
+  private readonly logger = new Logger(RestaurantSettingsService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -229,7 +232,7 @@ export class RestaurantSettingsService {
         },
       });
     } catch (e: any) {
-      console.warn('Failed to log analytics:', e?.message || e);
+      this.logger.warn(`Failed to log analytics: ${e?.message || e}`);
     }
   }
 
