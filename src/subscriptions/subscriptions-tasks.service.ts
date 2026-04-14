@@ -495,4 +495,161 @@ export class SubscriptionTasksService {
       this.logger.error(`Error finalizing subscriptions: ${error.message}`);
     }
   }
+
+  /**
+   * Reintentar cobro a suscripciones PAST_DUE - cada día a las 06:00
+   *
+   * Calendario de reintentos basado en días desde que venció el período:
+   * - Día 1, 3, 5: reintento de cobro + email de aviso
+   * - Día 7+: downgrade automático a STARTER (plan gratuito)
+   */
+  @Cron('0 6 * * *') // 06:00 AM todos los días
+  async retryPastDueSubscriptions() {
+    this.logger.log('Retrying past due subscriptions...');
+
+    try {
+      const pastDueSubs = await this.prisma.subscription.findMany({
+        where: {
+          status: SubscriptionStatus.PAST_DUE,
+          isFreeAccount: false,
+        },
+        include: {
+          restaurant: { select: { id: true, name: true, email: true } },
+          paymentMethods: { where: { isDefault: true }, take: 1 },
+        },
+      });
+
+      for (const subscription of pastDueSubs) {
+        try {
+          const daysOverdue = differenceInDays(
+            new Date(),
+            subscription.currentPeriodEnd,
+          );
+
+          // Después de 7 días: downgrade a STARTER
+          if (daysOverdue >= 7) {
+            this.logger.log(
+              `Subscription ${subscription.id} overdue ${daysOverdue} days — downgrading to STARTER`,
+            );
+
+            await this.prisma.subscription.update({
+              where: { id: subscription.id },
+              data: {
+                status: SubscriptionStatus.EXPIRED,
+                previousPlanType: subscription.planType,
+              },
+            });
+
+            if (subscription.restaurant?.email) {
+              await this.emailService.sendPlanDowngradedEmail(
+                subscription.restaurant.email,
+                subscription.restaurant.name,
+                PLAN_NAMES[subscription.planType as PlanType],
+                PLAN_NAMES[PlanType.STARTER],
+                new Date(),
+              );
+            }
+            continue;
+          }
+
+          // Solo reintentar en días específicos: 1, 3, 5
+          const retryDays = [1, 3, 5];
+          if (!retryDays.includes(daysOverdue)) {
+            continue;
+          }
+
+          const pm = (subscription as any).paymentMethods?.[0];
+          if (!pm || !subscription.mpCustomerId) {
+            // Sin método de pago: solo notificar
+            if (subscription.restaurant?.email) {
+              await this.emailService.sendPaymentFailedEmail(
+                subscription.restaurant.email,
+                subscription.restaurant.name,
+                PLAN_NAMES[subscription.planType as PlanType],
+                0,
+              );
+            }
+            continue;
+          }
+
+          // Obtener monto a cobrar
+          const plan = await this.plansService
+            .findOne(subscription.planId)
+            .catch(() => null);
+          let amount = plan?.price ?? 0;
+
+          if (
+            subscription.discountPercentage &&
+            subscription.discountPercentage > 0
+          ) {
+            const discount = (amount * subscription.discountPercentage) / 100;
+            amount = Math.round(amount - discount);
+          }
+
+          if (amount <= 0) continue;
+
+          const idempotencyKey = `dunning_${subscription.id}_day${daysOverdue}`;
+
+          this.logger.log(
+            `Dunning retry for ${subscription.id} (day ${daysOverdue}), amount: ${amount}`,
+          );
+
+          try {
+            const mercadopagoService = (this.subscriptionsService as any)
+              .mercadopagoService;
+            if (!mercadopagoService) {
+              throw new Error('MercadoPago service not available');
+            }
+
+            const resp = await mercadopagoService.chargeWithSavedCard(
+              subscription.restaurant?.id ?? '',
+              subscription.mpCustomerId,
+              pm.mpCardId,
+              amount,
+              'ARS',
+              `Cobro pendiente ${PLAN_NAMES[subscription.planType as PlanType]} - Restoo`,
+              true,
+              idempotencyKey,
+            );
+
+            // Pago exitoso
+            await this.subscriptionsService.processPaymentApproved(
+              subscription.restaurant?.id ?? '',
+              subscription.planType as PlanType,
+              resp.id,
+              amount,
+            );
+
+            this.logger.log(
+              `Dunning charge successful for ${subscription.id}, payment ${resp.id}`,
+            );
+          } catch (err: any) {
+            this.logger.warn(
+              `Dunning retry failed for ${subscription.id} (day ${daysOverdue}): ${err?.message}`,
+            );
+
+            // Enviar email de aviso
+            if (subscription.restaurant?.email) {
+              await this.emailService.sendPaymentFailedEmail(
+                subscription.restaurant.email,
+                subscription.restaurant.name,
+                PLAN_NAMES[subscription.planType as PlanType],
+                amount,
+              );
+            }
+          }
+        } catch (error: any) {
+          this.logger.error(
+            `Error in dunning retry for ${subscription.id}: ${error.message}`,
+          );
+        }
+      }
+
+      this.logger.log(`Processed ${pastDueSubs.length} past due subscriptions`);
+    } catch (error: any) {
+      this.logger.error(
+        `Error retrying past due subscriptions: ${error.message}`,
+      );
+    }
+  }
 }

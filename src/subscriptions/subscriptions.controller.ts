@@ -9,6 +9,7 @@ import {
   HttpStatus,
   Delete,
   ForbiddenException,
+  Header,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -174,6 +175,19 @@ export class SubscriptionsController {
     const freshUser = await this.authService.validateUser(user.userId);
     assertRestaurantAccess(freshUser, restaurantId);
     return this.subscriptionsService.getInvoices(restaurantId);
+  }
+
+  @Get('invoices/:invoiceId/receipt')
+  @ApiOperation({ summary: 'Obtener recibo HTML de una factura' })
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  async getInvoiceReceipt(
+    @Param('restaurantId') restaurantId: string,
+    @Param('invoiceId') invoiceId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
+    return this.subscriptionsService.getInvoiceReceipt(restaurantId, invoiceId);
   }
 
   @Post('payment-methods')

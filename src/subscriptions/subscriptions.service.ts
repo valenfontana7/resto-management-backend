@@ -1030,6 +1030,84 @@ export class SubscriptionsService {
   }
 
   /**
+   * Generar recibo HTML para una factura
+   */
+  async getInvoiceReceipt(
+    restaurantId: string,
+    invoiceId: string,
+  ): Promise<string> {
+    const invoice = await this.prisma.invoice.findFirst({
+      where: {
+        id: invoiceId,
+        subscription: { restaurantId },
+      },
+      include: {
+        subscription: {
+          include: {
+            restaurant: { select: { name: true, email: true } },
+          },
+        },
+      },
+    });
+
+    if (!invoice) {
+      throw new NotFoundException('Factura no encontrada');
+    }
+
+    const restaurant = invoice.subscription?.restaurant;
+    const planType = invoice.subscription?.planType as PlanType;
+    const planName = PLAN_NAMES[planType] || planType;
+    const amount = (invoice.amount / 100).toLocaleString('es-AR', {
+      style: 'currency',
+      currency: invoice.currency || 'ARS',
+    });
+    const date = invoice.paidAt
+      ? format(invoice.paidAt, "d 'de' MMMM 'de' yyyy", { locale: es })
+      : format(invoice.createdAt, "d 'de' MMMM 'de' yyyy", { locale: es });
+
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Recibo - ${invoice.id.slice(0, 8)}</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; color: #1a1a1a; }
+  .header { text-align: center; border-bottom: 2px solid #10b981; padding-bottom: 20px; margin-bottom: 30px; }
+  .header h1 { color: #10b981; margin: 0; font-size: 24px; }
+  .header p { color: #666; margin: 5px 0 0; }
+  .details { margin: 20px 0; }
+  .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+  .row:last-child { border-bottom: none; }
+  .label { color: #666; }
+  .value { font-weight: 600; }
+  .total { font-size: 20px; text-align: right; margin-top: 20px; padding-top: 20px; border-top: 2px solid #1a1a1a; }
+  .footer { text-align: center; color: #999; font-size: 12px; margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; }
+  @media print { body { margin: 0; } }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>Restoo</h1>
+    <p>Recibo de pago</p>
+  </div>
+  <div class="details">
+    <div class="row"><span class="label">Número</span><span class="value">#${invoice.id.slice(0, 8).toUpperCase()}</span></div>
+    <div class="row"><span class="label">Fecha</span><span class="value">${date}</span></div>
+    <div class="row"><span class="label">Restaurante</span><span class="value">${restaurant?.name || '—'}</span></div>
+    <div class="row"><span class="label">Plan</span><span class="value">${planName}</span></div>
+    <div class="row"><span class="label">Estado</span><span class="value">${invoice.status === 'paid' ? 'Pagado' : 'Pendiente'}</span></div>
+    ${invoice.mpPaymentId ? `<div class="row"><span class="label">ID de pago</span><span class="value">${invoice.mpPaymentId}</span></div>` : ''}
+  </div>
+  <div class="total">Total: ${amount}</div>
+  <div class="footer">
+    <p>Este recibo fue generado automáticamente por Restoo.</p>
+    <p>Para consultas: soporte@restoo.app</p>
+  </div>
+</body>
+</html>`;
+  }
+
+  /**
    * Procesar pago aprobado de suscripción (llamado desde webhook o cron)
    * Usa transacción atómica para garantizar consistencia entre subscription e invoice
    * Implementa idempotencia por paymentId para evitar procesar el mismo pago dos veces

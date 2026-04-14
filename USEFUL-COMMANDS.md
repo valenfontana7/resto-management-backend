@@ -373,6 +373,55 @@ sudo tail -f /var/log/nginx/resto-backend-access.log
 sudo tail -f /var/log/nginx/resto-backend-error.log
 ```
 
+### Fix WebSocket / Socket.IO en producción
+
+Si ves errores `WebSocket connection failed` en el navegador, el problema es que nginx cierra conexiones persistentes por el `proxy_read_timeout` corto (60s) y tiene el header `Connection` hardcodeado.
+
+**Aplicar el fix en el VPS:**
+
+```bash
+# 1. Abrir el archivo de configuración activo en el VPS
+sudo nano /etc/nginx/sites-available/resto-backend
+
+# 2. Agregar el map FUERA del bloque server (al inicio del archivo):
+# map $http_upgrade $connection_upgrade {
+#     default upgrade;
+#     ''      close;
+# }
+
+# 3. Agregar un bloque location específico para Socket.IO ANTES del location /:
+# location /socket.io/ {
+#     proxy_pass http://localhost:4000;
+#     proxy_http_version 1.1;
+#     proxy_set_header Upgrade $http_upgrade;
+#     proxy_set_header Connection $connection_upgrade;
+#     proxy_set_header Host $host;
+#     proxy_set_header X-Real-IP $remote_addr;
+#     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#     proxy_set_header X-Forwarded-Proto $scheme;
+#     proxy_cache_bypass $http_upgrade;
+#     proxy_connect_timeout 60s;
+#     proxy_send_timeout    3600s;   # <-- clave: sin límite para WS
+#     proxy_read_timeout    3600s;   # <-- clave: sin límite para WS
+# }
+
+# 4. En el location / existente, cambiar Connection 'upgrade' por $connection_upgrade:
+# proxy_set_header Connection $connection_upgrade;
+
+# 5. Verificar y aplicar
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+O copiar directamente desde el repo (ya incluye todos los cambios):
+
+```bash
+# Desde el directorio del repo en el VPS
+sudo cp nginx-https.conf /etc/nginx/sites-available/resto-backend
+# Editar el server_name y las rutas de certificado SSL
+sudo nano /etc/nginx/sites-available/resto-backend
+sudo nginx -t && sudo systemctl reload nginx
+```
+
 ---
 
 ## 🔒 SSL / Let's Encrypt
