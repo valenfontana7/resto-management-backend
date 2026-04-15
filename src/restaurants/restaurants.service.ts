@@ -53,6 +53,7 @@ export class RestaurantsService {
         hours: true,
         createdAt: true,
         updatedAt: true,
+        _count: { select: { dishes: true } },
       },
     });
 
@@ -88,6 +89,7 @@ export class RestaurantsService {
         hours: true,
         createdAt: true,
         updatedAt: true,
+        _count: { select: { dishes: true } },
       },
     });
 

@@ -37,6 +37,8 @@ export class UploadsController {
     'image/png',
     'image/webp',
     'image/gif',
+    'image/svg+xml',
+    'image/avif',
   ]);
 
   constructor(private readonly s3: S3Service) {}
@@ -226,7 +228,7 @@ export class UploadsController {
     const normalizedMimeType = file.mimetype.toLowerCase();
     if (!UploadsController.ALLOWED_IMAGE_MIME_TYPES.has(normalizedMimeType)) {
       throw new BadRequestException(
-        'Unsupported file type. Allowed types: JPEG, PNG, WebP, GIF',
+        'Unsupported file type. Allowed types: JPEG, PNG, WebP, GIF, SVG, AVIF',
       );
     }
 
@@ -240,13 +242,15 @@ export class UploadsController {
 
     const extFromName = (file.originalname || '')
       .toLowerCase()
-      .match(/\.(jpg|jpeg|png|webp|gif|svg)$/)?.[0];
+      .match(/\.(jpg|jpeg|png|webp|gif|svg|avif)$/)?.[0];
     const extFromType = (() => {
       const ct = normalizedMimeType;
       if (ct === 'image/jpeg' || ct === 'image/jpg') return '.jpg';
       if (ct === 'image/png') return '.png';
       if (ct === 'image/webp') return '.webp';
       if (ct === 'image/gif') return '.gif';
+      if (ct === 'image/svg+xml') return '.svg';
+      if (ct === 'image/avif') return '.avif';
       return '';
     })();
 
