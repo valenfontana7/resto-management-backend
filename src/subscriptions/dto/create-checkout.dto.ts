@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsUrl, IsOptional } from 'class-validator';
+import { IsEnum, IsUrl, IsOptional, IsString } from 'class-validator';
 import { PlanType } from './create-subscription.dto';
 
 export class CreateCheckoutDto {
@@ -28,4 +28,14 @@ export class CreateCheckoutDto {
   @IsOptional()
   @IsUrl({ require_tld: false })
   cancelUrl?: string;
+
+  @ApiProperty({
+    example: 'mercadopago',
+    description: 'Proveedor de pago a utilizar (mercadopago o payway)',
+    required: false,
+    default: 'mercadopago',
+  })
+  @IsOptional()
+  @IsString()
+  paymentProvider?: 'mercadopago' | 'payway';
 }

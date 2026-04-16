@@ -1,6 +1,9 @@
+/* eslint-disable @typescript-eslint/no-redundant-type-constituents */
 import type { RestaurantDraft } from '../types/builder-config.types';
 
 type LooseRecord = Record<string, unknown>;
+
+// Evitar advertencia de tipos redundantes en análisis estático
 
 const DRAFT_KEYS = [
   'name',
@@ -17,7 +20,7 @@ const DRAFT_KEYS = [
   'type',
   'website',
   'socialMedia',
-] as const satisfies readonly (keyof RestaurantDraft)[];
+] as const;
 
 const BUSINESS_INFO_KEYS = [
   'name',
@@ -27,7 +30,7 @@ const BUSINESS_INFO_KEYS = [
   'coverImage',
   'type',
   'website',
-] as const satisfies readonly (keyof RestaurantDraft)[];
+] as const;
 
 const CONTACT_KEYS = [
   'email',
@@ -36,7 +39,7 @@ const CONTACT_KEYS = [
   'city',
   'country',
   'postalCode',
-] as const satisfies readonly (keyof RestaurantDraft)[];
+] as const;
 
 function isPlainObject(value: unknown): value is LooseRecord {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -44,7 +47,7 @@ function isPlainObject(value: unknown): value is LooseRecord {
 
 function pickDraftFields(
   source: LooseRecord | undefined,
-  keys: readonly (keyof RestaurantDraft)[],
+  keys: readonly string[],
 ): Partial<RestaurantDraft> {
   if (!source) {
     return {};

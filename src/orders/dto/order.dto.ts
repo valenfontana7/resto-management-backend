@@ -141,6 +141,10 @@ export class CreateOrderDto {
   @IsOptional()
   @IsString()
   couponCode?: string;
+
+  @IsOptional()
+  @IsString()
+  paymentProvider?: string;
 }
 
 export class UpdateOrderStatusDto {

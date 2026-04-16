@@ -14,6 +14,7 @@ import { Public } from '../auth/decorators/public.decorator';
 import { MercadoPagoWebhookService } from '../mercadopago/mercadopago-webhook.service';
 import { OrdersService } from '../orders/orders.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { PaymentProviderFactory } from '../payment-providers/payment-provider.factory';
 import { PlanType } from '../subscriptions/dto';
 
 @ApiTags('webhooks')
@@ -25,6 +26,7 @@ export class WebhooksController {
     private readonly webhookService: MercadoPagoWebhookService,
     private readonly ordersService: OrdersService,
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly paymentProviderFactory: PaymentProviderFactory,
   ) {}
 
   @Post('mercadopago')
@@ -211,6 +213,72 @@ export class WebhooksController {
       this.logger.error(
         `Error processing subscription webhook: ${error.message}`,
       );
+      return { received: true, error: error.message };
+    }
+  }
+
+  @Post('payway')
+  @Public()
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Handle Payway (Decidir) payment webhooks' })
+  async handlePaywayWebhook(
+    @Req() req: any,
+    @Body() body: any,
+    @Query() query: Record<string, string>,
+    @Headers() headers: Record<string, string>,
+  ) {
+    const rawBody: Buffer | undefined = req?.rawBody;
+
+    this.logger.log(
+      `Payway webhook received: paymentId=${body?.id}, status=${body?.status}`,
+    );
+
+    try {
+      const provider = this.paymentProviderFactory.getProvider('payway');
+      const webhook = await provider.validateAndParseWebhook({
+        headers,
+        rawBody: rawBody || JSON.stringify(body),
+        query,
+      });
+
+      this.logger.log(
+        `Payway webhook parsed: type=${webhook.eventType}, status=${webhook.status}`,
+      );
+
+      if (webhook.eventType === 'payment' && webhook.status === 'approved') {
+        // externalReference = site_transaction_id (formato: "order_{checkoutSessionId}" o "sub_{restaurantId}_{planType}")
+        const ref = webhook.externalReference || '';
+
+        if (ref.startsWith('order_')) {
+          const checkoutSessionId = ref.replace('order_', '');
+          await this.ordersService.processCheckoutPaymentApproved(
+            checkoutSessionId,
+            webhook.providerPaymentId,
+          );
+          this.logger.log(
+            `Payway order payment processed for checkout ${checkoutSessionId}`,
+          );
+        } else if (ref.startsWith('sub_')) {
+          const parts = ref.split('_');
+          if (parts.length >= 3) {
+            const restaurantId = parts[1];
+            const planType = parts[2] as PlanType;
+            await this.subscriptionsService.processPaymentApproved(
+              restaurantId,
+              planType,
+              webhook.providerPaymentId,
+              webhook.amount || 0,
+            );
+            this.logger.log(
+              `Payway subscription payment approved for restaurant ${restaurantId}`,
+            );
+          }
+        }
+      }
+
+      return { received: true, status: webhook.status };
+    } catch (error: any) {
+      this.logger.error(`Error processing Payway webhook: ${error.message}`);
       return { received: true, error: error.message };
     }
   }

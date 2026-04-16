@@ -50,6 +50,7 @@ model Restaurant {
   deliveryZones         DeliveryZone[]
   dishes                Dish[]
   mercadoPagoCredential MercadoPagoCredential?
+  paymentProviders      PaymentProviderCredential[]
   notifications         Notification[]
   orders                Order[]
   reservations          Reservation[]
@@ -205,6 +206,7 @@ model Order {
   notes               String?
   paymentId           String?
   preferenceId        String?
+  paymentProvider     String               @default("mercadopago")
   publicTrackingToken String?              @unique
   orderNumber         String
   deliveryNotes       String?
@@ -242,6 +244,7 @@ model CheckoutSession {
   paymentStatus       PaymentStatus @default(PENDING)
   paymentId           String?
   preferenceId        String?       @unique
+  paymentProvider     String        @default("mercadopago")
   isSandbox           Boolean       @default(false)
   items               Json
   subtotal            Int
@@ -317,6 +320,28 @@ model MercadoPagoCredential {
   restaurant            Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
   @@index([restaurantId])
+}
+
+// Credenciales genéricas de proveedor de pago (Payway, Stripe, etc.)
+model PaymentProviderCredential {
+  id             String     @id @default(cuid())
+  restaurantId   String
+  provider       String     // "payway" | "mercadopago" | etc.
+  publicKey      String?
+  secretKeyCipher String    // Encriptado AES-256-GCM
+  secretKeyLast4 String?
+  merchantId     String?    // Payway: site_id / NRO_COMERCIO
+  siteId         String?    // Payway: site_transaction_id prefix
+  isSandbox      Boolean    @default(false)
+  isActive       Boolean    @default(true)
+  metadata       Json?      // Campos extra específicos del proveedor
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, provider])
+  @@index([restaurantId])
+  @@index([provider])
 }
 
 model WebhookEvent {
@@ -634,6 +659,7 @@ model Subscription {
   trialEnd            DateTime?
   canceledAt          DateTime?
   cancelAtPeriodEnd   Boolean                     @default(false)
+  paymentProvider     String                      @default("mercadopago")
   mpSubscriptionId    String?
   mpCustomerId        String?
   mpPayerId           String?
@@ -689,6 +715,7 @@ model Invoice {
   currency       String       @default("ARS")
   status         String       @default("draft")
   mpPaymentId    String?
+  paymentProvider String       @default("mercadopago")
   invoiceUrl     String?
   invoicePdf     String?
   paidAt         DateTime?

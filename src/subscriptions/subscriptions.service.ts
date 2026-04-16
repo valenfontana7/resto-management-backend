@@ -10,6 +10,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { MercadoPagoService } from '../mercadopago/mercadopago.service';
 import { MercadoPagoConfig, Preference } from 'mercadopago';
+import { PaymentProviderFactory } from '../payment-providers/payment-provider.factory';
+import type { PaymentProviderName } from '../payment-providers/interfaces';
 import type { RequestUser } from '../auth/decorators/current-user.decorator';
 import {
   CreateSubscriptionDto,
@@ -39,6 +41,7 @@ export class SubscriptionsService {
     private readonly emailService: EmailService,
     private readonly mercadopagoService: MercadoPagoService,
     private readonly plansService: PlansService,
+    private readonly paymentProviderFactory: PaymentProviderFactory,
   ) {
     const accessToken = this.configService.get<string>(
       'MERCADOPAGO_ACCESS_TOKEN',
@@ -625,20 +628,15 @@ export class SubscriptionsService {
   }
 
   /**
-   * Crear checkout de MercadoPago para suscripción
+   * Crear checkout para suscripción (MercadoPago o Payway)
    */
   async createCheckout(
     restaurantId: string,
     dto: CreateCheckoutDto,
     user?: RequestUser,
   ) {
-    if (!this.mp) {
-      throw new BadRequestException('MercadoPago no está configurado');
-    }
-
     // Verificar si el usuario es SUPER_ADMIN
     if (user && user.role === 'SUPER_ADMIN') {
-      // Para SUPER_ADMIN, actualizar la suscripción directamente sin pago
       const updateResult = await this.updateSubscription(
         restaurantId,
         { planType: dto.planType },
@@ -660,7 +658,6 @@ export class SubscriptionsService {
       throw new NotFoundException('Restaurante no encontrado');
     }
 
-    // Obtener precio dinámico del plan
     const plan = await this.plansService.findOne(dto.planType);
     const price = plan.price;
     if (price === 0) {
@@ -669,8 +666,59 @@ export class SubscriptionsService {
       );
     }
 
-    // Convertir centavos a pesos para MercadoPago
-    const unitPrice = price / 100;
+    const providerName: PaymentProviderName =
+      dto.paymentProvider || 'mercadopago';
+    const backendUrl = this.configService.get('BACKEND_URL');
+    const externalRef = `sub_${restaurantId}_${dto.planType}`;
+    const webhookUrl =
+      providerName === 'payway'
+        ? `${backendUrl}/api/webhooks/payway`
+        : `${backendUrl}/api/webhooks/mercadopago/subscription`;
+
+    // Si se solicita Payway y hay credenciales, usar el provider abstraction
+    if (providerName === 'payway') {
+      const provider = this.paymentProviderFactory.getProvider('payway');
+      const result = await provider.createCheckout({
+        orderId: externalRef,
+        restaurantId,
+        items: [
+          {
+            id: `plan_${dto.planType.toLowerCase()}`,
+            title: `Plan ${PLAN_NAMES[dto.planType]} - Restoo`,
+            description: `Suscripción mensual al plan ${PLAN_NAMES[dto.planType]}`,
+            quantity: 1,
+            unitPrice: price, // ya en centavos
+          },
+        ],
+        totalAmount: price,
+        currency: 'ARS',
+        externalReference: externalRef,
+        notificationUrl: webhookUrl,
+        customer: {
+          name: restaurant.name || '',
+          email: restaurant.email || '',
+        },
+        backUrls: {
+          success: dto.successUrl || '',
+          failure: dto.cancelUrl || '',
+          pending: dto.cancelUrl || '',
+        },
+        metadata: { type: 'subscription', planType: dto.planType },
+      });
+
+      return {
+        checkoutUrl: result.checkoutUrl,
+        providerSessionId: result.providerSessionId,
+        paymentProvider: 'payway',
+      };
+    }
+
+    // Default: MercadoPago (código original)
+    if (!this.mp) {
+      throw new BadRequestException('MercadoPago no está configurado');
+    }
+
+    const unitPrice = price / 100; // centavos → pesos para MP
 
     const preference = new Preference(this.mp);
 
@@ -697,13 +745,13 @@ export class SubscriptionsService {
           },
         ],
         back_urls: backUrls,
-        external_reference: `sub_${restaurantId}_${dto.planType}`,
+        external_reference: externalRef,
         metadata: {
           restaurantId,
           planType: dto.planType,
           type: 'subscription',
         },
-        notification_url: `${this.configService.get('BACKEND_URL')}/api/webhooks/mercadopago/subscription`,
+        notification_url: webhookUrl,
       },
     };
 
@@ -720,6 +768,7 @@ export class SubscriptionsService {
     return {
       checkoutUrl: result.init_point,
       preferenceId: result.id,
+      paymentProvider: 'mercadopago',
     };
   }
 

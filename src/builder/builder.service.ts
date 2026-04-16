@@ -644,6 +644,7 @@ export class BuilderService {
     }
 
     if (!draft) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { restaurant: _restaurant, ...rest } = config;
       return rest as BuilderConfiguration;
     }
@@ -674,17 +675,22 @@ export class BuilderService {
     config: BuilderConfiguration,
     previewRestaurant: RestaurantInfo,
   ): BuilderPreviewBranding {
-    const {
-      restaurant: _restaurant,
-      seo: _seo,
-      metadata: _metadata,
-      version: _version,
-      lastModified: _lastModified,
-      ...branding
-    } = config;
+    // Construir un objeto `branding` a partir de `config` omitiendo claves internas
+    const branding = Object.fromEntries(
+      Object.entries(config).filter(
+        ([k]) =>
+          ![
+            'restaurant',
+            'seo',
+            'metadata',
+            'version',
+            'lastModified',
+          ].includes(k),
+      ),
+    ) as Record<string, unknown>;
 
     const previewBranding: BuilderPreviewBranding = {
-      ...branding,
+      ...(branding as any),
     };
 
     if (

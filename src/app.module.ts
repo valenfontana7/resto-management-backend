@@ -41,6 +41,7 @@ import { LoyaltyModule } from './loyalty/loyalty.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { ExperimentsModule } from './experiments/experiments.module';
 import { DigestModule } from './digest/digest.module';
+import { PaymentProvidersModule } from './payment-providers/payment-providers.module';
 import { getJwtSecret } from './common/config/jwt.config';
 import { validateEnvironment } from './common/config/env.validation';
 
@@ -116,6 +117,7 @@ import { validateEnvironment } from './common/config/env.validation';
     IntegrationsModule,
     ExperimentsModule,
     DigestModule,
+    PaymentProvidersModule,
   ],
   controllers: [AppController],
   providers: [

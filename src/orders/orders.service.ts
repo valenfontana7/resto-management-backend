@@ -11,6 +11,7 @@ import { MercadoPagoService } from '../mercadopago/mercadopago.service';
 import { OrderNotificationsService } from './services/order-notifications.service';
 import { OrderAnalyticsService } from './services/order-analytics.service';
 import { CouponsService } from '../coupons/coupons.service';
+import { PaymentProviderFactory } from '../payment-providers/payment-provider.factory';
 import * as crypto from 'crypto';
 import {
   CreateOrderDto,
@@ -34,6 +35,7 @@ export class OrdersService {
     private readonly notifications: OrderNotificationsService,
     private readonly analytics: OrderAnalyticsService,
     private readonly couponsService: CouponsService,
+    private readonly paymentProviderFactory: PaymentProviderFactory,
   ) {}
 
   async create(
@@ -150,9 +152,12 @@ export class OrdersService {
     const publicTrackingToken = crypto.randomBytes(32).toString('base64url');
     const orderNumber = await this.generateOrderNumber(restaurantId);
 
-    const isMercadoPago =
-      String(paymentMethod) === this.MERCADOPAGO_PAYMENT_METHOD;
-    if (!isMercadoPago) {
+    const ONLINE_PAYMENT_METHODS = ['mercadopago', 'payway'];
+    const isOnlinePayment = ONLINE_PAYMENT_METHODS.includes(
+      String(paymentMethod),
+    );
+    const resolvedProvider = createDto.paymentProvider ?? paymentMethod;
+    if (!isOnlinePayment) {
       const order = await this.prisma.order.create({
         data: {
           orderNumber,
@@ -242,7 +247,7 @@ export class OrdersService {
       };
     }
 
-    // MercadoPago: crear checkout session
+    // Online payment: crear checkout session
     const checkout = await this.prisma.checkoutSession.create({
       data: {
         restaurantId,
@@ -253,6 +258,7 @@ export class OrdersService {
         customerPhone,
         type: orderType,
         paymentMethod,
+        paymentProvider: resolvedProvider,
         paymentStatus: PaymentStatus.PENDING,
         isSandbox: false,
         items: orderItems.map((item) => ({
@@ -288,36 +294,74 @@ export class OrdersService {
         this.configService.get('BACKEND_URL') ||
         'http://localhost:4000';
 
-      const preferenceResult = await this.mercadopagoService.createPreference(
-        requestOrigin,
-        {
-          restaurantId,
-          slug: restaurant.slug,
+      if (resolvedProvider === 'payway') {
+        // Payway: usar PaymentProviderFactory
+        const provider = this.paymentProviderFactory.getProvider('payway');
+        const result = await provider.createCheckout({
           orderId: checkout.id,
+          restaurantId,
           items: orderItems.map((item) => ({
+            id: item.dishId,
             title: item.name,
             quantity: item.quantity,
-            unit_price: item.unitPrice,
+            unitPrice: item.unitPrice,
           })),
-        },
-      );
+          customer: {
+            name: customerName,
+            email: createDto.customerEmail,
+            phone: customerPhone,
+          },
+          totalAmount: total,
+          currency: 'ARS',
+          backUrls: {
+            success: `${requestOrigin}/order/${checkout.id}?status=approved`,
+            failure: `${requestOrigin}/order/${checkout.id}?status=rejected`,
+            pending: `${requestOrigin}/order/${checkout.id}?status=pending`,
+          },
+          notificationUrl: `${requestOrigin}/api/webhooks/payway`,
+          externalReference: checkout.id,
+        });
 
-      await this.prisma.checkoutSession.update({
-        where: { id: checkout.id },
-        data: {
-          preferenceId: preferenceResult.preference.id,
-          isSandbox: preferenceResult.isSandbox,
-        },
-      });
+        paymentUrl = result.checkoutUrl;
+        sandboxPaymentUrl = result.sandboxCheckoutUrl;
 
-      isSandbox = preferenceResult.isSandbox;
-      sandboxPaymentUrl = preferenceResult.preference.sandbox_init_point;
-      paymentUrl = isSandbox
-        ? preferenceResult.preference.sandbox_init_point
-        : preferenceResult.preference.init_point;
+        await this.prisma.checkoutSession.update({
+          where: { id: checkout.id },
+          data: { preferenceId: result.providerSessionId },
+        });
+      } else {
+        // MercadoPago: flujo original
+        const preferenceResult = await this.mercadopagoService.createPreference(
+          requestOrigin,
+          {
+            restaurantId,
+            slug: restaurant.slug,
+            orderId: checkout.id,
+            items: orderItems.map((item) => ({
+              title: item.name,
+              quantity: item.quantity,
+              unit_price: item.unitPrice,
+            })),
+          },
+        );
+
+        await this.prisma.checkoutSession.update({
+          where: { id: checkout.id },
+          data: {
+            preferenceId: preferenceResult.preference.id,
+            isSandbox: preferenceResult.isSandbox,
+          },
+        });
+
+        isSandbox = preferenceResult.isSandbox;
+        sandboxPaymentUrl = preferenceResult.preference.sandbox_init_point;
+        paymentUrl = isSandbox
+          ? preferenceResult.preference.sandbox_init_point
+          : preferenceResult.preference.init_point;
+      }
     } catch (error: any) {
       this.logger.error(
-        `Error creating MercadoPago preference: ${error.message}`,
+        `Error creating ${resolvedProvider} checkout: ${error.message}`,
       );
     }
 
