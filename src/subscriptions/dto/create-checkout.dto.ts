@@ -12,7 +12,7 @@ export class CreateCheckoutDto {
   planType: PlanType;
 
   @ApiProperty({
-    example: 'https://app.restoo.com.ar/admin/subscription?success=true',
+    example: 'https://app.bentoo.com.ar/admin/subscription?success=true',
     description: 'URL de redirección en caso de éxito',
     required: false,
   })
@@ -21,7 +21,7 @@ export class CreateCheckoutDto {
   successUrl?: string;
 
   @ApiProperty({
-    example: 'https://app.restoo.com.ar/admin/subscription?canceled=true',
+    example: 'https://app.bentoo.com.ar/admin/subscription?canceled=true',
     description: 'URL de redirección en caso de cancelación',
     required: false,
   })

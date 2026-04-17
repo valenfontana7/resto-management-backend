@@ -150,8 +150,8 @@ CREATE TABLE IF NOT EXISTS "Notification" (
 -- CreateTable
 CREATE TABLE IF NOT EXISTS "system_settings" (
     "id" TEXT NOT NULL,
-    "platformName" TEXT NOT NULL DEFAULT 'Restoo',
-    "supportEmail" TEXT NOT NULL DEFAULT 'soporte@restoo.com.ar',
+    "platformName" TEXT NOT NULL DEFAULT 'Bentoo',
+    "supportEmail" TEXT NOT NULL DEFAULT 'soporte@bentoo.com.ar',
     "sessionTimeout" INTEGER NOT NULL DEFAULT 120,
     "notifyNewRegistrations" BOOLEAN NOT NULL DEFAULT true,
     "notifyPaymentAlerts" BOOLEAN NOT NULL DEFAULT true,

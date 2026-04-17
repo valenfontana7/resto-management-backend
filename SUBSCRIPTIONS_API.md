@@ -132,8 +132,8 @@ Content-Type: application/json
 ```json
 {
   "planType": "PROFESSIONAL",
-  "successUrl": "https://app.restoo.com.ar/admin/subscription?success=true",
-  "cancelUrl": "https://app.restoo.com.ar/admin/subscription?canceled=true"
+  "successUrl": "https://app.bentoo.com.ar/admin/subscription?success=true",
+  "cancelUrl": "https://app.bentoo.com.ar/admin/subscription?canceled=true"
 }
 ```
 
@@ -328,12 +328,12 @@ MERCADOPAGO_ACCESS_TOKEN=APP_USR-xxxxx
 MERCADOPAGO_PUBLIC_KEY=APP_USR-xxxxx
 
 # URLs
-BACKEND_URL=https://api.restoo.com.ar
-FRONTEND_URL=https://app.restoo.com.ar
+BACKEND_URL=https://api.bentoo.com.ar
+FRONTEND_URL=https://app.bentoo.com.ar
 
 # Email (Resend)
 RESEND_API_KEY=re_xxxxx
-EMAIL_FROM=facturacion@restoo.com.ar
+EMAIL_FROM=facturacion@bentoo.com.ar
 ```
 
 ---

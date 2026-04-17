@@ -684,7 +684,7 @@ export class SubscriptionsService {
         items: [
           {
             id: `plan_${dto.planType.toLowerCase()}`,
-            title: `Plan ${PLAN_NAMES[dto.planType]} - Restoo`,
+            title: `Plan ${PLAN_NAMES[dto.planType]} - Bentoo`,
             description: `Suscripción mensual al plan ${PLAN_NAMES[dto.planType]}`,
             quantity: 1,
             unitPrice: price, // ya en centavos
@@ -737,7 +737,7 @@ export class SubscriptionsService {
         items: [
           {
             id: `plan_${dto.planType.toLowerCase()}`,
-            title: `Plan ${PLAN_NAMES[dto.planType]} - Restoo`,
+            title: `Plan ${PLAN_NAMES[dto.planType]} - Bentoo`,
             description: `Suscripción mensual al plan ${PLAN_NAMES[dto.planType]}`,
             quantity: 1,
             currency_id: 'ARS',
@@ -1136,7 +1136,7 @@ export class SubscriptionsService {
 </head>
 <body>
   <div class="header">
-    <h1>Restoo</h1>
+    <h1>Bentoo</h1>
     <p>Recibo de pago</p>
   </div>
   <div class="details">
@@ -1149,8 +1149,8 @@ export class SubscriptionsService {
   </div>
   <div class="total">Total: ${amount}</div>
   <div class="footer">
-    <p>Este recibo fue generado automáticamente por Restoo.</p>
-    <p>Para consultas: soporte@restoo.app</p>
+    <p>Este recibo fue generado automáticamente por Bentoo.</p>
+    <p>Para consultas: soporte@bentoo.app</p>
   </div>
 </body>
 </html>`;

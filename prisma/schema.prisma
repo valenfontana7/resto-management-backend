@@ -837,8 +837,8 @@ model Notification {
 
 model SystemSettings {
   id                     String   @id @default(cuid())
-  platformName           String   @default("Restoo")
-  supportEmail           String   @default("soporte@restoo.com.ar")
+  platformName           String   @default("Bentoo")
+  supportEmail           String   @default("soporte@bentoo.com.ar")
   sessionTimeout         Int      @default(120)
   notifyNewRegistrations Boolean  @default(true)
   notifyPaymentAlerts    Boolean  @default(true)

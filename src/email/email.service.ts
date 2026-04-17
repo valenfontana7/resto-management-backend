@@ -1178,11 +1178,11 @@ export class EmailService {
   ): Promise<boolean> {
     const formattedDate = this.formatDate(trialEndDate);
     const html = this.renderSubscriptionEmail({
-      title: '🎉 ¡Bienvenido a Restoo!',
+      title: '🎉 ¡Bienvenido a Bentoo!',
       subtitle: `Tu período de prueba de ${planName} comenzó`,
       content: `
         <p style="margin: 0 0 16px; color: #475569; font-size: 16px; line-height: 1.6;">
-          ¡Hola! Gracias por elegir <strong>Restoo</strong> para <strong>${restaurantName}</strong>.
+          ¡Hola! Gracias por elegir <strong>Bentoo</strong> para <strong>${restaurantName}</strong>.
         </p>
         <p style="margin: 0 0 16px; color: #475569; font-size: 16px; line-height: 1.6;">
           Tu período de prueba <strong>gratuito de 14 días</strong> del plan <strong>${planName}</strong> ya está activo.
@@ -1202,9 +1202,9 @@ export class EmailService {
     });
 
     return this.sendEmail({
-      from: `Restoo <${this.fromEmail}>`,
+      from: `Bentoo <${this.fromEmail}>`,
       to: email,
-      subject: `🎉 ¡Bienvenido a Restoo! Tu trial de ${planName} comenzó`,
+      subject: `🎉 ¡Bienvenido a Bentoo! Tu trial de ${planName} comenzó`,
       html,
     });
   }
@@ -1248,7 +1248,7 @@ export class EmailService {
     });
 
     return this.sendEmail({
-      from: `Restoo <${this.fromEmail}>`,
+      from: `Bentoo <${this.fromEmail}>`,
       to: email,
       subject: `⏰ Tu trial de ${planName} termina en ${daysRemaining} ${dayText}`,
       html,
@@ -1287,7 +1287,7 @@ export class EmailService {
     });
 
     return this.sendEmail({
-      from: `Restoo <${this.fromEmail}>`,
+      from: `Bentoo <${this.fromEmail}>`,
       to: email,
       subject: `⌛ Tu trial de ${planName} terminó - ${restaurantName}`,
       html,
@@ -1339,7 +1339,7 @@ export class EmailService {
     });
 
     return this.sendEmail({
-      from: `Restoo <${this.fromEmail}>`,
+      from: `Bentoo <${this.fromEmail}>`,
       to: email,
       subject: `✅ Pago confirmado - Plan ${planName}`,
       html,
@@ -1379,7 +1379,7 @@ export class EmailService {
     });
 
     return this.sendEmail({
-      from: `Restoo <${this.fromEmail}>`,
+      from: `Bentoo <${this.fromEmail}>`,
       to: email,
       subject: `❌ Problema con tu pago - ${restaurantName}`,
       html,
@@ -1419,7 +1419,7 @@ export class EmailService {
     });
 
     return this.sendEmail({
-      from: `Restoo <${this.fromEmail}>`,
+      from: `Bentoo <${this.fromEmail}>`,
       to: email,
       subject: `😢 Suscripción cancelada - ${restaurantName}`,
       html,
@@ -1447,7 +1447,7 @@ export class EmailService {
           </p>
         </div>
         <p style="margin: 0; color: #475569; font-size: 16px; line-height: 1.6;">
-          Gracias por seguir confiando en Restoo. ¡Estamos felices de tenerte de vuelta!
+          Gracias por seguir confiando en Bentoo. ¡Estamos felices de tenerte de vuelta!
         </p>
       `,
       ctaText: 'Ir al Dashboard',
@@ -1455,7 +1455,7 @@ export class EmailService {
     });
 
     return this.sendEmail({
-      from: `Restoo <${this.fromEmail}>`,
+      from: `Bentoo <${this.fromEmail}>`,
       to: email,
       subject: `🎉 ¡Bienvenido de nuevo! - ${restaurantName}`,
       html,
@@ -1492,7 +1492,7 @@ export class EmailService {
     });
 
     return this.sendEmail({
-      from: `Restoo <${this.fromEmail}>`,
+      from: `Bentoo <${this.fromEmail}>`,
       to: email,
       subject: `🚀 ¡Bienvenido a ${newPlanName}! - ${restaurantName}`,
       html,
@@ -1543,7 +1543,7 @@ export class EmailService {
     });
 
     return this.sendEmail({
-      from: `Restoo <${this.fromEmail}>`,
+      from: `Bentoo <${this.fromEmail}>`,
       to: email,
       subject: `📝 Cambio de plan programado - ${restaurantName}`,
       html,
@@ -1657,13 +1657,13 @@ export class EmailService {
                   <!-- Footer -->
                   <tr>
                     <td style="background: #f8fafc; padding: 24px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
-                      <p style="margin: 0 0 8px; font-size: 16px; font-weight: 700; color: #1e293b;">Restoo</p>
+                      <p style="margin: 0 0 8px; font-size: 16px; font-weight: 700; color: #1e293b;">Bentoo</p>
                       <p style="margin: 0; font-size: 12px; color: #94a3b8;">
                         Sistema de gestión para restaurantes
                       </p>
                       <div style="width: 60px; height: 3px; background: linear-gradient(90deg, #10b981, #3b82f6); margin: 16px auto; border-radius: 2px;"></div>
                       <p style="margin: 0; font-size: 12px; color: #94a3b8;">
-                        ¿Necesitás ayuda? <a href="mailto:soporte@restoo.com.ar" style="color: #10b981; text-decoration: none;">soporte@restoo.com.ar</a>
+                        ¿Necesitás ayuda? <a href="mailto:soporte@bentoo.com.ar" style="color: #10b981; text-decoration: none;">soporte@bentoo.com.ar</a>
                       </p>
                     </td>
                   </tr>

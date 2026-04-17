@@ -130,7 +130,7 @@ export class SubscriptionTasksService {
                   pm.mpCardId,
                   amount, // Ya está en centavos, chargeWithSavedCard lo convierte
                   'ARS',
-                  `Suscripción ${PLAN_NAMES[planType]} - Restoo`,
+                  `Suscripción ${PLAN_NAMES[planType]} - Bentoo`,
                   true,
                   `${idempotencyKey}_attempt_${attempt}`,
                 );
@@ -419,7 +419,7 @@ export class SubscriptionTasksService {
                 paymentMethod.mpCardId,
                 amount,
                 'ARS',
-                `Renovación ${PLAN_NAMES[planType]} - Restoo`,
+                `Renovación ${PLAN_NAMES[planType]} - Bentoo`,
                 true,
                 `${idempotencyKey}_attempt_${attempt}`,
               );
@@ -607,7 +607,7 @@ export class SubscriptionTasksService {
               pm.mpCardId,
               amount,
               'ARS',
-              `Cobro pendiente ${PLAN_NAMES[subscription.planType as PlanType]} - Restoo`,
+              `Cobro pendiente ${PLAN_NAMES[subscription.planType as PlanType]} - Bentoo`,
               true,
               idempotencyKey,
             );
