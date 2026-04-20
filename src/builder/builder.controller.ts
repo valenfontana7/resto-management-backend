@@ -470,7 +470,8 @@ export class BuilderController {
   @ApiParam({ name: 'restaurantId', description: 'Restaurant ID' })
   @ApiParam({
     name: 'sectionName',
-    description: 'Section name (nav, hero, menu, info, footer, cart)',
+    description:
+      'Section name (nav, hero, menu, info, footer, cart, checkout, orderConfirmation, reservations)',
   })
   @ApiResponse({ status: 200, description: 'Section updated successfully' })
   @ApiResponse({ status: 400, description: 'Invalid section name' })

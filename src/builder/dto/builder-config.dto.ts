@@ -1761,6 +1761,75 @@ export class CartConfigDto {
   showTip?: boolean;
 }
 
+export class ContentTextConfigDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  text?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, { message: 'color must be a valid hex color' })
+  color?: string;
+
+  @ApiPropertyOptional({
+    enum: ['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl', '6xl'],
+  })
+  @IsOptional()
+  @IsIn(['xs', 'sm', 'md', 'lg', 'xl', '2xl', '3xl', '4xl', '5xl', '6xl'])
+  size?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  weight?: number;
+
+  @ApiPropertyOptional({ enum: ['left', 'center', 'right', 'justify'] })
+  @IsOptional()
+  @IsIn(['left', 'center', 'right', 'justify'])
+  align?: string;
+}
+
+export class ContentButtonStyleDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'backgroundColor must be a valid hex color',
+  })
+  backgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, { message: 'color must be a valid hex color' })
+  color?: string;
+
+  @ApiPropertyOptional({ enum: ['none', 'sm', 'md', 'lg', 'xl', 'full'] })
+  @IsOptional()
+  @IsIn(['none', 'sm', 'md', 'lg', 'xl', 'full'])
+  borderRadius?: string;
+}
+
+export class ContentButtonConfigDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  text?: string;
+
+  @ApiPropertyOptional({ enum: ['sm', 'md', 'lg'] })
+  @IsOptional()
+  @IsIn(['sm', 'md', 'lg'])
+  size?: string;
+
+  @ApiPropertyOptional({ type: ContentButtonStyleDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentButtonStyleDto)
+  style?: ContentButtonStyleDto;
+}
+
 // ==================== MOBILE MENU DTO ====================
 
 export class MobileMenuItemDto {
@@ -2058,28 +2127,270 @@ export class AdvancedConfigDto {
 // ==================== CHECKOUT SECTION DTO ====================
 
 export class CheckoutConfigDto {
-  @ApiPropertyOptional({ enum: ['single-page', 'multi-step'] })
+  @ApiPropertyOptional({
+    enum: [
+      'single-page',
+      'multi-step',
+      'single-column',
+      'two-column',
+      'sidebar',
+    ],
+  })
   @IsOptional()
-  @IsIn(['single-page', 'multi-step'])
+  @IsIn(['single-page', 'multi-step', 'single-column', 'two-column', 'sidebar'])
   layout?: string;
 
-  @ApiPropertyOptional({ enum: ['solid', 'outline', 'ghost'] })
+  @ApiPropertyOptional()
   @IsOptional()
-  @IsIn(['solid', 'outline', 'ghost'])
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'backgroundColor must be a valid hex color',
+  })
+  backgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, { message: 'textColor must be a valid hex color' })
+  textColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'formBackgroundColor must be a valid hex color',
+  })
+  formBackgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'sidebarBackgroundColor must be a valid hex color',
+  })
+  sidebarBackgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  cardShadow?: boolean;
+
+  @ApiPropertyOptional({ enum: ['none', 'sm', 'md', 'lg', 'xl', '2xl'] })
+  @IsOptional()
+  @IsIn(['none', 'sm', 'md', 'lg', 'xl', '2xl'])
+  shadow?: string;
+
+  @ApiPropertyOptional({ enum: ['none', 'sm', 'md', 'lg', 'xl', 'full'] })
+  @IsOptional()
+  @IsIn(['none', 'sm', 'md', 'lg', 'xl', 'full'])
+  borderRadius?: string;
+
+  @ApiPropertyOptional({
+    enum: ['solid', 'outline', 'ghost', 'square', 'rounded', 'pill'],
+  })
+  @IsOptional()
+  @IsIn(['solid', 'outline', 'ghost', 'square', 'rounded', 'pill'])
   buttonStyle?: string;
+
+  @ApiPropertyOptional({
+    enum: ['minimal', 'card', 'full', 'filled', 'outlined', 'bordered'],
+  })
+  @IsOptional()
+  @IsIn(['minimal', 'card', 'full', 'filled', 'outlined', 'bordered'])
+  formStyle?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
   showOrderSummary?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  showOrderNotes?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  showDeliveryEstimate?: boolean;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  backLink?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  title?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  subtitle?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  customerSectionTitle?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  customerSectionSubtitle?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  deliverySectionTitle?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  deliverySectionSubtitle?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  sidebarTitle?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  sidebarSubtitle?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentButtonConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentButtonConfigDto)
+  submitButton?: ContentButtonConfigDto;
+}
+
+export class OrderConfirmationConfigDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'backgroundColor must be a valid hex color',
+  })
+  backgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, { message: 'textColor must be a valid hex color' })
+  textColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'successIconColor must be a valid hex color',
+  })
+  successIconColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  showTrackingInfo?: boolean;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  title?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  subtitle?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  statusTitle?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  nextStepTitle?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  trackingInfo?: ContentTextConfigDto;
 }
 
 // ==================== RESERVATIONS SECTION DTO ====================
 
 export class ReservationsConfigDto {
-  @ApiPropertyOptional({ enum: ['minimal', 'card', 'full'] })
+  @ApiPropertyOptional({
+    enum: [
+      'single-page',
+      'multi-step',
+      'single-column',
+      'two-column',
+      'sidebar',
+    ],
+  })
   @IsOptional()
-  @IsIn(['minimal', 'card', 'full'])
+  @IsIn(['single-page', 'multi-step', 'single-column', 'two-column', 'sidebar'])
+  layout?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'backgroundColor must be a valid hex color',
+  })
+  backgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, { message: 'textColor must be a valid hex color' })
+  textColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  cardShadow?: boolean;
+
+  @ApiPropertyOptional({ enum: ['none', 'sm', 'md', 'lg', 'xl', '2xl'] })
+  @IsOptional()
+  @IsIn(['none', 'sm', 'md', 'lg', 'xl', '2xl'])
+  shadow?: string;
+
+  @ApiPropertyOptional({ enum: ['none', 'sm', 'md', 'lg', 'xl', 'full'] })
+  @IsOptional()
+  @IsIn(['none', 'sm', 'md', 'lg', 'xl', 'full'])
+  borderRadius?: string;
+
+  @ApiPropertyOptional({
+    enum: ['solid', 'outline', 'ghost', 'square', 'rounded', 'pill'],
+  })
+  @IsOptional()
+  @IsIn(['solid', 'outline', 'ghost', 'square', 'rounded', 'pill'])
+  buttonStyle?: string;
+
+  @ApiPropertyOptional({
+    enum: ['minimal', 'card', 'full', 'filled', 'outlined', 'bordered'],
+  })
+  @IsOptional()
+  @IsIn(['minimal', 'card', 'full', 'filled', 'outlined', 'bordered'])
   formStyle?: string;
 
   @ApiPropertyOptional()
@@ -2091,6 +2402,30 @@ export class ReservationsConfigDto {
   @IsOptional()
   @IsBoolean()
   requireDeposit?: boolean;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  title?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  subtitle?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  benefitsTitle?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentButtonConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentButtonConfigDto)
+  submitButton?: ContentButtonConfigDto;
 }
 
 // ==================== SECTIONS DTO ====================
@@ -2137,6 +2472,12 @@ export class SectionsConfigDto {
   @ValidateNested()
   @Type(() => CheckoutConfigDto)
   checkout?: CheckoutConfigDto;
+
+  @ApiPropertyOptional({ type: OrderConfirmationConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => OrderConfirmationConfigDto)
+  orderConfirmation?: OrderConfirmationConfigDto;
 
   @ApiPropertyOptional({ type: ReservationsConfigDto })
   @IsOptional()

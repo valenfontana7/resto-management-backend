@@ -635,6 +635,8 @@ export class RestaurantBrandingV2Service {
     if (ct === 'image/webp') return '.webp';
     if (ct === 'image/gif') return '.gif';
     if (ct === 'image/svg+xml') return '.svg';
+    if (ct === 'image/x-icon' || ct === 'image/vnd.microsoft.icon')
+      return '.ico';
     return '.jpg';
   }
 

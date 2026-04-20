@@ -266,7 +266,7 @@ export class BuilderService {
   ): Promise<any> {
     if (!isValidSectionName(sectionName)) {
       throw new BadRequestException(
-        `Invalid section name: ${sectionName}. Valid sections are: nav, hero, menu, info, footer, cart`,
+        `Invalid section name: ${sectionName}. Valid sections are: nav, hero, menu, info, footer, cart, checkout, orderConfirmation, reservations`,
       );
     }
 
@@ -958,6 +958,9 @@ export class BuilderService {
         checkout:
           oldBranding.sections?.checkout ||
           DEFAULT_BUILDER_CONFIG.sections.checkout,
+        orderConfirmation:
+          oldBranding.sections?.orderConfirmation ||
+          DEFAULT_BUILDER_CONFIG.sections.orderConfirmation,
         reservations:
           oldBranding.sections?.reservations ||
           DEFAULT_BUILDER_CONFIG.sections.reservations,

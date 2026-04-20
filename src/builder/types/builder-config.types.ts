@@ -247,9 +247,9 @@ export interface NavigationConfig {
   showLogo?: boolean;
 
   // Title & Branding
-  titleColor?: ColorValue;
   titleSize?: SizeValue;
   showTitle?: boolean;
+  titleColor?: ColorValue;
   showCuisineTypes?: boolean;
   cuisineTypesColor?: ColorValue;
 
@@ -687,18 +687,89 @@ export interface AdvancedConfig {
 
 // ==================== CHECKOUT SECTION ====================
 
+export interface ContentTextConfig {
+  text?: string;
+  color?: ColorValue;
+  size?: SizeValue;
+  weight?: number;
+  align?: AlignmentValue;
+}
+
+export interface ContentButtonConfig {
+  text?: string;
+  size?: 'sm' | 'md' | 'lg';
+  style?: {
+    backgroundColor?: ColorValue;
+    color?: ColorValue;
+    borderRadius?: BorderRadiusValue;
+  };
+}
+
 export interface CheckoutConfig {
-  layout?: 'single-page' | 'multi-step';
-  buttonStyle?: 'solid' | 'outline' | 'ghost';
+  layout?:
+    | 'single-page'
+    | 'multi-step'
+    | 'single-column'
+    | 'two-column'
+    | 'sidebar';
+  backgroundColor?: ColorValue;
+  textColor?: ColorValue;
+  formBackgroundColor?: ColorValue;
+  sidebarBackgroundColor?: ColorValue;
+  cardShadow?: boolean;
+  shadow?: ShadowValue;
+  borderRadius?: BorderRadiusValue;
+  buttonStyle?: 'solid' | 'outline' | 'ghost' | 'square' | 'rounded' | 'pill';
+  formStyle?: 'minimal' | 'card' | 'full' | 'filled' | 'outlined' | 'bordered';
   showOrderSummary?: boolean;
+  showOrderNotes?: boolean;
+  showDeliveryEstimate?: boolean;
+  backLink?: ContentTextConfig;
+  title?: ContentTextConfig;
+  subtitle?: ContentTextConfig;
+  customerSectionTitle?: ContentTextConfig;
+  customerSectionSubtitle?: ContentTextConfig;
+  deliverySectionTitle?: ContentTextConfig;
+  deliverySectionSubtitle?: ContentTextConfig;
+  sidebarTitle?: ContentTextConfig;
+  sidebarSubtitle?: ContentTextConfig;
+  submitButton?: ContentButtonConfig;
+}
+
+export interface OrderConfirmationConfig {
+  backgroundColor?: ColorValue;
+  textColor?: ColorValue;
+  successIconColor?: ColorValue;
+  showTrackingInfo?: boolean;
+  title?: ContentTextConfig;
+  subtitle?: ContentTextConfig;
+  statusTitle?: ContentTextConfig;
+  nextStepTitle?: ContentTextConfig;
+  trackingInfo?: ContentTextConfig;
 }
 
 // ==================== RESERVATIONS SECTION ====================
 
 export interface ReservationsConfig {
-  formStyle?: 'minimal' | 'card' | 'full';
+  layout?:
+    | 'single-page'
+    | 'multi-step'
+    | 'single-column'
+    | 'two-column'
+    | 'sidebar';
+  backgroundColor?: ColorValue;
+  textColor?: ColorValue;
+  cardShadow?: boolean;
+  shadow?: ShadowValue;
+  borderRadius?: BorderRadiusValue;
+  buttonStyle?: 'solid' | 'outline' | 'ghost' | 'square' | 'rounded' | 'pill';
+  formStyle?: 'minimal' | 'card' | 'full' | 'filled' | 'outlined' | 'bordered';
   showAvailability?: boolean;
   requireDeposit?: boolean;
+  title?: ContentTextConfig;
+  subtitle?: ContentTextConfig;
+  benefitsTitle?: ContentTextConfig;
+  submitButton?: ContentButtonConfig;
 }
 
 // ==================== RESTAURANT INFO (read-only, from Prisma) ====================
@@ -766,6 +837,7 @@ export interface SectionsConfig {
   footer: FooterConfig;
   cart: CartConfig;
   checkout?: CheckoutConfig;
+  orderConfirmation?: OrderConfirmationConfig;
   reservations?: ReservationsConfig;
 }
 
@@ -911,6 +983,10 @@ export const DEFAULT_BUILDER_CONFIG: BuilderConfiguration = {
       layout: 'single-page',
       buttonStyle: 'solid',
       showOrderSummary: true,
+    },
+
+    orderConfirmation: {
+      showTrackingInfo: true,
     },
 
     reservations: {
@@ -1096,6 +1172,7 @@ export const VALID_SECTION_NAMES = [
   'footer',
   'cart',
   'checkout',
+  'orderConfirmation',
   'reservations',
 ] as const;
 export type SectionName = (typeof VALID_SECTION_NAMES)[number];
