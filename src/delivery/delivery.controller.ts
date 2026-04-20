@@ -27,6 +27,7 @@ import {
   UpdateDeliveryStatusDto,
   DeliveryOrderFiltersDto,
   DeliveryStatsFiltersDto,
+  QuoteDeliveryDto,
   UpdateDriverLocationDto,
   DriverStatsFiltersDto,
   DriverFiltersDto,
@@ -37,6 +38,17 @@ import {
 @ApiBearerAuth()
 export class DeliveryController {
   constructor(private deliveryService: DeliveryService) {}
+
+  @Public()
+  @Post('quote')
+  @ApiOperation({ summary: 'Cotizar delivery públicamente' })
+  @ApiResponse({ status: 200, description: 'Cotización calculada' })
+  async quoteDelivery(
+    @Param('restaurantId') restaurantId: string,
+    @Body() dto: QuoteDeliveryDto,
+  ) {
+    return this.deliveryService.quoteDelivery(restaurantId, dto);
+  }
 
   // ============================================
   // DELIVERY ORDERS - 5 endpoints

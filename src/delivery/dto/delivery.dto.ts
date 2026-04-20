@@ -237,6 +237,29 @@ export class DeliveryOrderFiltersDto {
   limit?: number = 20;
 }
 
+export class QuoteDeliveryDto {
+  @ApiPropertyOptional({ enum: ['pickup', 'delivery'], default: 'delivery' })
+  @IsOptional()
+  @IsEnum(['pickup', 'delivery'])
+  type?: 'pickup' | 'delivery' = 'delivery';
+
+  @ApiPropertyOptional({ example: 'Av. Santa Fe 1234, Palermo' })
+  @IsString()
+  @IsOptional()
+  address?: string;
+
+  @ApiPropertyOptional({ example: 'clxxx123' })
+  @IsString()
+  @IsOptional()
+  zoneId?: string;
+
+  @ApiPropertyOptional({ example: 12500 })
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  subtotal?: number;
+}
+
 export class DeliveryStatsFiltersDto {
   @ApiPropertyOptional({ enum: ['today', 'week', 'month', 'custom'] })
   @IsEnum(['today', 'week', 'month', 'custom'])

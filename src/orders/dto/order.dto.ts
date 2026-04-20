@@ -103,6 +103,10 @@ export class CreateOrderDto {
 
   @IsOptional()
   @IsString()
+  deliveryZoneId?: string;
+
+  @IsOptional()
+  @IsString()
   deliveryNotes?: string;
 
   @IsOptional()

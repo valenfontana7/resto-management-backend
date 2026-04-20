@@ -12,6 +12,8 @@ import { OrderNotificationsService } from './services/order-notifications.servic
 import { OrderAnalyticsService } from './services/order-analytics.service';
 import { CouponsService } from '../coupons/coupons.service';
 import { PaymentProviderFactory } from '../payment-providers/payment-provider.factory';
+import { DeliveryPricingService } from '../delivery/services/delivery-pricing.service';
+import { DeliveryDispatchService } from '../delivery/services/delivery-dispatch.service';
 import * as crypto from 'crypto';
 import {
   CreateOrderDto,
@@ -36,6 +38,8 @@ export class OrdersService {
     private readonly analytics: OrderAnalyticsService,
     private readonly couponsService: CouponsService,
     private readonly paymentProviderFactory: PaymentProviderFactory,
+    private readonly deliveryPricingService: DeliveryPricingService,
+    private readonly deliveryDispatchService: DeliveryDispatchService,
   ) {}
 
   async create(
@@ -126,8 +130,39 @@ export class OrdersService {
     const subtotal =
       createDto.subtotal ??
       orderItems.reduce((sum, item) => sum + item.subtotal, 0);
+    const deliveryQuote =
+      orderType === OrderType.DELIVERY
+        ? await this.deliveryPricingService.quoteDelivery(restaurantId, {
+            type: 'delivery',
+            subtotal,
+            address: createDto.deliveryAddress,
+            zoneId: createDto.deliveryZoneId,
+          })
+        : null;
+
+    if (orderType === OrderType.DELIVERY) {
+      if (!createDto.deliveryAddress?.trim()) {
+        throw new BadRequestException(
+          'deliveryAddress is required for delivery orders',
+        );
+      }
+
+      if (!deliveryQuote?.available || !deliveryQuote.zone) {
+        throw new BadRequestException(
+          deliveryQuote?.message ||
+            'No se pudo calcular el delivery para la dirección seleccionada.',
+        );
+      }
+
+      if (deliveryQuote.minOrder > 0 && subtotal < deliveryQuote.minOrder) {
+        throw new BadRequestException(
+          `El monto mínimo para ${deliveryQuote.zone.name} es ${deliveryQuote.minOrder}.`,
+        );
+      }
+    }
+
     const deliveryFee =
-      createDto.deliveryFee ?? (orderType === OrderType.DELIVERY ? 500 : 0);
+      orderType === OrderType.DELIVERY ? (deliveryQuote?.deliveryFee ?? 0) : 0;
     const tip = createDto.tip || 0;
 
     // Validate and apply coupon if provided
@@ -178,6 +213,8 @@ export class OrdersService {
           tip,
           total,
           deliveryAddress: createDto.deliveryAddress,
+          deliveryZoneId: deliveryQuote?.zone?.id,
+          estimatedTime: deliveryQuote?.estimatedTime ?? undefined,
           deliveryNotes: createDto.deliveryNotes,
           tableId: createDto.tableId,
           notes: createDto.notes,
@@ -221,7 +258,15 @@ export class OrdersService {
 
       // Auto-create DeliveryOrder for DELIVERY type
       if (orderType === OrderType.DELIVERY) {
-        await this.createDeliveryOrder(order.id, createDto, deliveryFee);
+        await this.createDeliveryOrder(order.id, createDto, {
+          deliveryFee,
+          zoneId: deliveryQuote?.zone?.id,
+          estimatedTime: deliveryQuote?.estimatedTime ?? undefined,
+        });
+        await this.deliveryDispatchService.dispatchOrder(
+          restaurantId,
+          order.id,
+        );
       }
 
       // Record coupon usage
@@ -1052,6 +1097,7 @@ export class OrdersService {
         tip: checkout.tip,
         total: checkout.total,
         deliveryAddress: checkout.deliveryAddress,
+        deliveryZoneId: null,
         deliveryNotes: checkout.deliveryNotes,
         tableId: checkout.tableId,
         notes: checkout.notes,
@@ -1111,13 +1157,40 @@ export class OrdersService {
 
     // Auto-create DeliveryOrder for DELIVERY type
     if (checkout.type === 'DELIVERY') {
+      const deliveryQuote = await this.deliveryPricingService.quoteDelivery(
+        checkout.restaurantId,
+        {
+          type: 'delivery',
+          subtotal: checkout.subtotal,
+          address: checkout.deliveryAddress || undefined,
+        },
+      );
+
+      if (deliveryQuote.zone?.id || deliveryQuote.estimatedTime) {
+        await this.prisma.order.update({
+          where: { id: createdOrder.id },
+          data: {
+            deliveryZoneId: deliveryQuote.zone?.id ?? null,
+            estimatedTime: deliveryQuote.estimatedTime ?? null,
+          },
+        });
+      }
+
       await this.createDeliveryOrder(
         createdOrder.id,
         {
           deliveryAddress: checkout.deliveryAddress,
           deliveryNotes: checkout.deliveryNotes,
         } as any,
-        checkout.deliveryFee,
+        {
+          deliveryFee: checkout.deliveryFee,
+          zoneId: deliveryQuote.zone?.id,
+          estimatedTime: deliveryQuote.estimatedTime ?? undefined,
+        },
+      );
+      await this.deliveryDispatchService.dispatchOrder(
+        checkout.restaurantId,
+        createdOrder.id,
       );
     }
 
@@ -1149,14 +1222,22 @@ export class OrdersService {
   private async createDeliveryOrder(
     orderId: string,
     dto: { deliveryAddress?: string; deliveryNotes?: string },
-    deliveryFee: number,
+    delivery: {
+      deliveryFee: number;
+      zoneId?: string;
+      estimatedTime?: string;
+    },
   ) {
     try {
       await this.prisma.deliveryOrder.create({
         data: {
           orderId,
           deliveryAddress: dto.deliveryAddress || '',
-          deliveryFee: deliveryFee ?? 0,
+          zoneId: delivery.zoneId,
+          deliveryFee: delivery.deliveryFee ?? 0,
+          estimatedDeliveryTime: this.parseEstimatedTime(
+            delivery.estimatedTime,
+          ),
           customerNotes: dto.deliveryNotes || null,
           status: 'READY',
         },
@@ -1167,5 +1248,14 @@ export class OrdersService {
         error,
       );
     }
+  }
+
+  private parseEstimatedTime(value?: string | null): number | undefined {
+    if (!value) return undefined;
+
+    const match = value.match(/(\d+)/);
+    if (!match) return undefined;
+
+    return Number(match[1]);
   }
 }

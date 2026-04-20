@@ -12,6 +12,7 @@ import { WebsocketModule } from '../websocket/websocket.module';
 import { KitchenModule } from '../kitchen/kitchen.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { CouponsModule } from '../coupons/coupons.module';
+import { DeliveryModule } from '../delivery/delivery.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { CouponsModule } from '../coupons/coupons.module';
     forwardRef(() => KitchenModule),
     NotificationsModule,
     CouponsModule,
+    DeliveryModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService, OrderAnalyticsService, OrderNotificationsService],

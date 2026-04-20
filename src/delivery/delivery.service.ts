@@ -24,6 +24,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { DeliveryZonesService } from './services/delivery-zones.service';
 import { DeliveryDriversService } from './services/delivery-drivers.service';
+import { DeliveryPricingService } from './services/delivery-pricing.service';
 
 @Injectable()
 export class DeliveryService {
@@ -33,6 +34,7 @@ export class DeliveryService {
     private readonly zonesService: DeliveryZonesService,
     @Inject(forwardRef(() => DeliveryDriversService))
     private readonly driversService: DeliveryDriversService,
+    private readonly pricingService: DeliveryPricingService,
   ) {}
 
   // ============================================
@@ -69,6 +71,18 @@ export class DeliveryService {
    */
   async deleteZone(restaurantId: string, zoneId: string) {
     return this.zonesService.deleteZone(restaurantId, zoneId);
+  }
+
+  async quoteDelivery(
+    restaurantId: string,
+    dto: {
+      type?: 'pickup' | 'delivery';
+      address?: string;
+      zoneId?: string;
+      subtotal?: number;
+    },
+  ) {
+    return this.pricingService.quoteDelivery(restaurantId, dto);
   }
 
   // ============================================
