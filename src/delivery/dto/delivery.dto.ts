@@ -46,6 +46,11 @@ export class CreateDeliveryZoneDto {
   @IsString({ each: true })
   @ArrayMinSize(1)
   areas: string[];
+
+  @ApiPropertyOptional({ default: true })
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }
 
 export class UpdateDeliveryZoneDto {
