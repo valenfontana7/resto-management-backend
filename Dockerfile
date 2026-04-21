@@ -6,6 +6,8 @@ WORKDIR /app
 # It's safe to pass a placeholder via --build-arg if you don't want to embed production credentials.
 ARG DATABASE_URL
 ENV DATABASE_URL=${DATABASE_URL}
+ARG BUILD_NODE_OPTIONS=--max-old-space-size=512
+ENV NODE_OPTIONS=${BUILD_NODE_OPTIONS}
 
 COPY package.json package-lock.json ./
 RUN npm ci
