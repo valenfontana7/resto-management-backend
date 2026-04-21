@@ -96,6 +96,8 @@ export class DeliveryZonesService {
       },
     });
 
+    await this.syncRestaurantDeliveryAvailability(restaurantId);
+
     return { success: true, zone, message: 'Zona creada exitosamente' };
   }
 
@@ -138,6 +140,8 @@ export class DeliveryZonesService {
       data: dto,
     });
 
+    await this.syncRestaurantDeliveryAvailability(restaurantId);
+
     return { success: true, zone: updated };
   }
 
@@ -157,6 +161,51 @@ export class DeliveryZonesService {
       where: { id: zoneId },
     });
 
+    await this.syncRestaurantDeliveryAvailability(restaurantId);
+
     return { success: true, message: 'Zona eliminada' };
+  }
+
+  private async syncRestaurantDeliveryAvailability(restaurantId: string) {
+    const [restaurant, activeZonesCount] = await Promise.all([
+      this.prisma.restaurant.findUnique({
+        where: { id: restaurantId },
+        select: { businessRules: true, features: true },
+      }),
+      this.prisma.deliveryZone.count({
+        where: { restaurantId, isActive: true },
+      }),
+    ]);
+
+    if (!restaurant) {
+      throw new NotFoundException('Restaurante no encontrado');
+    }
+
+    const nextEnabled = activeZonesCount > 0;
+    const currentBusinessRules =
+      restaurant.businessRules && typeof restaurant.businessRules === 'object'
+        ? (restaurant.businessRules as Record<string, any>)
+        : {};
+    const currentFeatures =
+      restaurant.features && typeof restaurant.features === 'object'
+        ? (restaurant.features as Record<string, any>)
+        : {};
+
+    await this.prisma.restaurant.update({
+      where: { id: restaurantId },
+      data: {
+        businessRules: {
+          ...currentBusinessRules,
+          delivery: {
+            ...(currentBusinessRules.delivery || {}),
+            enabled: nextEnabled,
+          },
+        },
+        features: {
+          ...currentFeatures,
+          delivery: nextEnabled,
+        },
+      },
+    });
   }
 }

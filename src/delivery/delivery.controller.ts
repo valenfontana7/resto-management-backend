@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  HttpCode,
   Put,
   Patch,
   Delete,
@@ -41,6 +42,7 @@ export class DeliveryController {
 
   @Public()
   @Post('quote')
+  @HttpCode(200)
   @ApiOperation({ summary: 'Cotizar delivery públicamente' })
   @ApiResponse({ status: 200, description: 'Cotización calculada' })
   async quoteDelivery(

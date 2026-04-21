@@ -22,6 +22,11 @@ type DeliveryBusinessRules = {
   freeDeliveryThreshold?: number;
 };
 
+type RestaurantDeliveryFlags = {
+  businessRules: DeliveryBusinessRules;
+  featureEnabled?: boolean;
+};
+
 export type DeliveryQuote = {
   available: boolean;
   type: 'pickup' | 'delivery';
@@ -68,7 +73,7 @@ export class DeliveryPricingService {
     const [restaurant, zones, activePlatform] = await Promise.all([
       this.prisma.restaurant.findUnique({
         where: { id: restaurantId },
-        select: { businessRules: true },
+        select: { businessRules: true, features: true },
       }),
       this.prisma.deliveryZone.findMany({
         where: { restaurantId, isActive: true },
@@ -81,7 +86,7 @@ export class DeliveryPricingService {
       }),
     ]);
 
-    const deliveryRules = this.parseDeliveryRules(restaurant?.businessRules);
+    const deliveryRules = this.parseRestaurantDeliveryFlags(restaurant);
     const normalizedZones = zones.map((zone) => ({
       id: zone.id,
       name: zone.name,
@@ -91,7 +96,13 @@ export class DeliveryPricingService {
       areas: Array.isArray(zone.areas) ? zone.areas : [],
     }));
 
-    if (deliveryRules.enabled === false) {
+    const deliveryEnabled = this.isDeliveryEnabled({
+      deliveryRules,
+      hasActiveZones: normalizedZones.length > 0,
+      hasActivePlatform: Boolean(activePlatform),
+    });
+
+    if (!deliveryEnabled) {
       return {
         available: false,
         type,
@@ -104,7 +115,8 @@ export class DeliveryPricingService {
         zones: normalizedZones,
         requiresZoneSelection: false,
         matchedBy: 'none',
-        freeDeliveryThreshold: deliveryRules.freeDeliveryThreshold,
+        freeDeliveryThreshold:
+          deliveryRules.businessRules.freeDeliveryThreshold,
         message: 'El delivery no está habilitado para este restaurante.',
         externalPlatform: activePlatform?.platform,
       };
@@ -123,7 +135,8 @@ export class DeliveryPricingService {
         zones: normalizedZones,
         requiresZoneSelection: false,
         matchedBy: 'none',
-        freeDeliveryThreshold: deliveryRules.freeDeliveryThreshold,
+        freeDeliveryThreshold:
+          deliveryRules.businessRules.freeDeliveryThreshold,
         message: 'No hay zonas de delivery configuradas.',
         externalPlatform: activePlatform?.platform,
       };
@@ -148,7 +161,8 @@ export class DeliveryPricingService {
         zones: normalizedZones,
         requiresZoneSelection: normalizedZones.length > 1,
         matchedBy,
-        freeDeliveryThreshold: deliveryRules.freeDeliveryThreshold,
+        freeDeliveryThreshold:
+          deliveryRules.businessRules.freeDeliveryThreshold,
         message:
           normalizedZones.length > 1
             ? 'Seleccioná una zona de entrega válida para calcular el envío.'
@@ -157,7 +171,8 @@ export class DeliveryPricingService {
       };
     }
 
-    const freeDeliveryThreshold = deliveryRules.freeDeliveryThreshold;
+    const freeDeliveryThreshold =
+      deliveryRules.businessRules.freeDeliveryThreshold;
     const subtotal = Number(input.subtotal ?? 0);
     const qualifiesForFreeDelivery =
       typeof freeDeliveryThreshold === 'number' &&
@@ -222,24 +237,71 @@ export class DeliveryPricingService {
     return { zone: null, matchedBy: 'none' };
   }
 
-  private parseDeliveryRules(businessRules: unknown): DeliveryBusinessRules {
+  private parseRestaurantDeliveryFlags(
+    restaurant: { businessRules?: unknown; features?: unknown } | null,
+  ): RestaurantDeliveryFlags {
+    const businessRules = restaurant?.businessRules;
     if (!businessRules || typeof businessRules !== 'object') {
-      return {};
+      return {
+        businessRules: {},
+        featureEnabled: this.parseFeatureEnabled(restaurant?.features),
+      };
     }
 
     const delivery = (businessRules as Record<string, unknown>).delivery;
     if (!delivery || typeof delivery !== 'object') {
-      return {};
+      return {
+        businessRules: {},
+        featureEnabled: this.parseFeatureEnabled(restaurant?.features),
+      };
     }
 
     const data = delivery as Record<string, unknown>;
     return {
-      enabled: typeof data.enabled === 'boolean' ? data.enabled : undefined,
-      freeDeliveryThreshold:
-        typeof data.freeDeliveryThreshold === 'number'
-          ? data.freeDeliveryThreshold
-          : undefined,
+      businessRules: {
+        enabled: typeof data.enabled === 'boolean' ? data.enabled : undefined,
+        freeDeliveryThreshold:
+          typeof data.freeDeliveryThreshold === 'number'
+            ? data.freeDeliveryThreshold
+            : undefined,
+      },
+      featureEnabled: this.parseFeatureEnabled(restaurant?.features),
     };
+  }
+
+  private parseFeatureEnabled(features: unknown): boolean | undefined {
+    if (!features || typeof features !== 'object') {
+      return undefined;
+    }
+
+    const delivery = (features as Record<string, unknown>).delivery;
+    return typeof delivery === 'boolean' ? delivery : undefined;
+  }
+
+  private isDeliveryEnabled(input: {
+    deliveryRules: RestaurantDeliveryFlags;
+    hasActiveZones: boolean;
+    hasActivePlatform: boolean;
+  }): boolean {
+    const {
+      deliveryRules: { businessRules, featureEnabled },
+      hasActiveZones,
+      hasActivePlatform,
+    } = input;
+
+    if (businessRules.enabled === true || featureEnabled === true) {
+      return true;
+    }
+
+    if (hasActiveZones || hasActivePlatform) {
+      return true;
+    }
+
+    if (businessRules.enabled === false || featureEnabled === false) {
+      return false;
+    }
+
+    return false;
   }
 
   private normalizeText(value?: string | null): string {
