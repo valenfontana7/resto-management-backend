@@ -363,7 +363,10 @@ export class BuilderService {
     const config = builderConfig.config as unknown as BuilderConfiguration;
 
     // 1. Extract branding data (design config, without builder-only fields)
-    const { restaurant: draftData, ...brandingData } = config;
+    const { restaurant: rawDraftData, ...brandingData } = config;
+    const draftData = normalizeRestaurantDraftPayload(rawDraftData) as
+      | RestaurantDraft
+      | undefined;
 
     // Sync hero title.text with restaurant name if not set
     if (

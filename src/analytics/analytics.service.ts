@@ -5,6 +5,9 @@ import { OrderStatus } from '@prisma/client';
 
 @Injectable()
 export class AnalyticsService {
+  private readonly timezone =
+    process.env.APP_TIMEZONE || 'America/Argentina/Buenos_Aires';
+
   constructor(private prisma: PrismaService) {}
 
   async getVisitsCount(restaurantId: string, from?: Date, to?: Date) {
@@ -151,7 +154,7 @@ export class AnalyticsService {
         COALESCE(SUM("total"), 0) AS "sales"
       FROM "Order"
       WHERE "restaurantId" = ${restaurantId}
-        AND "status" = 'DELIVERED'
+        AND "status" != 'CANCELLED'
         AND "createdAt" >= ${start}
         AND "createdAt" <= ${end}
       GROUP BY EXTRACT(HOUR FROM "createdAt")
@@ -560,7 +563,7 @@ export class AnalyticsService {
     startDate?: string,
     endDate?: string,
   ): { start: Date; end: Date } {
-    const now = new Date();
+    const now = this.getNowInTimeZone();
     let start: Date;
     let end: Date = new Date(
       now.getFullYear(),
@@ -614,9 +617,8 @@ export class AnalyticsService {
             'startDate and endDate required for custom period',
           );
         }
-        start = new Date(startDate);
-        end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
+        start = this.getDateInTimeZone(startDate, false);
+        end = this.getDateInTimeZone(endDate, true);
         break;
 
       default:
@@ -624,6 +626,26 @@ export class AnalyticsService {
     }
 
     return { start, end };
+  }
+
+  private getNowInTimeZone(): Date {
+    const local = new Date().toLocaleString('sv', {
+      timeZone: this.timezone,
+    });
+    return new Date(local);
+  }
+
+  private getDateInTimeZone(dateString: string, endOfDay: boolean): Date {
+    const local = new Date(
+      `${dateString}T${endOfDay ? '23:59:59.999' : '00:00:00'}`,
+    ).toLocaleString('sv', {
+      timeZone: this.timezone,
+    });
+    const date = new Date(local);
+    if (endOfDay) {
+      date.setHours(23, 59, 59, 999);
+    }
+    return date;
   }
 
   /**

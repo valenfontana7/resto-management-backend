@@ -62,6 +62,31 @@ function pickDraftFields(
   }, {});
 }
 
+function normalizeCuisineTypes(value: unknown): string[] | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) =>
+        typeof item === 'string'
+          ? item.split(',').map((entry) => entry.trim())
+          : [],
+      )
+      .filter((entry) => entry.length > 0);
+  }
+
+  if (typeof value === 'string') {
+    return value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+
+  return undefined;
+}
+
 export function normalizeRestaurantDraftPayload(
   value: unknown,
 ): RestaurantDraft | undefined | unknown {
@@ -79,6 +104,19 @@ export function normalizeRestaurantDraftPayload(
     ...pickDraftFields(contact, CONTACT_KEYS),
     ...pickDraftFields(value, DRAFT_KEYS),
   };
+
+  const cuisineSource =
+    normalized.cuisineTypes !== undefined
+      ? normalized.cuisineTypes
+      : (businessInfo?.cuisineTypes ?? value.cuisineTypes);
+
+  const normalizedCuisineTypes = normalizeCuisineTypes(cuisineSource);
+
+  if (normalizedCuisineTypes !== undefined) {
+    normalized.cuisineTypes = normalizedCuisineTypes;
+  } else if (typeof normalized.cuisineTypes === 'string') {
+    delete (normalized as LooseRecord).cuisineTypes;
+  }
 
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }

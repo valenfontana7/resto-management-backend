@@ -9,6 +9,8 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   private pool: Pool;
+  private readonly timezone =
+    process.env.APP_TIMEZONE || 'America/Argentina/Buenos_Aires';
 
   constructor() {
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -27,6 +29,7 @@ export class PrismaService
 
   async onModuleInit() {
     await this.$connect();
+    await this.$executeRawUnsafe(`SET TIME ZONE '${this.timezone}'`);
   }
 
   async onModuleDestroy() {
