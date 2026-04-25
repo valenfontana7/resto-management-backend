@@ -8,7 +8,6 @@ import {
   Body,
   UseGuards,
   Request,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -80,7 +79,7 @@ export class NotificationsController {
   @ApiOperation({ summary: 'Marcar notificación como leída' })
   @ApiResponse({ status: 200, description: 'Notificación marcada como leída' })
   async markAsRead(
-    @Param('id', ParseUUIDPipe) notificationId: string,
+    @Param('id') notificationId: string,
     @Request() req: any,
   ): Promise<Notification> {
     return this.notificationsService.markAsRead(
@@ -110,7 +109,7 @@ export class NotificationsController {
   @ApiOperation({ summary: 'Eliminar notificación' })
   @ApiResponse({ status: 200, description: 'Notificación eliminada' })
   async deleteNotification(
-    @Param('id', ParseUUIDPipe) notificationId: string,
+    @Param('id') notificationId: string,
     @Request() req: any,
   ): Promise<void> {
     return this.notificationsService.deleteNotification(
