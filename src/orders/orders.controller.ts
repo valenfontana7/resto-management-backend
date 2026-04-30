@@ -173,3 +173,24 @@ export class OrdersController {
     return `${proto}://${host}`;
   }
 }
+
+@ApiTags('orders')
+@Controller('api/orders')
+export class PublicOrdersController {
+  constructor(private readonly ordersService: OrdersService) {}
+
+  @Public()
+  @Get(':id/public')
+  @ApiOperation({ summary: 'Get order status by public tracking token' })
+  @ApiResponse({ status: 200, description: 'Order public data retrieved' })
+  async getPublicOrderByToken(
+    @Param('id') id: string,
+    @Query('token') token?: string,
+  ) {
+    const order = await this.ordersService.getPublicOrderByToken(
+      id,
+      token ?? '',
+    );
+    return { order };
+  }
+}

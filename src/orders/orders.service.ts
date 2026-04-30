@@ -635,6 +635,47 @@ export class OrdersService {
     };
   }
 
+  async getPublicOrderByToken(orderId: string, token: string) {
+    const normalizedToken = (token ?? '').trim();
+    if (!normalizedToken) {
+      throw new BadRequestException('token es requerido');
+    }
+
+    const order = await this.prisma.order.findFirst({
+      where: {
+        id: orderId,
+      },
+      select: {
+        restaurantId: true,
+        publicTrackingToken: true,
+      },
+    });
+
+    if (order?.publicTrackingToken === normalizedToken) {
+      return this.getPublicOrder(order.restaurantId, orderId, normalizedToken);
+    }
+
+    const checkout = await this.prisma.checkoutSession.findFirst({
+      where: {
+        id: orderId,
+      },
+      select: {
+        restaurantId: true,
+        publicTrackingToken: true,
+      },
+    });
+
+    if (checkout?.publicTrackingToken === normalizedToken) {
+      return this.getPublicOrder(
+        checkout.restaurantId,
+        orderId,
+        normalizedToken,
+      );
+    }
+
+    throw new NotFoundException('Order not found');
+  }
+
   async findAll(
     restaurantId: string,
     userId: string,

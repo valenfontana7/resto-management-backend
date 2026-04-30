@@ -1,6 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { OrdersController } from './orders.controller';
+import { OrdersController, PublicOrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { OrderAnalyticsService } from './services/order-analytics.service';
 import { OrderNotificationsService } from './services/order-notifications.service';
@@ -27,7 +27,7 @@ import { DeliveryModule } from '../delivery/delivery.module';
     CouponsModule,
     DeliveryModule,
   ],
-  controllers: [OrdersController],
+  controllers: [OrdersController, PublicOrdersController],
   providers: [OrdersService, OrderAnalyticsService, OrderNotificationsService],
   exports: [OrdersService],
 })

@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { OrdersController } from './orders.controller';
+import { OrdersController, PublicOrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
@@ -13,6 +13,12 @@ import { KitchenNotificationsService } from '../kitchen/kitchen-notifications.se
 import { NotificationsService } from '../notifications/notifications.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { JwtService } from '@nestjs/jwt';
+import { OrderAnalyticsService } from './services/order-analytics.service';
+import { OrderNotificationsService } from './services/order-notifications.service';
+import { CouponsService } from '../coupons/coupons.service';
+import { PaymentProviderFactory } from '../payment-providers/payment-provider.factory';
+import { DeliveryPricingService } from '../delivery/services/delivery-pricing.service';
+import { DeliveryDispatchService } from '../delivery/services/delivery-dispatch.service';
 
 class InMemoryPrisma {
   restaurant = {
@@ -81,7 +87,11 @@ class InMemoryPrisma {
     findFirst: ({ where, select }: any) => {
       if (!this.orderRow) return null;
       if (where.id !== this.orderRow.id) return null;
-      if (where.restaurantId !== this.orderRow.restaurantId) return null;
+      if (
+        where.restaurantId &&
+        where.restaurantId !== this.orderRow.restaurantId
+      )
+        return null;
 
       if (!select) return this.orderRow;
 
@@ -102,6 +112,14 @@ class InMemoryPrisma {
 
   checkoutSession = {
     count: () => 0,
+    findFirst: () => null,
+    create: ({ data }: any) => ({
+      id: 'checkout-1',
+      orderNumber: data.orderNumber,
+      publicTrackingToken: data.publicTrackingToken,
+      createdAt: new Date(),
+    }),
+    update: () => ({}),
   };
 }
 
@@ -110,7 +128,7 @@ describe('Orders public tracking', () => {
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
-      controllers: [OrdersController],
+      controllers: [OrdersController, PublicOrdersController],
       providers: [
         OrdersService,
         // El controller referencia JwtAuthGuard en endpoints admin; para este test
@@ -120,10 +138,52 @@ describe('Orders public tracking', () => {
         // para evitar errores de DI aunque este test no lo use.
         { provide: JwtService, useValue: { verifyAsync: jest.fn() } },
         { provide: OwnershipService, useValue: {} },
-        { provide: MercadoPagoService, useValue: {} },
+        {
+          provide: MercadoPagoService,
+          useValue: {
+            createPreference: jest.fn().mockResolvedValue({
+              preference: {
+                id: 'pref_test',
+                init_point: undefined,
+                sandbox_init_point: undefined,
+              },
+              isSandbox: false,
+            }),
+          },
+        },
         { provide: EmailService, useValue: {} },
         { provide: OrdersGateway, useValue: {} },
         { provide: ConfigService, useValue: { get: jest.fn() } },
+        {
+          provide: OrderNotificationsService,
+          useValue: {
+            sendOrderConfirmationEmails: jest.fn(),
+            sendStatusUpdateEmail: jest.fn(),
+            emitOrderUpdate: jest.fn(),
+            emitKitchenNotification: jest.fn(),
+            emitPaymentConfirmed: jest.fn(),
+          },
+        },
+        { provide: OrderAnalyticsService, useValue: {} },
+        {
+          provide: CouponsService,
+          useValue: {
+            validate: jest.fn(),
+            incrementUsage: jest.fn(),
+          },
+        },
+        {
+          provide: PaymentProviderFactory,
+          useValue: { getProvider: jest.fn() },
+        },
+        {
+          provide: DeliveryPricingService,
+          useValue: { quoteDelivery: jest.fn() },
+        },
+        {
+          provide: DeliveryDispatchService,
+          useValue: { dispatchOrder: jest.fn() },
+        },
         { provide: KitchenNotificationsService, useValue: {} },
         { provide: NotificationsService, useValue: {} },
         {
@@ -184,6 +244,15 @@ describe('Orders public tracking', () => {
     expect(Array.isArray(okRes.body.order.items)).toBe(true);
     expect(okRes.body.order.customerName).toBeUndefined();
     expect(okRes.body.order.customerPhone).toBeUndefined();
+
+    const okGlobalRes = await request(app.getHttpServer())
+      .get('/api/orders/o1/public')
+      .query({ token: createRes.body.publicTrackingToken });
+
+    expect(okGlobalRes.status).toBe(200);
+    expect(okGlobalRes.body.order).toBeDefined();
+    expect(okGlobalRes.body.order.id).toBe('o1');
+    expect(okGlobalRes.body.order.status).toBeDefined();
   });
 
   it('SUPER_ADMIN no debe ir a MercadoPago aunque paymentMethod=mercadopago', async () => {
