@@ -1,0 +1,8 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-resto_user}:${POSTGRES_PASSWORD:-255655}@db:5432/${POSTGRES_DB:-resto_db}?schema=public}
+        BUILD_NODE_OPTIONS: ${BUILD_NODE_OPTIONS:---max-old-space-size=512}
