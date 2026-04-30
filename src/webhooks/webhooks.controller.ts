@@ -42,29 +42,39 @@ export class WebhooksController {
   ) {
     const rawBody: Buffer | undefined = req?.rawBody;
     const webhookInfo = this.webhookService.extractWebhookInfo(query, body);
+    const isLegacyIpn = this.webhookService.isLegacyIpnNotification(
+      query,
+      body,
+    );
     const paymentId = webhookInfo.dataId;
     const eventType = webhookInfo.type || webhookInfo.topic;
 
     this.logger.log(
-      `MercadoPago webhook received: type=${eventType}, paymentId=${paymentId}, queryKeys=${Object.keys(query || {}).join(',') || 'none'}, bodyType=${body?.type || body?.topic || 'unknown'}`,
+      `MercadoPago webhook received: type=${eventType}, paymentId=${paymentId}, queryKeys=${Object.keys(query || {}).join(',') || 'none'}, bodyType=${body?.type || body?.topic || 'unknown'}, source=${isLegacyIpn ? 'legacy_ipn' : 'webhook'}`,
     );
 
-    // Validar firma del webhook (seguridad contra webhooks falsos)
-    const signatureValidation = this.webhookService.validateWebhookSignature(
-      xSignature,
-      xRequestId,
-      paymentId,
-      rawBody,
-    );
-
-    if (!signatureValidation.valid) {
-      this.logger.error(
-        `Webhook signature validation failed: ${signatureValidation.reason}`,
+    if (!isLegacyIpn) {
+      // Validar firma del webhook (seguridad contra webhooks falsos)
+      const signatureValidation = this.webhookService.validateWebhookSignature(
+        xSignature,
+        xRequestId,
+        paymentId,
+        rawBody,
       );
-      throw new ForbiddenException({
-        error: 'Invalid webhook signature',
-        reason: signatureValidation.reason,
-      });
+
+      if (!signatureValidation.valid) {
+        this.logger.error(
+          `Webhook signature validation failed: ${signatureValidation.reason}`,
+        );
+        throw new ForbiddenException({
+          error: 'Invalid webhook signature',
+          reason: signatureValidation.reason,
+        });
+      }
+    } else {
+      this.logger.log(
+        `Skipping signature validation for MercadoPago legacy IPN: topic=${webhookInfo.topic || 'unknown'}, id=${paymentId || 'unknown'}`,
+      );
     }
 
     // Registrar evento para idempotencia
@@ -128,6 +138,10 @@ export class WebhooksController {
     @Headers('x-request-id') xRequestId?: string,
   ) {
     const webhookInfo = this.webhookService.extractWebhookInfo(query, body);
+    const isLegacyIpn = this.webhookService.isLegacyIpnNotification(
+      query,
+      body,
+    );
     const paymentId = webhookInfo.dataId;
     const type = webhookInfo.type || webhookInfo.topic;
     const rawBody: Buffer | undefined = req?.rawBody;
@@ -136,22 +150,28 @@ export class WebhooksController {
       `MercadoPago subscription webhook received: type=${type}, paymentId=${paymentId}`,
     );
 
-    // Validar firma del webhook
-    const signatureValidation = this.webhookService.validateWebhookSignature(
-      xSignature,
-      xRequestId,
-      paymentId,
-      rawBody,
-    );
-
-    if (!signatureValidation.valid) {
-      this.logger.error(
-        `Subscription webhook signature validation failed: ${signatureValidation.reason}`,
+    if (!isLegacyIpn) {
+      // Validar firma del webhook
+      const signatureValidation = this.webhookService.validateWebhookSignature(
+        xSignature,
+        xRequestId,
+        paymentId,
+        rawBody,
       );
-      throw new ForbiddenException({
-        error: 'Invalid webhook signature',
-        reason: signatureValidation.reason,
-      });
+
+      if (!signatureValidation.valid) {
+        this.logger.error(
+          `Subscription webhook signature validation failed: ${signatureValidation.reason}`,
+        );
+        throw new ForbiddenException({
+          error: 'Invalid webhook signature',
+          reason: signatureValidation.reason,
+        });
+      }
+    } else {
+      this.logger.log(
+        `Skipping signature validation for MercadoPago legacy IPN subscription event: topic=${webhookInfo.topic || 'unknown'}, id=${paymentId || 'unknown'}`,
+      );
     }
 
     const { isNew, eventKey } = await this.webhookService.recordWebhookEvent(

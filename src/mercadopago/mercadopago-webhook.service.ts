@@ -136,6 +136,18 @@ export class MercadoPagoWebhookService {
     };
   }
 
+  isLegacyIpnNotification(
+    query: Record<string, unknown> | undefined,
+    body: any,
+  ): boolean {
+    const queryTopic = this.toTrimmedString(query?.['topic']);
+    const queryId = this.toTrimmedString(query?.['id']);
+    const queryDataId = this.toTrimmedString(query?.['data.id']);
+    const bodyTopic = this.toTrimmedString(body?.topic);
+
+    return !!((queryTopic || bodyTopic) && queryId && !queryDataId);
+  }
+
   async handleWebhook(
     query: { type?: string; 'data.id'?: string },
     body: any,
