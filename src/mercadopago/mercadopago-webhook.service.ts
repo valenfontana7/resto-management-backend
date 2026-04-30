@@ -12,6 +12,13 @@ export interface WebhookProcessResult {
   error?: string;
 }
 
+export interface MercadoPagoWebhookInfo {
+  type?: string;
+  topic?: string;
+  dataId?: string;
+  eventId?: string;
+}
+
 @Injectable()
 export class MercadoPagoWebhookService {
   private readonly logger = new Logger(MercadoPagoWebhookService.name);
@@ -70,7 +77,8 @@ export class MercadoPagoWebhookService {
 
     // Construir el manifest para verificar
     // Formato: id:[data.id];request-id:[x-request-id];ts:[ts];
-    const manifest = `id:${dataId || ''};request-id:${xRequestId || ''};ts:${ts};`;
+    const normalizedDataId = this.normalizeDataIdForSignature(dataId);
+    const manifest = `id:${normalizedDataId};request-id:${xRequestId || ''};ts:${ts};`;
 
     // Calcular HMAC-SHA256
     const hmac = crypto
@@ -107,12 +115,34 @@ export class MercadoPagoWebhookService {
     return { valid: true };
   }
 
+  extractWebhookInfo(
+    query: Record<string, unknown> | undefined,
+    body: any,
+  ): MercadoPagoWebhookInfo {
+    const queryType = this.toTrimmedString(query?.['type']);
+    const queryTopic = this.toTrimmedString(query?.['topic']);
+    const queryDataId = this.toTrimmedString(query?.['data.id']);
+    const queryId = this.toTrimmedString(query?.['id']);
+    const bodyType = this.toTrimmedString(body?.type);
+    const bodyTopic = this.toTrimmedString(body?.topic);
+    const bodyDataId = this.toTrimmedString(body?.data?.id);
+    const bodyId = this.toTrimmedString(body?.id);
+
+    return {
+      type: queryType || bodyType,
+      topic: queryTopic || bodyTopic,
+      dataId: queryDataId || bodyDataId || queryId || bodyId,
+      eventId: bodyId || queryId,
+    };
+  }
+
   async handleWebhook(
     query: { type?: string; 'data.id'?: string },
     body: any,
   ): Promise<WebhookProcessResult> {
-    const paymentId = query['data.id'] || body?.data?.id;
-    const type = query.type || body?.type;
+    const info = this.extractWebhookInfo(query, body);
+    const paymentId = info.dataId;
+    const type = info.type || info.topic;
 
     this.logger.log(`Webhook received: type=${type}, paymentId=${paymentId}`);
 
@@ -371,5 +401,18 @@ export class MercadoPagoWebhookService {
         error: error ?? null,
       },
     });
+  }
+
+  private normalizeDataIdForSignature(dataId: string | undefined): string {
+    const normalized = this.toTrimmedString(dataId);
+    if (!normalized) return '';
+
+    return /[A-Z]/.test(normalized) ? normalized.toLowerCase() : normalized;
+  }
+
+  private toTrimmedString(value: unknown): string | undefined {
+    if (typeof value !== 'string') return undefined;
+    const trimmed = value.trim();
+    return trimmed || undefined;
   }
 }

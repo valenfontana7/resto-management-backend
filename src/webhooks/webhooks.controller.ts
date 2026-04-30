@@ -41,10 +41,12 @@ export class WebhooksController {
     @Headers('x-request-id') xRequestId?: string,
   ) {
     const rawBody: Buffer | undefined = req?.rawBody;
-    const paymentId = query['data.id'] || body?.data?.id;
+    const webhookInfo = this.webhookService.extractWebhookInfo(query, body);
+    const paymentId = webhookInfo.dataId;
+    const eventType = webhookInfo.type || webhookInfo.topic;
 
     this.logger.log(
-      `MercadoPago webhook received: type=${query.type}, paymentId=${paymentId}`,
+      `MercadoPago webhook received: type=${eventType}, paymentId=${paymentId}, queryKeys=${Object.keys(query || {}).join(',') || 'none'}, bodyType=${body?.type || body?.topic || 'unknown'}`,
     );
 
     // Validar firma del webhook (seguridad contra webhooks falsos)
@@ -125,8 +127,9 @@ export class WebhooksController {
     @Headers('x-signature') xSignature?: string,
     @Headers('x-request-id') xRequestId?: string,
   ) {
-    const paymentId = query['data.id'] || body?.data?.id;
-    const type = query.type || body?.type;
+    const webhookInfo = this.webhookService.extractWebhookInfo(query, body);
+    const paymentId = webhookInfo.dataId;
+    const type = webhookInfo.type || webhookInfo.topic;
     const rawBody: Buffer | undefined = req?.rawBody;
 
     this.logger.log(
