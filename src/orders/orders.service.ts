@@ -191,8 +191,10 @@ export class OrdersService {
     const isOnlinePayment = ONLINE_PAYMENT_METHODS.includes(
       String(paymentMethod),
     );
+    const shouldCreateOnlineCheckout =
+      isOnlinePayment && String(role || '').toUpperCase() !== 'SUPER_ADMIN';
     const resolvedProvider = createDto.paymentProvider ?? paymentMethod;
-    if (!isOnlinePayment) {
+    if (!shouldCreateOnlineCheckout) {
       const order = await this.prisma.order.create({
         data: {
           orderNumber,
@@ -405,8 +407,30 @@ export class OrdersService {
           : preferenceResult.preference.init_point;
       }
     } catch (error: any) {
+      const message = String(error?.message ?? '');
       this.logger.error(
-        `Error creating ${resolvedProvider} checkout: ${error.message}`,
+        `Error creating ${resolvedProvider} checkout: ${message}`,
+      );
+
+      if (
+        resolvedProvider === this.MERCADOPAGO_PAYMENT_METHOD &&
+        (message.includes('MercadoPago no conectado') ||
+          message.includes('MERCADOPAGO_ACCESS_TOKEN') ||
+          message.includes('falta token'))
+      ) {
+        throw new BadRequestException(
+          'Mercado Pago no está conectado para este restaurante. Agregá el Access Token en Ajustes > Pagos para empezar a cobrar online.',
+        );
+      }
+
+      throw new BadRequestException(
+        'No se pudo iniciar el pago online. Revisá la configuración del proveedor o intentá con otro método de pago.',
+      );
+    }
+
+    if (!paymentUrl) {
+      throw new BadRequestException(
+        'No se pudo generar el enlace de pago. Revisá la configuración del proveedor de pago.',
       );
     }
 

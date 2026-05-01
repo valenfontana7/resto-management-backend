@@ -96,6 +96,14 @@ export class ReservationFiltersDto {
   date?: string;
 
   @IsOptional()
+  @IsDateString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  endDate?: string;
+
+  @IsOptional()
   @IsEnum(ReservationStatus)
   status?: ReservationStatus;
 }

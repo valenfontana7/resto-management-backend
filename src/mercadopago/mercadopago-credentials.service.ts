@@ -12,14 +12,32 @@ export class MercadoPagoCredentialsService {
   async getStatus(restaurantId: string): Promise<{
     connected: boolean;
     createdAt: string | null;
+    updatedAt: string | null;
+    isSandbox: boolean;
+    accessTokenLast4: string | null;
+    publishableKeyConfigured: boolean;
   }> {
     const credential = await this.prisma.mercadoPagoCredential.findUnique({
       where: { restaurantId },
-      select: { accessTokenCiphertext: true, createdAt: true },
+      select: {
+        accessTokenCiphertext: true,
+        accessTokenLast4: true,
+        publishableKey: true,
+        isSandbox: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
 
     if (!credential) {
-      return { connected: false, createdAt: null };
+      return {
+        connected: false,
+        createdAt: null,
+        updatedAt: null,
+        isSandbox: false,
+        accessTokenLast4: null,
+        publishableKeyConfigured: false,
+      };
     }
 
     let connected = false;
@@ -33,6 +51,10 @@ export class MercadoPagoCredentialsService {
     return {
       connected,
       createdAt: credential.createdAt.toISOString(),
+      updatedAt: credential.updatedAt.toISOString(),
+      isSandbox: !!credential.isSandbox,
+      accessTokenLast4: credential.accessTokenLast4 ?? null,
+      publishableKeyConfigured: !!credential.publishableKey,
     };
   }
 

@@ -5,11 +5,13 @@ import { ConfigModule } from '@nestjs/config';
 import request from 'supertest';
 import { MercadoPagoModule } from './mercadopago.module';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuthService } from '../auth/auth.service';
 
 type CredentialRow = {
   restaurantId: string;
   accessTokenCiphertext: string;
   accessTokenLast4: string | null;
+  publishableKey?: string | null;
   isSandbox: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -60,6 +62,7 @@ class InMemoryPrisma {
           restaurantId: create.restaurantId,
           accessTokenCiphertext: create.accessTokenCiphertext,
           accessTokenLast4: create.accessTokenLast4 ?? null,
+          publishableKey: create.publishableKey ?? null,
           isSandbox: !!create.isSandbox,
           createdAt: now,
           updatedAt: now,
@@ -73,6 +76,10 @@ class InMemoryPrisma {
         accessTokenCiphertext:
           update.accessTokenCiphertext ?? existing.accessTokenCiphertext,
         accessTokenLast4: update.accessTokenLast4 ?? existing.accessTokenLast4,
+        publishableKey:
+          update.publishableKey === undefined
+            ? existing.publishableKey
+            : update.publishableKey,
         isSandbox:
           typeof update.isSandbox === 'boolean'
             ? update.isSandbox
@@ -164,7 +171,16 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
       providers: [{ provide: APP_GUARD, useClass: MockAuthGuard }],
     })
       .overrideProvider(PrismaService)
-      .useClass(InMemoryPrisma);
+      .useClass(InMemoryPrisma)
+      .overrideProvider(AuthService)
+      .useValue({
+        validateUser: jest.fn().mockResolvedValue({
+          userId: 'u1',
+          email: 'u1@test.com',
+          role: 'OWNER',
+          restaurantId: 'r1',
+        }),
+      });
 
     const moduleRef = await moduleBuilder.compile();
 
@@ -216,7 +232,10 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
 
     expect(getRes.status).toBe(200);
     expect(getRes.body.connected).toBe(true);
+    expect(getRes.body.isSandbox).toBe(false);
+    expect(getRes.body.accessTokenLast4).toBe('1234');
     expect(typeof getRes.body.createdAt).toBe('string');
+    expect(typeof getRes.body.updatedAt).toBe('string');
     expect(getRes.body.createdAt.length).toBeGreaterThan(0);
 
     const delRes = await request(app.getHttpServer())
@@ -231,7 +250,14 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
       .query({ restaurantId: 'r1' });
 
     expect(getAfter.status).toBe(200);
-    expect(getAfter.body).toEqual({ connected: false, createdAt: null });
+    expect(getAfter.body).toEqual({
+      connected: false,
+      createdAt: null,
+      updatedAt: null,
+      isSandbox: false,
+      accessTokenLast4: null,
+      publishableKeyConfigured: false,
+    });
   });
 
   it('preference validates orderId/items and does not call MP when invalid', async () => {
@@ -305,6 +331,7 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
         init_point: 'https://mp/init',
         sandbox_init_point: 'https://mp/sandbox',
       },
+      isSandbox: false,
     });
 
     const call = fetchMock.mock.calls[0];

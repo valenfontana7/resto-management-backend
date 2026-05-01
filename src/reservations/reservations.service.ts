@@ -130,6 +130,18 @@ export class ReservationsService {
       };
     }
 
+    if (filters.startDate || filters.endDate) {
+      where.date = {};
+
+      if (filters.startDate) {
+        where.date.gte = new Date(filters.startDate);
+      }
+
+      if (filters.endDate) {
+        where.date.lte = new Date(filters.endDate);
+      }
+    }
+
     if (filters.status) {
       where.status = filters.status;
     }
