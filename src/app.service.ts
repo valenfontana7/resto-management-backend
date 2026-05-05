@@ -36,6 +36,28 @@ export class AppService {
     };
   }
 
+  async getSystemStatus() {
+    const settings = await this.prisma.systemSettings.findFirst({
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        maintenanceEnabled: true,
+        maintenanceMessage: true,
+        updatedAt: true,
+      },
+    });
+
+    return {
+      maintenance: {
+        enabled: settings?.maintenanceEnabled ?? false,
+        message:
+          settings?.maintenanceMessage?.trim() ||
+          'El sistema esta en mantenimiento. Intenta nuevamente en unos minutos.',
+      },
+      updatedAt: settings?.updatedAt?.toISOString?.() ?? null,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   private async checkDatabase(): Promise<boolean> {
     try {
       await this.prisma.$queryRaw`SELECT 1`;

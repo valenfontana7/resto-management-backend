@@ -7,11 +7,13 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AdminAlertsModule } from '../admin-alerts/admin-alerts.module';
 import { getJwtSecret } from '../common/config/jwt.config';
 
 @Module({
   imports: [
     PrismaModule,
+    AdminAlertsModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

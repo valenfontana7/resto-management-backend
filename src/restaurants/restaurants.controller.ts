@@ -14,6 +14,7 @@ import {
   UploadedFile,
   Res,
   Req,
+  Optional,
 } from '@nestjs/common';
 import {
   VerifyRestaurantAccess,
@@ -60,6 +61,7 @@ import {
   ReservationsSectionDto,
 } from './dto/branding-v2.dto';
 import { UpdateRestaurantSettingsDto } from './dto/update-restaurant-settings.dto';
+import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
 
 @ApiTags('Restaurants')
 @Controller('api/restaurants')
@@ -70,7 +72,19 @@ export class RestaurantsController {
     private readonly brandingService: RestaurantBrandingV2Service,
     private readonly settingsService: RestaurantSettingsService,
     private readonly authService: AuthService,
+    @Optional() private readonly adminAlerts?: AdminAlertsService,
   ) {}
+
+  @Public()
+  @Get('slug/:slug/branding')
+  @ApiOperation({ summary: 'Get restaurant branding by slug (public)' })
+  @ApiParam({ name: 'slug', description: 'The slug of the restaurant' })
+  @ApiResponse({ status: 200, description: 'Return the restaurant branding.' })
+  @ApiResponse({ status: 404, description: 'Restaurant not found.' })
+  async getBrandingBySlug(@Param('slug') slug: string) {
+    const restaurant = await this.restaurantsService.findBrandingBySlug(slug);
+    return { restaurant };
+  }
 
   @Public()
   @Get('slug/:slug')
@@ -229,6 +243,14 @@ export class RestaurantsController {
     const updatedUser = await this.authService.validateUser(user.userId);
     const authResponse =
       await this.authService.generateAuthResponse(updatedUser);
+
+    void this.adminAlerts?.notifyRestaurantCreated({
+      source: 'restaurants.onboarding.create',
+      restaurantId: restaurant.id,
+      restaurantName: restaurant.name,
+      restaurantSlug: restaurant.slug,
+      ownerEmail: updatedUser.email,
+    });
 
     return {
       restaurant,

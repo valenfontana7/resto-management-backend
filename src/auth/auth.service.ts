@@ -3,12 +3,14 @@ import {
   ConflictException,
   UnauthorizedException,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
 import { User } from '@prisma/client';
+import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
 
 export interface JwtPayload {
   sub: string; // userId
@@ -39,6 +41,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    @Optional() private readonly adminAlerts?: AdminAlertsService,
   ) {}
 
   private normalizeEmail(email: string): string {
@@ -91,6 +94,16 @@ export class AuthService {
           name: true,
         },
       });
+
+      void this.adminAlerts?.notifyUserRegistered({
+        source: 'auth.register',
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        restaurantId: null,
+        restaurantName: null,
+      });
+
       // Use generateAuthResponse to include proper claims (roleName, restaurantSlug)
       return await this.generateAuthResponse(user as any);
     }
@@ -180,6 +193,23 @@ export class AuthService {
       });
 
       return { user, restaurant };
+    });
+
+    void this.adminAlerts?.notifyUserRegistered({
+      source: 'auth.register',
+      userId: result.user.id,
+      name: result.user.name,
+      email: result.user.email,
+      restaurantId: result.restaurant.id,
+      restaurantName: result.restaurant.name,
+    });
+
+    void this.adminAlerts?.notifyRestaurantCreated({
+      source: 'auth.register',
+      restaurantId: result.restaurant.id,
+      restaurantName: result.restaurant.name,
+      restaurantSlug: result.restaurant.slug,
+      ownerEmail: result.user.email,
     });
 
     return await this.generateAuthResponse(result.user);

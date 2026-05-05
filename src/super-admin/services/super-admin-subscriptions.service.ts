@@ -3,16 +3,21 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateSubscriptionDto } from '../dto/update-subscription.dto';
 import { PlanType } from '@prisma/client';
+import { AdminAlertsService } from '../../admin-alerts/admin-alerts.service';
 
 @Injectable()
 export class SuperAdminSubscriptionsService {
   private readonly logger = new Logger(SuperAdminSubscriptionsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly adminAlerts?: AdminAlertsService,
+  ) {}
 
   async updateSubscription(
     restaurantId: string,
@@ -43,6 +48,24 @@ export class SuperAdminSubscriptionsService {
         action: 'UPDATE_SUBSCRIPTION',
         targetRestaurantId: restaurantId,
         details: { changes: dto as any },
+      },
+    });
+
+    void this.adminAlerts?.notifyAdminEvent({
+      source: 'super-admin.update-subscription',
+      event: 'SUBSCRIPTION_UPDATED',
+      subject: '💳 Suscripción actualizada',
+      title: 'Cambio en suscripción',
+      message: `Se actualizaron parámetros de suscripción en ${restaurant.name}.`,
+      data: {
+        restaurantId,
+        restaurantName: restaurant.name,
+        subscriptionId: updated.id,
+        previousStatus: restaurant.subscription.status,
+        newStatus: updated.status,
+        previousPlanType: restaurant.subscription.planType,
+        newPlanType: updated.planType,
+        changes: dto as any,
       },
     });
 
@@ -109,6 +132,23 @@ export class SuperAdminSubscriptionsService {
       },
     });
 
+    void this.adminAlerts?.notifyAdminEvent({
+      source: 'super-admin.change-plan',
+      event: 'SUBSCRIPTION_PLAN_CHANGED',
+      subject: '📦 Plan de suscripción cambiado',
+      title: 'Cambio de plan',
+      message: `El restaurante ${restaurant.name} cambió del plan ${oldPlanType} al plan ${subscription.planType}.`,
+      data: {
+        restaurantId,
+        restaurantName: restaurant.name,
+        subscriptionId: subscription.id,
+        oldPlanId,
+        oldPlanType,
+        newPlanId: plan.id,
+        newPlanType: subscription.planType,
+      },
+    });
+
     return {
       success: true,
       message: 'Plan actualizado correctamente',
@@ -172,6 +212,25 @@ export class SuperAdminSubscriptionsService {
         },
       });
     }
+
+    void this.adminAlerts?.notifyAdminEvent({
+      source: 'super-admin.cancel-subscription',
+      event: 'SUBSCRIPTION_CANCELED',
+      subject: '🛑 Suscripción cancelada',
+      title: 'Suscripción cancelada',
+      message: `La suscripción de ${restaurant.name} fue cancelada.`,
+      data: {
+        restaurantId,
+        restaurantName: restaurant.name,
+        subscriptionId: subscription.id,
+        previousStatus: restaurant.subscription.status,
+        newStatus: subscription.status,
+        reason: reason || null,
+        canceledAt: subscription.canceledAt?.toISOString?.() ?? null,
+        currentPeriodEnd:
+          subscription.currentPeriodEnd?.toISOString?.() ?? null,
+      },
+    });
 
     return {
       success: true,
@@ -270,6 +329,27 @@ export class SuperAdminSubscriptionsService {
       });
     }
 
+    void this.adminAlerts?.notifyAdminEvent({
+      source: 'super-admin.reactivate-subscription',
+      event: 'SUBSCRIPTION_REACTIVATED',
+      subject: '✅ Suscripción reactivada',
+      title: 'Suscripción reactivada',
+      message: `La suscripción de ${restaurant.name} fue reactivada en plan ${subscription.planType}.`,
+      data: {
+        restaurantId,
+        restaurantName: restaurant.name,
+        subscriptionId: subscription.id,
+        previousStatus: restaurant.subscription.status,
+        newStatus: subscription.status,
+        planId: subscription.planId,
+        planType: subscription.planType,
+        currentPeriodStart:
+          subscription.currentPeriodStart?.toISOString?.() ?? null,
+        currentPeriodEnd:
+          subscription.currentPeriodEnd?.toISOString?.() ?? null,
+      },
+    });
+
     return {
       success: true,
       message: 'Suscripción reactivada correctamente',
@@ -354,6 +434,25 @@ export class SuperAdminSubscriptionsService {
       });
     }
 
+    void this.adminAlerts?.notifyAdminEvent({
+      source: 'super-admin.toggle-trial',
+      event: enableTrial ? 'TRIAL_ENABLED' : 'TRIAL_DISABLED',
+      subject: enableTrial ? '🧪 Trial activado' : '📅 Trial desactivado',
+      title: enableTrial ? 'Trial activado' : 'Trial desactivado',
+      message: enableTrial
+        ? `Se activó trial para ${restaurant.name}.`
+        : `Se desactivó trial para ${restaurant.name}.`,
+      data: {
+        restaurantId,
+        restaurantName: restaurant.name,
+        subscriptionId: subscription.id,
+        previousStatus: restaurant.subscription.status,
+        newStatus: subscription.status,
+        trialStart: subscription.trialStart?.toISOString?.() ?? null,
+        trialEnd: subscription.trialEnd?.toISOString?.() ?? null,
+      },
+    });
+
     return {
       success: true,
       message: enableTrial
@@ -429,6 +528,25 @@ export class SuperAdminSubscriptionsService {
         },
       });
     }
+
+    void this.adminAlerts?.notifyAdminEvent({
+      source: 'super-admin.update-billing-controls',
+      event: 'BILLING_CONTROLS_UPDATED',
+      subject: '🧾 Controles de facturación actualizados',
+      title: 'Cambios en facturación',
+      message: `Se actualizaron controles de facturación para ${restaurant.name}.`,
+      data: {
+        restaurantId,
+        restaurantName: restaurant.name,
+        subscriptionId: subscription.id,
+        isFreeAccount: subscription.isFreeAccount,
+        discountPercentage: subscription.discountPercentage,
+        discountReason: subscription.discountReason,
+        discountGrantedBy: subscription.discountGrantedBy,
+        discountGrantedAt:
+          subscription.discountGrantedAt?.toISOString?.() ?? null,
+      },
+    });
 
     return {
       success: true,

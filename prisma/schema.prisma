@@ -843,6 +843,7 @@ model SystemSettings {
   notifyNewRegistrations Boolean  @default(true)
   notifyPaymentAlerts    Boolean  @default(true)
   notifyDailySummary     Boolean  @default(false)
+  adminAlertPreferences  Json?
   webhookEnabled         Boolean  @default(false)
   webhookUrl             String?
   maintenanceEnabled     Boolean  @default(false)

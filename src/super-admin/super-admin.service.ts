@@ -10,6 +10,11 @@ import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateSettingsDto } from './dto/update-settings.dto';
+import {
+  mergeAdminAlertEventToggles,
+  normalizeAdminAlertEventToggles,
+} from '../admin-alerts/admin-alert-events.config';
 
 @Injectable()
 export class SuperAdminService {
@@ -218,6 +223,10 @@ export class SuperAdminService {
       });
     }
 
+    const adminEvents = normalizeAdminAlertEventToggles(
+      settings.adminAlertPreferences,
+    );
+
     return {
       platformName: settings.platformName,
       supportEmail: settings.supportEmail,
@@ -226,6 +235,7 @@ export class SuperAdminService {
         newRegistrations: settings.notifyNewRegistrations,
         paymentAlerts: settings.notifyPaymentAlerts,
         dailySummary: settings.notifyDailySummary,
+        adminEvents,
       },
       webhooks: {
         enabled: settings.webhookEnabled,
@@ -238,7 +248,7 @@ export class SuperAdminService {
     };
   }
 
-  async updateSettings(dto: any, adminId: string) {
+  async updateSettings(dto: UpdateSettingsDto, adminId: string) {
     if (dto.sessionTimeout !== undefined && dto.sessionTimeout < 1) {
       throw new BadRequestException('El timeout de sesión debe ser mayor a 0');
     }
@@ -283,6 +293,12 @@ export class SuperAdminService {
       if (dto.notifications.dailySummary !== undefined) {
         updateData.notifyDailySummary = dto.notifications.dailySummary;
       }
+      if (dto.notifications.adminEvents) {
+        updateData.adminAlertPreferences = mergeAdminAlertEventToggles(
+          settings?.adminAlertPreferences,
+          dto.notifications.adminEvents,
+        );
+      }
     }
 
     if (dto.webhooks) {
@@ -325,6 +341,10 @@ export class SuperAdminService {
       },
     });
 
+    const adminEvents = normalizeAdminAlertEventToggles(
+      settings.adminAlertPreferences,
+    );
+
     return {
       success: true,
       message: 'Configuración actualizada correctamente',
@@ -336,6 +356,7 @@ export class SuperAdminService {
           newRegistrations: settings.notifyNewRegistrations,
           paymentAlerts: settings.notifyPaymentAlerts,
           dailySummary: settings.notifyDailySummary,
+          adminEvents,
         },
         webhooks: {
           enabled: settings.webhookEnabled,

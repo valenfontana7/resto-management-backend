@@ -60,6 +60,20 @@ export class RestaurantsService {
     return this.mapRestaurantForClient(restaurant);
   }
 
+  async findBrandingBySlug(slug: string) {
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { slug },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        branding: true,
+      },
+    });
+
+    return this.mapRestaurantForClient(restaurant);
+  }
+
   async findById(id: string) {
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { id },

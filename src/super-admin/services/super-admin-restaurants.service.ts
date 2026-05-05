@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from '../../auth/auth.service';
@@ -13,6 +14,7 @@ import {
 import { UpdateRestaurantDto } from '../dto/update-restaurant.dto';
 import { CreateRestaurantDto } from '../dto/create-restaurant.dto';
 import { RestaurantStatus } from '@prisma/client';
+import { AdminAlertsService } from '../../admin-alerts/admin-alerts.service';
 
 @Injectable()
 export class SuperAdminRestaurantsService {
@@ -21,6 +23,7 @@ export class SuperAdminRestaurantsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
+    @Optional() private readonly adminAlerts?: AdminAlertsService,
   ) {}
 
   async getRestaurants(
@@ -291,7 +294,7 @@ export class SuperAdminRestaurantsService {
 
     const previous = await this.prisma.restaurant.findUnique({
       where: { id },
-      select: { status: true },
+      select: { status: true, name: true, slug: true },
     });
     if (!previous) throw new NotFoundException('Restaurant not found');
 
@@ -313,13 +316,29 @@ export class SuperAdminRestaurantsService {
       },
     });
 
+    void this.adminAlerts?.notifyAdminEvent({
+      source: 'super-admin.change-restaurant-status',
+      event: 'RESTAURANT_STATUS_CHANGED',
+      subject: '🚦 Estado de restaurante actualizado',
+      title: 'Cambio de estado de restaurante',
+      message: `El restaurante ${previous.name} cambió de ${previous.status} a ${newStatus}.`,
+      data: {
+        restaurantId: id,
+        restaurantName: previous.name,
+        restaurantSlug: previous.slug,
+        oldStatus: previous.status,
+        newStatus,
+        reason: dto.reason || null,
+      },
+    });
+
     return updated;
   }
 
   async deleteRestaurant(id: string, adminId: string) {
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { id },
-      select: { status: true },
+      select: { status: true, name: true, slug: true },
     });
     if (!restaurant) throw new NotFoundException('Restaurant not found');
 
@@ -337,6 +356,21 @@ export class SuperAdminRestaurantsService {
           oldStatus: restaurant.status,
           newStatus: 'INACTIVE',
         },
+      },
+    });
+
+    void this.adminAlerts?.notifyAdminEvent({
+      source: 'super-admin.delete-restaurant',
+      event: 'RESTAURANT_DEACTIVATED',
+      subject: '⚠️ Restaurante desactivado',
+      title: 'Restaurante marcado como inactivo',
+      message: `El restaurante ${restaurant.name} fue desactivado por SUPER_ADMIN.`,
+      data: {
+        restaurantId: id,
+        restaurantName: restaurant.name,
+        restaurantSlug: restaurant.slug,
+        oldStatus: restaurant.status,
+        newStatus: 'INACTIVE',
       },
     });
 
@@ -420,6 +454,23 @@ export class SuperAdminRestaurantsService {
       });
 
       return { restaurant, adminUser };
+    });
+
+    void this.adminAlerts?.notifyRestaurantCreated({
+      source: 'super-admin.create-restaurant',
+      restaurantId: result.restaurant.id,
+      restaurantName: result.restaurant.name,
+      restaurantSlug: result.restaurant.slug,
+      ownerEmail: result.adminUser.email,
+    });
+
+    void this.adminAlerts?.notifyUserRegistered({
+      source: 'super-admin.create-restaurant-admin',
+      userId: result.adminUser.id,
+      name: result.adminUser.name,
+      email: result.adminUser.email,
+      restaurantId: result.restaurant.id,
+      restaurantName: result.restaurant.name,
     });
 
     return {

@@ -31,6 +31,7 @@ import { CouponsModule } from './coupons/coupons.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { RequestLoggingMiddleware } from './common/middleware/request-logging.middleware';
 import { FeatureFlagsGuard } from './common/guards/feature-flags.guard';
+import { MaintenanceModeGuard } from './common/guards/maintenance-mode.guard';
 
 import { SuperAdminModule } from './super-admin/super-admin.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -133,6 +134,10 @@ import { validateEnvironment } from './common/config/env.validation';
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: MaintenanceModeGuard,
     },
     {
       provide: APP_GUARD,

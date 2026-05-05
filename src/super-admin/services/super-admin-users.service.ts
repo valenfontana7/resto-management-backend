@@ -3,17 +3,22 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import { CreateUserDto } from '../dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
+import { AdminAlertsService } from '../../admin-alerts/admin-alerts.service';
 
 @Injectable()
 export class SuperAdminUsersService {
   private readonly logger = new Logger(SuperAdminUsersService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly adminAlerts?: AdminAlertsService,
+  ) {}
 
   async getUsers(
     search?: string,
@@ -143,6 +148,15 @@ export class SuperAdminUsersService {
       },
     });
 
+    void this.adminAlerts?.notifyUserRegistered({
+      source: 'super-admin.create-user',
+      userId: user.id,
+      name: user.name,
+      email: user.email,
+      restaurantId: null,
+      restaurantName: null,
+    });
+
     return user;
   }
 
@@ -210,6 +224,37 @@ export class SuperAdminUsersService {
         },
       },
     });
+
+    const roleChanged =
+      dto.roleId !== undefined &&
+      dto.roleId !== null &&
+      dto.roleId !== user.roleId;
+    const statusChanged =
+      dto.isActive !== undefined && dto.isActive !== user.isActive;
+    const emailChanged =
+      dto.email !== undefined && dto.email.trim() !== user.email;
+
+    if (roleChanged || statusChanged || emailChanged) {
+      void this.adminAlerts?.notifyAdminEvent({
+        source: 'super-admin.update-user',
+        event: 'USER_UPDATED',
+        subject: '🛡️ Usuario actualizado por SUPER_ADMIN',
+        title: 'Cambio importante en usuario',
+        message: `Se actualizó el usuario ${updatedUser.email}${updatedUser.role?.name ? ` (${updatedUser.role.name})` : ''}.`,
+        data: {
+          userId: updatedUser.id,
+          previousEmail: user.email,
+          newEmail: updatedUser.email,
+          previousRole: user.role?.name ?? null,
+          newRole: updatedUser.role?.name ?? null,
+          previousIsActive: user.isActive,
+          newIsActive: updatedUser.isActive,
+          restaurantId: updatedUser.restaurantId ?? null,
+          restaurantName: updatedUser.restaurant?.name ?? null,
+          updatedAt: updatedUser.updatedAt?.toISOString?.() ?? null,
+        },
+      });
+    }
 
     return updatedUser;
   }

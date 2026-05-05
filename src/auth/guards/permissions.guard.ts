@@ -39,8 +39,12 @@ export class PermissionsGuard implements CanActivate {
     const { user } = context.switchToHttp().getRequest();
     if (!user) return false;
 
+    const normalizedRole = String(user.role || '')
+      .trim()
+      .toUpperCase();
+
     // Admin roles have full access
-    if (user.role === 'SUPER_ADMIN' || user.role === 'Admin') {
+    if (normalizedRole === 'SUPER_ADMIN' || normalizedRole === 'ADMIN') {
       return true;
     }
 
@@ -57,6 +61,10 @@ export class PermissionsGuard implements CanActivate {
     const rolePermissions = Array.isArray(role.permissions)
       ? (role.permissions as string[])
       : [];
+
+    if (rolePermissions.includes('all')) {
+      return true;
+    }
 
     // Check if the role has at least one of the required permissions
     const hasPermission = requiredPermissions.some((perm) =>

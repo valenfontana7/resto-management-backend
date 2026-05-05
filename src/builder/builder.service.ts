@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
@@ -22,6 +23,23 @@ import { normalizeRestaurantDraftPayload } from './utils/restaurant-draft.util';
 @Injectable()
 export class BuilderService {
   private readonly logger = new Logger(BuilderService.name);
+
+  private readonly restaurantDraftFields: (keyof RestaurantDraft)[] = [
+    'name',
+    'description',
+    'email',
+    'phone',
+    'address',
+    'city',
+    'country',
+    'postalCode',
+    'cuisineTypes',
+    'logo',
+    'coverImage',
+    'type',
+    'website',
+    'socialMedia',
+  ];
 
   private readonly restaurantInfoSelect = {
     id: true,
@@ -107,9 +125,10 @@ export class BuilderService {
     // Update lastModified
     newConfig.lastModified = new Date().toISOString();
 
-    const sanitizedConfig = this.removeRedundantRestaurantDraft(
-      newConfig,
+    const sanitizedConfig = this.syncRestaurantDraftMetadata(
+      this.removeRedundantRestaurantDraft(newConfig, restaurant),
       restaurant,
+      currentConfig,
     );
 
     // Validate the new config
@@ -175,7 +194,7 @@ export class BuilderService {
 
     const existingBuilderConfig = await this.prisma.builderConfig.findUnique({
       where: { restaurantId },
-      select: { version: true },
+      select: { version: true, config: true },
     });
 
     const configToSave = this.withRequiredConfigMetadata(
@@ -183,9 +202,10 @@ export class BuilderService {
       existingBuilderConfig?.version,
     );
 
-    const sanitizedConfig = this.removeRedundantRestaurantDraft(
-      configToSave,
+    const sanitizedConfig = this.syncRestaurantDraftMetadata(
+      this.removeRedundantRestaurantDraft(configToSave, restaurant),
       restaurant,
+      existingBuilderConfig?.config as BuilderConfiguration | undefined,
     );
 
     // Validate the config
@@ -325,15 +345,7 @@ export class BuilderService {
    * 3. Clears config.restaurant draft after applying (ya está publicado)
    */
   async publishConfig(restaurantId: string): Promise<void> {
-    // Verify restaurant exists
-    const restaurant = await this.prisma.restaurant.findUnique({
-      where: { id: restaurantId },
-      select: { id: true, name: true },
-    });
-
-    if (!restaurant) {
-      throw new NotFoundException(`Restaurant ${restaurantId} not found`);
-    }
+    const restaurant = await this.getRestaurantInfoOrThrow(restaurantId);
 
     // Get or create builder config
     let builderConfig = await this.prisma.builderConfig.findUnique({
@@ -367,6 +379,32 @@ export class BuilderService {
     const draftData = normalizeRestaurantDraftPayload(rawDraftData) as
       | RestaurantDraft
       | undefined;
+    const draftBase = normalizeRestaurantDraftPayload(
+      config.metadata?.restaurantDraftBase,
+    ) as RestaurantDraft | undefined;
+    const publishIssues = this.getPublishReadinessIssues(
+      config,
+      restaurant,
+      draftData,
+    );
+
+    if (publishIssues.length > 0) {
+      throw new BadRequestException(
+        `No se puede publicar hasta corregir: ${publishIssues.join('; ')}`,
+      );
+    }
+
+    const conflictingFields = this.getRestaurantDraftConflictFields(
+      draftData,
+      draftBase,
+      restaurant,
+    );
+
+    if (conflictingFields.length > 0) {
+      throw new ConflictException(
+        `Los datos del restaurante cambiaron mientras editabas el builder (${conflictingFields.join(', ')}). Recargá el editor antes de publicar para evitar pisar cambios live.`,
+      );
+    }
 
     // Sync hero title.text with restaurant name if not set
     if (
@@ -385,24 +423,7 @@ export class BuilderService {
 
     if (draftData) {
       // Apply each draft field to the corresponding Prisma column
-      const draftFields: (keyof RestaurantDraft)[] = [
-        'name',
-        'description',
-        'email',
-        'phone',
-        'address',
-        'city',
-        'country',
-        'postalCode',
-        'cuisineTypes',
-        'logo',
-        'coverImage',
-        'type',
-        'website',
-        'socialMedia',
-      ];
-
-      for (const field of draftFields) {
+      for (const field of this.restaurantDraftFields) {
         if (draftData[field] !== undefined) {
           restaurantUpdate[field] = draftData[field];
         }
@@ -429,6 +450,14 @@ export class BuilderService {
     // 3. Clear draft restaurant data (already applied) and mark as published
     const cleanedConfig = { ...config };
     delete cleanedConfig.restaurant;
+
+    if (cleanedConfig.metadata?.restaurantDraftBase) {
+      const restMetadata = { ...cleanedConfig.metadata };
+      delete restMetadata.restaurantDraftBase;
+      cleanedConfig.metadata =
+        Object.keys(restMetadata).length > 0 ? restMetadata : undefined;
+    }
+
     cleanedConfig.lastModified = new Date().toISOString();
 
     await this.prisma.builderConfig.update({
@@ -715,6 +744,127 @@ export class BuilderService {
     return previewBranding;
   }
 
+  private syncRestaurantDraftMetadata(
+    config: BuilderConfiguration,
+    restaurant: RestaurantInfo,
+    previousConfig?: BuilderConfiguration,
+  ): BuilderConfiguration {
+    const previousDraftBase = normalizeRestaurantDraftPayload(
+      previousConfig?.metadata?.restaurantDraftBase,
+    ) as RestaurantDraft | undefined;
+
+    const nextMetadata = {
+      ...(previousConfig?.metadata ?? {}),
+      ...(config.metadata ?? {}),
+    } as NonNullable<BuilderConfiguration['metadata']>;
+
+    if (config.restaurant) {
+      nextMetadata.restaurantDraftBase =
+        previousConfig?.restaurant && previousDraftBase
+          ? previousDraftBase
+          : this.buildRestaurantDraftBase(restaurant);
+    } else {
+      delete nextMetadata.restaurantDraftBase;
+    }
+
+    if (Object.keys(nextMetadata).length === 0) {
+      const nextConfig = { ...config };
+      delete nextConfig.metadata;
+      return nextConfig;
+    }
+
+    return {
+      ...config,
+      metadata: nextMetadata,
+    };
+  }
+
+  private buildRestaurantDraftBase(
+    restaurant: RestaurantInfo,
+  ): RestaurantDraft {
+    return this.restaurantDraftFields.reduce<RestaurantDraft>(
+      (result, field) => {
+        const value = restaurant[field as keyof RestaurantInfo];
+
+        if (value === undefined) {
+          return result;
+        }
+
+        if (Array.isArray(value)) {
+          (result as Record<string, unknown>)[field] = [...value];
+          return result;
+        }
+
+        if (value && typeof value === 'object') {
+          (result as Record<string, unknown>)[field] = {
+            ...value,
+          };
+          return result;
+        }
+
+        (result as Record<string, unknown>)[field] = value;
+        return result;
+      },
+      {},
+    );
+  }
+
+  private getRestaurantDraftConflictFields(
+    draft: RestaurantDraft | undefined,
+    draftBase: RestaurantDraft | undefined,
+    restaurant: RestaurantInfo,
+  ): (keyof RestaurantDraft)[] {
+    if (!draft || !draftBase) {
+      return [];
+    }
+
+    return this.restaurantDraftFields.filter((field) => {
+      if (draft[field] === undefined) {
+        return false;
+      }
+
+      return !this.areEquivalentRestaurantValues(
+        field,
+        draftBase[field],
+        restaurant[field as keyof RestaurantInfo],
+      );
+    });
+  }
+
+  private getPublishReadinessIssues(
+    config: BuilderConfiguration,
+    restaurant: RestaurantInfo,
+    draft: RestaurantDraft | undefined,
+  ): string[] {
+    const validation = validateBuilderConfig(config);
+    const issues = validation.errors.map(
+      (error) => `${error.path}: ${error.message}`,
+    );
+
+    const effectiveName = this.normalizeScalarValue(
+      draft?.name ?? restaurant.name,
+    );
+    if (typeof effectiveName !== 'string' || effectiveName.length === 0) {
+      issues.push('Completá el nombre del restaurante');
+    }
+
+    const hasContactChannel =
+      typeof this.normalizeScalarValue(draft?.phone ?? restaurant.phone) ===
+        'string' ||
+      typeof this.normalizeScalarValue(draft?.email ?? restaurant.email) ===
+        'string' ||
+      typeof this.normalizeScalarValue(draft?.website ?? restaurant.website) ===
+        'string';
+
+    if (config.sections?.nav?.showContactButton && !hasContactChannel) {
+      issues.push(
+        'Activaste el botón de contacto del header pero no hay teléfono, email o web configurados',
+      );
+    }
+
+    return [...new Set(issues)];
+  }
+
   private pruneRestaurantDraft(
     draft: RestaurantDraft | undefined,
     restaurant: RestaurantInfo,
@@ -917,7 +1067,8 @@ export class BuilderService {
           logoSize: oldBranding.sections?.nav?.logoSize || 'md',
           showOpenStatus: oldBranding.sections?.nav?.showOpenStatus ?? true,
           showContactButton:
-            oldBranding.sections?.nav?.showContactButton ?? true,
+            oldBranding.sections?.nav?.showContactButton ?? false,
+          showQuickLinks: oldBranding.sections?.nav?.showQuickLinks ?? true,
           sticky: oldBranding.sections?.nav?.sticky ?? false,
           ...oldBranding.sections?.nav,
         },
@@ -925,6 +1076,7 @@ export class BuilderService {
           showSection: oldBranding.sections?.hero?.showSection ?? true,
           textAlign: oldBranding.sections?.hero?.textAlign || 'center',
           minHeight: oldBranding.sections?.hero?.minHeight || 'lg',
+          showInfoCards: oldBranding.sections?.hero?.showInfoCards ?? true,
           overlay: {
             enabled: oldBranding.sections?.hero?.overlay?.enabled ?? false,
             color: oldBranding.sections?.hero?.overlay?.color,

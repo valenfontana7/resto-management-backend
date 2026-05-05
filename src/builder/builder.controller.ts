@@ -18,7 +18,10 @@ import {
   ApiBearerAuth,
   ApiParam,
 } from '@nestjs/swagger';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { VerifyRestaurantAccess } from '../common/decorators/verify-restaurant-access.decorator';
 import { BuilderService } from './builder.service';
 import {
   UpdateBuilderConfigDto,
@@ -39,6 +42,8 @@ import {
 
 @ApiTags('Builder')
 @Controller('api/restaurants/:restaurantId/builder')
+@UseGuards(PermissionsGuard)
+@Permissions('branding')
 export class BuilderController {
   constructor(private readonly builderService: BuilderService) {}
 
@@ -55,7 +60,9 @@ export class BuilderController {
     type: BuilderConfigEnvelopeDto,
   })
   @ApiResponse({ status: 404, description: 'Restaurant not found' })
-  async getConfig(@Param('restaurantId') restaurantId: string) {
+  async getConfig(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+  ) {
     const config = await this.builderService.getConfig(restaurantId);
     return {
       success: true,
@@ -78,7 +85,7 @@ export class BuilderController {
   @ApiResponse({ status: 400, description: 'Invalid configuration' })
   @ApiResponse({ status: 404, description: 'Restaurant not found' })
   async updateConfig(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() updates: UpdateBuilderConfigDto,
     @Request() req: any,
   ) {
@@ -107,7 +114,7 @@ export class BuilderController {
   @ApiResponse({ status: 400, description: 'Invalid configuration' })
   @ApiResponse({ status: 404, description: 'Restaurant not found' })
   async replaceConfig(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() config: UpdateBuilderConfigDto,
     @Request() req: any,
   ) {
@@ -136,7 +143,9 @@ export class BuilderController {
     description: 'Configuration published successfully',
   })
   @ApiResponse({ status: 404, description: 'Configuration not found' })
-  async publishConfig(@Param('restaurantId') restaurantId: string) {
+  async publishConfig(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+  ) {
     await this.builderService.publishConfig(restaurantId);
     return {
       success: true,
@@ -154,7 +163,9 @@ export class BuilderController {
     status: 200,
     description: 'Configuration unpublished successfully',
   })
-  async unpublishConfig(@Param('restaurantId') restaurantId: string) {
+  async unpublishConfig(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+  ) {
     await this.builderService.unpublishConfig(restaurantId);
     return {
       success: true,
@@ -171,7 +182,9 @@ export class BuilderController {
   @ApiOperation({ summary: 'Reset builder configuration to defaults' })
   @ApiParam({ name: 'restaurantId', description: 'Restaurant ID' })
   @ApiResponse({ status: 200, description: 'Configuration reset successfully' })
-  async resetConfig(@Param('restaurantId') restaurantId: string) {
+  async resetConfig(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+  ) {
     const config = await this.builderService.resetConfig(restaurantId);
     return {
       success: true,
@@ -188,7 +201,9 @@ export class BuilderController {
   @ApiOperation({ summary: 'Get builder configuration metadata' })
   @ApiParam({ name: 'restaurantId', description: 'Restaurant ID' })
   @ApiResponse({ status: 200, description: 'Metadata retrieved successfully' })
-  async getMetadata(@Param('restaurantId') restaurantId: string) {
+  async getMetadata(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+  ) {
     const metadata = await this.builderService.getConfigMetadata(restaurantId);
     return {
       success: true,
@@ -205,7 +220,7 @@ export class BuilderController {
   @ApiParam({ name: 'restaurantId', description: 'Restaurant ID' })
   @ApiResponse({ status: 200, description: 'Theme updated successfully' })
   async updateTheme(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() theme: ThemeConfigDto,
   ) {
     const data = await this.builderService.updateTheme(restaurantId, theme);
@@ -222,7 +237,7 @@ export class BuilderController {
   @ApiParam({ name: 'restaurantId', description: 'Restaurant ID' })
   @ApiResponse({ status: 200, description: 'Layout updated successfully' })
   async updateLayout(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() layout: LayoutConfigDto,
   ) {
     const data = await this.builderService.updateLayout(restaurantId, layout);
@@ -239,7 +254,7 @@ export class BuilderController {
   @ApiParam({ name: 'restaurantId', description: 'Restaurant ID' })
   @ApiResponse({ status: 200, description: 'Assets updated successfully' })
   async updateAssets(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() assets: AssetsConfigDto,
   ) {
     const data = await this.builderService.updateAssets(restaurantId, assets);
@@ -256,7 +271,7 @@ export class BuilderController {
   @ApiParam({ name: 'restaurantId', description: 'Restaurant ID' })
   @ApiResponse({ status: 200, description: 'Mobile menu updated successfully' })
   async updateMobileMenu(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() mobileMenu: MobileMenuConfigDto,
   ) {
     const data = await this.builderService.updateMobileMenu(
@@ -276,7 +291,7 @@ export class BuilderController {
   @ApiParam({ name: 'restaurantId', description: 'Restaurant ID' })
   @ApiResponse({ status: 200, description: 'SEO updated successfully' })
   async updateSEO(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() seo: SEOConfigDto,
   ) {
     const data = await this.builderService.updateSEO(restaurantId, seo);
@@ -296,7 +311,7 @@ export class BuilderController {
     description: 'Advanced settings updated successfully',
   })
   async updateAdvanced(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() advanced: AdvancedConfigDto,
   ) {
     const data = await this.builderService.updateAdvanced(
@@ -321,7 +336,7 @@ export class BuilderController {
     description: 'Navigation section updated successfully',
   })
   async updateNavSection(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() config: NavigationConfigDto,
   ) {
     const data = await this.builderService.updateSection(
@@ -346,7 +361,7 @@ export class BuilderController {
     description: 'Hero section updated successfully',
   })
   async updateHeroSection(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() config: HeroConfigDto,
   ) {
     const data = await this.builderService.updateSection(
@@ -371,7 +386,7 @@ export class BuilderController {
     description: 'Menu section updated successfully',
   })
   async updateMenuSection(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() config: MenuConfigDto,
   ) {
     const data = await this.builderService.updateSection(
@@ -396,7 +411,7 @@ export class BuilderController {
     description: 'Info section updated successfully',
   })
   async updateInfoSection(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() config: InfoSectionConfigDto,
   ) {
     const data = await this.builderService.updateSection(
@@ -421,7 +436,7 @@ export class BuilderController {
     description: 'Footer section updated successfully',
   })
   async updateFooterSection(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() config: FooterConfigDto,
   ) {
     const data = await this.builderService.updateSection(
@@ -446,7 +461,7 @@ export class BuilderController {
     description: 'Cart section updated successfully',
   })
   async updateCartSection(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() config: CartConfigDto,
   ) {
     const data = await this.builderService.updateSection(
@@ -476,7 +491,7 @@ export class BuilderController {
   @ApiResponse({ status: 200, description: 'Section updated successfully' })
   @ApiResponse({ status: 400, description: 'Invalid section name' })
   async updateSection(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Param('sectionName') sectionName: string,
     @Body() config: any,
   ) {
@@ -503,7 +518,9 @@ export class BuilderController {
   })
   @ApiParam({ name: 'restaurantId', description: 'Restaurant ID' })
   @ApiResponse({ status: 200, description: 'Migration completed successfully' })
-  async migrateFromBranding(@Param('restaurantId') restaurantId: string) {
+  async migrateFromBranding(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+  ) {
     const config = await this.builderService.migrateFromBranding(restaurantId);
     return {
       success: true,

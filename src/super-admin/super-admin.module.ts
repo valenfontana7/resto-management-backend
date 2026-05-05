@@ -7,9 +7,10 @@ import { SuperAdminOrdersService } from './services/super-admin-orders.service';
 import { SuperAdminSubscriptionsService } from './services/super-admin-subscriptions.service';
 import { AuthModule } from '../auth/auth.module';
 import { KitchenModule } from '../kitchen/kitchen.module';
+import { AdminAlertsModule } from '../admin-alerts/admin-alerts.module';
 
 @Module({
-  imports: [AuthModule, KitchenModule],
+  imports: [AuthModule, KitchenModule, AdminAlertsModule],
   controllers: [SuperAdminController],
   providers: [
     SuperAdminService,

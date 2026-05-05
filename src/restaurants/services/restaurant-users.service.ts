@@ -3,9 +3,11 @@ import {
   NotFoundException,
   BadRequestException,
   ConflictException,
+  Optional,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AdminAlertsService } from '../../admin-alerts/admin-alerts.service';
 
 /**
  * Servicio para gestión de usuarios de restaurante.
@@ -13,7 +15,10 @@ import { PrismaService } from '../../prisma/prisma.service';
  */
 @Injectable()
 export class RestaurantUsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly adminAlerts?: AdminAlertsService,
+  ) {}
 
   /**
    * Obtener roles con permisos para un restaurante
@@ -112,7 +117,7 @@ export class RestaurantUsersService {
     // Crear usuario con contraseña temporal
     const hashedPassword = await bcrypt.hash('TempPassword123!', 10);
 
-    return this.prisma.user.create({
+    const createdUser = await this.prisma.user.create({
       data: {
         name: inviteDto.name || inviteDto.email.split('@')[0],
         email: inviteDto.email,
@@ -129,6 +134,17 @@ export class RestaurantUsersService {
         createdAt: true,
       },
     });
+
+    void this.adminAlerts?.notifyUserRegistered({
+      source: 'restaurants.invite-user',
+      userId: createdUser.id,
+      name: createdUser.name,
+      email: createdUser.email,
+      restaurantId,
+      restaurantName: null,
+    });
+
+    return createdUser;
   }
 
   /**

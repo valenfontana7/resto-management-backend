@@ -30,4 +30,12 @@ export class AppController {
   async apiHealthCheck() {
     return this.appService.healthCheck();
   }
+
+  @Public()
+  @ApiOperation({ summary: 'System status including maintenance mode' })
+  @ApiResponse({ status: 200, description: 'System status' })
+  @Get('api/system/status')
+  async getSystemStatus() {
+    return this.appService.getSystemStatus();
+  }
 }

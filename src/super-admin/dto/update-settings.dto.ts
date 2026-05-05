@@ -9,6 +9,56 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
+class AdminAlertEventsDto {
+  @IsBoolean()
+  @IsOptional()
+  userRegistered?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  restaurantCreated?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  userUpdated?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  restaurantStatusChanged?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  restaurantDeactivated?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  subscriptionUpdated?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  subscriptionPlanChanged?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  subscriptionCanceled?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  subscriptionReactivated?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  trialEnabled?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  trialDisabled?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  billingControlsUpdated?: boolean;
+}
+
 class NotificationsDto {
   @IsBoolean()
   @IsOptional()
@@ -21,6 +71,11 @@ class NotificationsDto {
   @IsBoolean()
   @IsOptional()
   dailySummary?: boolean;
+
+  @ValidateNested()
+  @Type(() => AdminAlertEventsDto)
+  @IsOptional()
+  adminEvents?: AdminAlertEventsDto;
 }
 
 class WebhooksDto {

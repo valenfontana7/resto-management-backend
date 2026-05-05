@@ -260,10 +260,20 @@ export interface NavigationConfig {
 
   // Buttons & Actions
   showContactButton: boolean;
+  showQuickLinks?: boolean;
   showCartButton?: boolean;
   showSearchButton?: boolean;
   showMenuButton?: boolean;
   buttonStyle?: 'text' | 'outlined' | 'filled';
+  actionButtonColor?: ColorValue;
+  actionButtonTextColor?: ColorValue;
+  quickLinksTextColor?: ColorValue;
+  homeLinkText?: string;
+  menuLinkText?: string;
+  reservationsLinkText?: string;
+  contactLinkText?: string;
+  contactButtonText?: string;
+  cartButtonText?: string;
 
   // Effects
   transparency?: boolean;
@@ -353,6 +363,49 @@ export interface HeroConfig {
     href?: string;
     style?: 'primary' | 'secondary' | 'outline' | 'ghost';
   };
+
+  // Cuisine type chips
+  showCuisineTypes?: boolean;
+  cuisineTypesStyle?: 'soft' | 'filled' | 'outline';
+  cuisineTypesColor?: ColorValue;
+  cuisineTypesBackgroundColor?: ColorValue;
+  cuisineTypesBorderColor?: ColorValue;
+  cuisineTypesFontSize?: 'xs' | 'sm' | 'md' | 'lg';
+  cuisineTypesFontWeight?: 400 | 500 | 600 | 700;
+  showInfoCards?: boolean;
+  infoCardsBackgroundColor?: ColorValue;
+  infoCardsBorderColor?: ColorValue;
+  infoCardsTextColor?: ColorValue;
+  infoCardsMutedTextColor?: ColorValue;
+  infoCardsIconColor?: ColorValue;
+  infoCardsIconBackgroundColor?: ColorValue;
+  showContactInfoCard?: boolean;
+  contactInfoCardEyebrowText?: string;
+  contactInfoCardValueText?: string;
+  showLocationInfoCard?: boolean;
+  locationInfoCardEyebrowText?: string;
+  locationInfoCardValueText?: string;
+  showTodayInfoCard?: boolean;
+  todayInfoCardEyebrowText?: string;
+  todayInfoCardValueText?: string;
+  showHoursBanner?: boolean;
+  hoursBannerPreset?: 'status' | 'brand' | 'minimal';
+  hoursBannerBackgroundColor?: ColorValue;
+  hoursBannerBorderColor?: ColorValue;
+  hoursBannerTextColor?: ColorValue;
+  hoursBannerMutedTextColor?: ColorValue;
+  hoursBannerIconColor?: ColorValue;
+  hoursBannerBadgeBackgroundColor?: ColorValue;
+  hoursBannerBadgeBorderColor?: ColorValue;
+  hoursBannerBadgeTextColor?: ColorValue;
+  showServiceHighlights?: boolean;
+  serviceHighlightsPreset?: 'soft' | 'brand' | 'minimal';
+  serviceHighlightsBackgroundColor?: ColorValue;
+  serviceHighlightsBorderColor?: ColorValue;
+  serviceHighlightsTextColor?: ColorValue;
+  serviceHighlightsMutedTextColor?: ColorValue;
+  serviceHighlightsIconColor?: ColorValue;
+  serviceHighlightsIconBackgroundColor?: ColorValue;
 
   // Effects
   parallax?: boolean;
@@ -873,6 +926,7 @@ export interface BuilderConfiguration {
     templateName?: string;
     tags?: string[];
     notes?: string;
+    restaurantDraftBase?: RestaurantDraft;
   };
 }
 
@@ -942,7 +996,8 @@ export const DEFAULT_BUILDER_CONFIG: BuilderConfiguration = {
       position: 'sticky',
       logoSize: 'md',
       showOpenStatus: true,
-      showContactButton: true,
+      showContactButton: false,
+      showQuickLinks: true,
       sticky: false,
     },
 
@@ -950,6 +1005,7 @@ export const DEFAULT_BUILDER_CONFIG: BuilderConfiguration = {
       showSection: true,
       minHeight: 'lg',
       textAlign: 'center',
+      showInfoCards: true,
       overlay: { enabled: false, opacity: 0 },
       textShadow: false,
     },

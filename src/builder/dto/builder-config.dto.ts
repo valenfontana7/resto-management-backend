@@ -617,6 +617,65 @@ export class NavigationConfigDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
+  showQuickLinks?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'actionButtonColor must be a valid hex color',
+  })
+  actionButtonColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'actionButtonTextColor must be a valid hex color',
+  })
+  actionButtonTextColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'quickLinksTextColor must be a valid hex color',
+  })
+  quickLinksTextColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  homeLinkText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  menuLinkText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  reservationsLinkText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  contactLinkText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  contactButtonText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  cartButtonText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
   showCartButton?: boolean;
 
   @ApiPropertyOptional()
@@ -990,6 +1049,280 @@ export class HeroConfigDto {
   @ValidateNested()
   @Type(() => HeroCtaButtonDto)
   secondaryCta?: HeroCtaButtonDto;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  showCuisineTypes?: boolean;
+
+  @ApiPropertyOptional({ enum: ['soft', 'filled', 'outline'] })
+  @IsOptional()
+  @IsIn(['soft', 'filled', 'outline'])
+  cuisineTypesStyle?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'cuisineTypesColor must be a valid hex color',
+  })
+  cuisineTypesColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'cuisineTypesBackgroundColor must be a valid hex color',
+  })
+  cuisineTypesBackgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'cuisineTypesBorderColor must be a valid hex color',
+  })
+  cuisineTypesBorderColor?: string;
+
+  @ApiPropertyOptional({ enum: ['xs', 'sm', 'md', 'lg'] })
+  @IsOptional()
+  @IsIn(['xs', 'sm', 'md', 'lg'])
+  cuisineTypesFontSize?: string;
+
+  @ApiPropertyOptional({ enum: [400, 500, 600, 700] })
+  @IsOptional()
+  @IsIn([400, 500, 600, 700])
+  cuisineTypesFontWeight?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  showInfoCards?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'infoCardsBackgroundColor must be a valid hex color',
+  })
+  infoCardsBackgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'infoCardsBorderColor must be a valid hex color',
+  })
+  infoCardsBorderColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'infoCardsTextColor must be a valid hex color',
+  })
+  infoCardsTextColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'infoCardsMutedTextColor must be a valid hex color',
+  })
+  infoCardsMutedTextColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'infoCardsIconColor must be a valid hex color',
+  })
+  infoCardsIconColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'infoCardsIconBackgroundColor must be a valid hex color',
+  })
+  infoCardsIconBackgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  showContactInfoCard?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  contactInfoCardEyebrowText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  contactInfoCardValueText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  showLocationInfoCard?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  locationInfoCardEyebrowText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  locationInfoCardValueText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  showTodayInfoCard?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  todayInfoCardEyebrowText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  todayInfoCardValueText?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  showHoursBanner?: boolean;
+
+  @ApiPropertyOptional({ enum: ['status', 'brand', 'minimal'] })
+  @IsOptional()
+  @IsIn(['status', 'brand', 'minimal'])
+  hoursBannerPreset?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'hoursBannerBackgroundColor must be a valid hex color',
+  })
+  hoursBannerBackgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'hoursBannerBorderColor must be a valid hex color',
+  })
+  hoursBannerBorderColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'hoursBannerTextColor must be a valid hex color',
+  })
+  hoursBannerTextColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'hoursBannerMutedTextColor must be a valid hex color',
+  })
+  hoursBannerMutedTextColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'hoursBannerIconColor must be a valid hex color',
+  })
+  hoursBannerIconColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'hoursBannerBadgeBackgroundColor must be a valid hex color',
+  })
+  hoursBannerBadgeBackgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'hoursBannerBadgeBorderColor must be a valid hex color',
+  })
+  hoursBannerBadgeBorderColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'hoursBannerBadgeTextColor must be a valid hex color',
+  })
+  hoursBannerBadgeTextColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  showServiceHighlights?: boolean;
+
+  @ApiPropertyOptional({ enum: ['soft', 'brand', 'minimal'] })
+  @IsOptional()
+  @IsIn(['soft', 'brand', 'minimal'])
+  serviceHighlightsPreset?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'serviceHighlightsBackgroundColor must be a valid hex color',
+  })
+  serviceHighlightsBackgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'serviceHighlightsBorderColor must be a valid hex color',
+  })
+  serviceHighlightsBorderColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'serviceHighlightsTextColor must be a valid hex color',
+  })
+  serviceHighlightsTextColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'serviceHighlightsMutedTextColor must be a valid hex color',
+  })
+  serviceHighlightsMutedTextColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'serviceHighlightsIconColor must be a valid hex color',
+  })
+  serviceHighlightsIconColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'serviceHighlightsIconBackgroundColor must be a valid hex color',
+  })
+  serviceHighlightsIconBackgroundColor?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -1719,6 +2052,11 @@ export class CartConfigDto {
   @IsOptional()
   @IsString()
   emptyStateMessage?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  emptyStateButtonText?: string;
 
   @ApiPropertyOptional({ enum: ['xs', 'sm', 'md', 'lg', 'xl'] })
   @IsOptional()
@@ -2514,6 +2852,11 @@ export class MetadataConfigDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  @IsOptional()
+  @IsObject()
+  restaurantDraftBase?: Record<string, unknown>;
 }
 
 // ==================== RESTAURANT DRAFT DTO ====================
