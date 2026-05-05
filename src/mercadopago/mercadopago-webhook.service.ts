@@ -140,12 +140,21 @@ export class MercadoPagoWebhookService {
     query: Record<string, unknown> | undefined,
     body: any,
   ): boolean {
+    const queryType = this.toTrimmedString(query?.['type']);
     const queryTopic = this.toTrimmedString(query?.['topic']);
     const queryId = this.toTrimmedString(query?.['id']);
     const queryDataId = this.toTrimmedString(query?.['data.id']);
+    const bodyType = this.toTrimmedString(body?.type);
     const bodyTopic = this.toTrimmedString(body?.topic);
 
-    return !!((queryTopic || bodyTopic) && queryId && !queryDataId);
+    const hasLegacyTopicType =
+      (queryType || '').startsWith('topic_') ||
+      (bodyType || '').startsWith('topic_');
+
+    return !!(
+      hasLegacyTopicType ||
+      ((queryTopic || bodyTopic) && queryId && !queryDataId)
+    );
   }
 
   async handleWebhook(

@@ -37,6 +37,10 @@ export class MaintenanceModeGuard implements CanActivate {
       return true;
     }
 
+    if (this.isMercadoPagoRootWebhookRequest(path, method, request?.query)) {
+      return true;
+    }
+
     const userRole = String(request?.user?.role || '')
       .trim()
       .toUpperCase();
@@ -79,6 +83,33 @@ export class MaintenanceModeGuard implements CanActivate {
       path === '/api/mercadopago/webhooks/mercadopago' ||
       path === '/api/integrations/webhooks/delivery-platform'
     );
+  }
+
+  private isMercadoPagoRootWebhookRequest(
+    path: string,
+    method: string,
+    query: Record<string, unknown> | undefined,
+  ): boolean {
+    if (method !== 'POST') {
+      return false;
+    }
+
+    if (path !== '/' && path !== '') {
+      return false;
+    }
+
+    const type = this.toTrimmedString(query?.type);
+    const topic = this.toTrimmedString(query?.topic);
+    const dataId = this.toTrimmedString(query?.['data.id']);
+    const id = this.toTrimmedString(query?.id);
+
+    return !!((type || topic) && (dataId || id));
+  }
+
+  private toTrimmedString(value: unknown): string {
+    if (typeof value === 'string') return value.trim();
+    if (typeof value === 'number') return String(value);
+    return '';
   }
 
   private async getMaintenanceState(): Promise<MaintenanceState> {

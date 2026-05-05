@@ -8,6 +8,7 @@ import {
   HttpCode,
   Logger,
   ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
@@ -18,7 +19,7 @@ import { PaymentProviderFactory } from '../payment-providers/payment-provider.fa
 import { PlanType } from '../subscriptions/dto';
 
 @ApiTags('webhooks')
-@Controller('api/webhooks')
+@Controller()
 export class WebhooksController {
   private readonly logger = new Logger(WebhooksController.name);
 
@@ -29,7 +30,33 @@ export class WebhooksController {
     private readonly paymentProviderFactory: PaymentProviderFactory,
   ) {}
 
-  @Post('mercadopago')
+  @Post()
+  @Public()
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Compatibility endpoint for legacy MercadoPago webhooks sent to /',
+  })
+  async handleMercadoPagoRootCompatibilityWebhook(
+    @Req() req: any,
+    @Body() body: any,
+    @Query() query: Record<string, unknown>,
+    @Headers('x-signature') xSignature?: string,
+    @Headers('x-request-id') xRequestId?: string,
+  ) {
+    if (!this.isMercadoPagoWebhookLike(query, body)) {
+      throw new NotFoundException('Cannot POST /');
+    }
+
+    return this.handleMercadoPagoWebhook(
+      req,
+      body,
+      query as { type?: string; 'data.id'?: string },
+      xSignature,
+      xRequestId,
+    );
+  }
+
+  @Post('api/webhooks/mercadopago')
   @Public()
   @HttpCode(200)
   @ApiOperation({ summary: 'Handle MercadoPago payment webhooks' })
@@ -126,7 +153,33 @@ export class WebhooksController {
     return { ...result, duplicate: isDuplicate };
   }
 
-  @Post('mercadopago/subscription')
+  private isMercadoPagoWebhookLike(
+    query: Record<string, unknown> | undefined,
+    body: any,
+  ): boolean {
+    const extract = (value: unknown): string => {
+      if (typeof value === 'string') return value.trim();
+      if (typeof value === 'number') return String(value);
+      return '';
+    };
+
+    const queryType = extract(query?.type);
+    const queryTopic = extract(query?.topic);
+    const queryDataId = extract(query?.['data.id']);
+    const queryId = extract(query?.id);
+
+    const bodyType = extract(body?.type);
+    const bodyTopic = extract(body?.topic);
+    const bodyDataId = extract(body?.data?.id);
+    const bodyId = extract(body?.id);
+
+    const hasTypeLike = !!(queryType || queryTopic || bodyType || bodyTopic);
+    const hasIdLike = !!(queryDataId || queryId || bodyDataId || bodyId);
+
+    return hasTypeLike && hasIdLike;
+  }
+
+  @Post('api/webhooks/mercadopago/subscription')
   @Public()
   @HttpCode(200)
   @ApiOperation({ summary: 'Handle MercadoPago subscription webhooks' })
@@ -240,7 +293,7 @@ export class WebhooksController {
     }
   }
 
-  @Post('payway')
+  @Post('api/webhooks/payway')
   @Public()
   @HttpCode(200)
   @ApiOperation({ summary: 'Handle Payway (Decidir) payment webhooks' })
