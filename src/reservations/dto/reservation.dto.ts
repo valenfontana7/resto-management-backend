@@ -5,9 +5,11 @@ import {
   IsEnum,
   IsInt,
   Min,
+  Max,
   IsNotEmpty,
   IsDateString,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export enum ReservationStatus {
   PENDING = 'PENDING',
@@ -106,4 +108,11 @@ export class ReservationFiltersDto {
   @IsOptional()
   @IsEnum(ReservationStatus)
   status?: ReservationStatus;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(500)
+  limit?: number;
 }

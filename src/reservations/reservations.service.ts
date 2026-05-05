@@ -152,6 +152,7 @@ export class ReservationsService {
         table: true,
       },
       orderBy: [{ date: 'asc' }, { time: 'asc' }],
+      ...(filters.limit ? { take: filters.limit } : {}),
     });
 
     return {
