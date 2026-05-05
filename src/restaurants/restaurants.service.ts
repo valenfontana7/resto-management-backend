@@ -715,10 +715,59 @@ export class RestaurantsService {
     }
 
     if (payload.businessRules !== undefined) {
-      updateData.businessRules =
+      const incomingBusinessRules =
         typeof payload.businessRules === 'string'
           ? JSON.parse(payload.businessRules)
           : payload.businessRules;
+
+      const currentBusinessRules =
+        currentRestaurant.businessRules &&
+        typeof currentRestaurant.businessRules === 'object'
+          ? (currentRestaurant.businessRules as Record<string, any>)
+          : {};
+
+      const parsedIncomingBusinessRules =
+        incomingBusinessRules && typeof incomingBusinessRules === 'object'
+          ? (incomingBusinessRules as Record<string, any>)
+          : {};
+
+      const mergedBusinessRules: Record<string, any> = {
+        ...currentBusinessRules,
+        ...parsedIncomingBusinessRules,
+        orders: {
+          ...(currentBusinessRules.orders || {}),
+          ...(parsedIncomingBusinessRules.orders || {}),
+        },
+        delivery: {
+          ...(currentBusinessRules.delivery || {}),
+          ...(parsedIncomingBusinessRules.delivery || {}),
+        },
+        pickup: {
+          ...(currentBusinessRules.pickup || {}),
+          ...(parsedIncomingBusinessRules.pickup || {}),
+        },
+        dineIn: {
+          ...(currentBusinessRules.dineIn || {}),
+          ...(parsedIncomingBusinessRules.dineIn || {}),
+        },
+        payment: {
+          ...(currentBusinessRules.payment || {}),
+          ...(parsedIncomingBusinessRules.payment || {}),
+        },
+      };
+
+      const hasPromotions =
+        currentBusinessRules.promotions ||
+        parsedIncomingBusinessRules.promotions;
+
+      if (hasPromotions) {
+        mergedBusinessRules.promotions = {
+          ...(currentBusinessRules.promotions || {}),
+          ...(parsedIncomingBusinessRules.promotions || {}),
+        };
+      }
+
+      updateData.businessRules = mergedBusinessRules;
     }
 
     if (payload.hours !== undefined) {
