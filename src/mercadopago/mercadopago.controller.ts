@@ -84,6 +84,42 @@ export class MercadoPagoController {
     return { success: true };
   }
 
+  @Post('tenant-token/activate')
+  @HttpCode(200)
+  async activateTenantToken(
+    @Body()
+    body: {
+      restaurantId?: string;
+      accessToken?: string;
+      isSandbox?: boolean;
+      publicKey?: string;
+    },
+    @CurrentUser() user?: RequestUser,
+  ) {
+    const restaurantId = (body?.restaurantId ?? '').trim();
+    if (!restaurantId) {
+      throw new BadRequestException({ error: 'restaurantId es requerido' });
+    }
+
+    if (!user) throw new ForbiddenException('Unauthorized');
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
+
+    const accessToken = (body?.accessToken ?? '').trim();
+    if (!accessToken) {
+      throw new BadRequestException({ error: 'accessToken es requerido' });
+    }
+
+    await this.credentialsService.setTokenAndEnableDigitalWallet(
+      restaurantId,
+      accessToken,
+      !!body.isSandbox,
+      (body?.publicKey ?? '').trim() || undefined,
+    );
+
+    return { success: true };
+  }
+
   @Delete('tenant-token')
   async clearTenantToken(
     @Body() body: { restaurantId?: string },
@@ -99,6 +135,26 @@ export class MercadoPagoController {
     assertRestaurantAccess(freshUser, restaurantId);
 
     await this.credentialsService.clearToken(restaurantId);
+    return { success: true };
+  }
+
+  @Delete('tenant-token/activate')
+  async deactivateTenantToken(
+    @Body() body: { restaurantId?: string },
+    @CurrentUser() user?: RequestUser,
+  ) {
+    const restaurantId = (body?.restaurantId ?? '').trim();
+    if (!restaurantId) {
+      throw new BadRequestException({ error: 'restaurantId es requerido' });
+    }
+
+    if (!user) throw new ForbiddenException('Unauthorized');
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
+
+    await this.credentialsService.clearTokenAndDisableDigitalWallet(
+      restaurantId,
+    );
     return { success: true };
   }
 

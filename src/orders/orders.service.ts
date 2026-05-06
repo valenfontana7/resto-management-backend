@@ -56,6 +56,8 @@ export class OrdersService {
     const customerName = (createDto.customerName ?? '').trim();
     const customerPhone = (createDto.customerPhone ?? '').trim();
     const paymentMethod = (createDto.paymentMethod ?? '').trim();
+    const normalizedPaymentMethod =
+      this.normalizePaymentMethodForConfig(paymentMethod);
     const orderType = createDto.type;
 
     if (!customerName) {
@@ -99,12 +101,21 @@ export class OrdersService {
         email: true,
         phone: true,
         address: true,
+        businessRules: true,
       },
     });
 
     if (!restaurant) {
       throw new NotFoundException('Restaurant not found');
     }
+
+    const enabledPaymentMethods = this.extractEnabledPaymentMethods(
+      restaurant.businessRules,
+    );
+    this.assertPaymentMethodEnabled(
+      normalizedPaymentMethod,
+      enabledPaymentMethods,
+    );
 
     const orderItems = createDto.items.map((item) => {
       const dish = dishes.find((d) => d.id === item.dishId);
@@ -187,13 +198,12 @@ export class OrdersService {
     const publicTrackingToken = crypto.randomBytes(32).toString('base64url');
     const orderNumber = await this.generateOrderNumber(restaurantId);
 
-    const ONLINE_PAYMENT_METHODS = ['mercadopago', 'payway'];
-    const isOnlinePayment = ONLINE_PAYMENT_METHODS.includes(
-      String(paymentMethod),
-    );
+    const isOnlinePayment = this.isOnlinePaymentMethod(normalizedPaymentMethod);
     const shouldCreateOnlineCheckout =
       isOnlinePayment && String(role || '').toUpperCase() !== 'SUPER_ADMIN';
-    const resolvedProvider = createDto.paymentProvider ?? paymentMethod;
+    const resolvedProvider = this.normalizePaymentProvider(
+      createDto.paymentProvider ?? paymentMethod,
+    );
     if (!shouldCreateOnlineCheckout) {
       const order = await this.prisma.order.create({
         data: {
@@ -447,6 +457,75 @@ export class OrdersService {
       isSandbox,
       publicTrackingToken: checkout.publicTrackingToken,
     };
+  }
+
+  private normalizePaymentMethodForConfig(method: string): string {
+    const normalized = String(method ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/_/g, '-');
+
+    const aliases: Record<string, string> = {
+      debit: 'debit-card',
+      credit: 'credit-card',
+      transfer: 'bank-transfer',
+      mercadopago: 'digital-wallet',
+      payway: 'digital-wallet',
+      'digital-wallet': 'digital-wallet',
+    };
+
+    return aliases[normalized] ?? normalized;
+  }
+
+  private normalizePaymentProvider(provider: string): 'mercadopago' | 'payway' {
+    const normalized = String(provider ?? '')
+      .trim()
+      .toLowerCase();
+    return normalized === 'payway' ? 'payway' : 'mercadopago';
+  }
+
+  private isOnlinePaymentMethod(normalizedMethod: string): boolean {
+    return normalizedMethod === 'digital-wallet';
+  }
+
+  private extractEnabledPaymentMethods(businessRules: unknown): string[] {
+    if (!businessRules || typeof businessRules !== 'object') {
+      return [];
+    }
+
+    const rules = businessRules as Record<string, unknown>;
+    const payment =
+      rules.payment && typeof rules.payment === 'object'
+        ? (rules.payment as Record<string, unknown>)
+        : null;
+
+    if (!payment || !Array.isArray(payment.methods)) {
+      return [];
+    }
+
+    return Array.from(
+      new Set(
+        payment.methods
+          .map((method) => this.normalizePaymentMethodForConfig(String(method)))
+          .filter(Boolean),
+      ),
+    );
+  }
+
+  private assertPaymentMethodEnabled(
+    normalizedMethod: string,
+    enabledMethods: string[],
+  ): void {
+    // If no explicit config exists, keep backward compatibility and allow all.
+    if (enabledMethods.length === 0) {
+      return;
+    }
+
+    if (!enabledMethods.includes(normalizedMethod)) {
+      throw new BadRequestException(
+        'El metodo de pago seleccionado no esta habilitado para este restaurante',
+      );
+    }
   }
 
   private async generateOrderNumber(restaurantId: string): Promise<string> {
