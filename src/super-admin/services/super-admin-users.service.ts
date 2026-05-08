@@ -95,8 +95,13 @@ export class SuperAdminUsersService {
   }
 
   async createUser(dto: CreateUserDto, adminId: string) {
+    const normalizedEmail = dto.email.trim().toLowerCase();
+
     const existingUser = await this.prisma.user.findFirst({
-      where: { email: dto.email },
+      where: {
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+        deletedAt: null,
+      },
     });
 
     if (existingUser) {
@@ -115,7 +120,7 @@ export class SuperAdminUsersService {
 
     const user = await this.prisma.user.create({
       data: {
-        email: dto.email,
+        email: normalizedEmail,
         password: hashedPassword,
         name: dto.name,
         isActive: dto.isActive ?? true,

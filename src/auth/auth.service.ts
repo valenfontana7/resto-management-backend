@@ -230,9 +230,10 @@ export class AuthService {
   async getLoginIntent(dto: LoginIntentDto): Promise<LoginIntentResponse> {
     const normalizedEmail = this.normalizeEmail(dto.email);
 
-    const user = await this.prisma.user.findFirst({
+    const users = await this.prisma.user.findMany({
       where: {
         email: { equals: normalizedEmail, mode: 'insensitive' },
+        deletedAt: null,
       },
       select: {
         email: true,
@@ -240,25 +241,39 @@ export class AuthService {
         isActive: true,
         passwordSetupRequired: true,
       },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
     });
 
-    if (!user || !user.isActive || !user.passwordSetupRequired) {
+    const hasConfiguredActiveUser = users.some(
+      (user) => user.isActive && !user.passwordSetupRequired,
+    );
+
+    if (hasConfiguredActiveUser) {
+      return { mode: 'password', email: normalizedEmail };
+    }
+
+    const pendingUser = users.find(
+      (user) => user.isActive && user.passwordSetupRequired,
+    );
+
+    if (!pendingUser) {
       return { mode: 'password', email: normalizedEmail };
     }
 
     return {
       mode: 'password_setup',
       email: normalizedEmail,
-      name: user.name,
+      name: pendingUser.name,
     };
   }
 
   async login(dto: LoginDto): Promise<AuthResponse> {
     const normalizedEmail = this.normalizeEmail(dto.email);
 
-    const user = await this.prisma.user.findFirst({
+    const users = await this.prisma.user.findMany({
       where: {
         email: { equals: normalizedEmail, mode: 'insensitive' },
+        deletedAt: null,
       },
       include: {
         restaurant: {
@@ -268,40 +283,55 @@ export class AuthService {
         },
         role: true,
       },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
     });
 
-    if (!user) {
+    if (users.length === 0) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    if (!user.isActive) {
-      throw new UnauthorizedException('User account is inactive');
-    }
+    const activeUsers = users.filter((user) => user.isActive);
+    const configuredActiveUsers = activeUsers.filter(
+      (user) => !user.passwordSetupRequired,
+    );
 
-    if (user.passwordSetupRequired) {
-      throw new UnauthorizedException('Password setup required');
-    }
+    for (const candidate of configuredActiveUsers) {
+      const isPasswordValid = await bcrypt.compare(
+        dto.password,
+        candidate.password,
+      );
 
-    const isPasswordValid = await bcrypt.compare(dto.password, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
+      if (!isPasswordValid) {
+        continue;
+      }
 
-    // Update lastLogin timestamp
-    const updatedUser = await this.prisma.user.update({
-      where: { id: user.id },
-      data: { lastLogin: new Date() },
-      include: {
-        restaurant: {
-          include: {
-            hours: true,
+      const updatedUser = await this.prisma.user.update({
+        where: { id: candidate.id },
+        data: { lastLogin: new Date() },
+        include: {
+          restaurant: {
+            include: {
+              hours: true,
+            },
           },
+          role: true,
         },
-        role: true,
-      },
-    });
+      });
 
-    return await this.generateAuthResponse(updatedUser as User);
+      return await this.generateAuthResponse(updatedUser as User);
+    }
+
+    if (configuredActiveUsers.length === 0) {
+      if (activeUsers.some((user) => user.passwordSetupRequired)) {
+        throw new UnauthorizedException('Password setup required');
+      }
+
+      if (users.some((user) => !user.isActive)) {
+        throw new UnauthorizedException('User account is inactive');
+      }
+    }
+
+    throw new UnauthorizedException('Invalid credentials');
   }
 
   async completePasswordSetup(
@@ -309,52 +339,84 @@ export class AuthService {
   ): Promise<AuthResponse> {
     const normalizedEmail = this.normalizeEmail(dto.email);
 
-    const user = await this.prisma.user.findFirst({
+    const users = await this.prisma.user.findMany({
       where: {
         email: { equals: normalizedEmail, mode: 'insensitive' },
+        deletedAt: null,
       },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
     });
 
-    if (!user) {
+    if (users.length === 0) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    if (!user.isActive) {
-      throw new UnauthorizedException('User account is inactive');
-    }
+    const activePendingUsers = users.filter(
+      (user) => user.isActive && user.passwordSetupRequired,
+    );
 
-    if (!user.passwordSetupRequired) {
+    if (activePendingUsers.length === 0) {
+      if (users.some((user) => !user.isActive)) {
+        throw new UnauthorizedException('User account is inactive');
+      }
+
       throw new BadRequestException('Password already configured');
     }
 
-    if (!user.activationCodeHash || !user.activationCodeExpiresAt) {
+    const primaryPendingUser = activePendingUsers[0];
+
+    if (
+      !primaryPendingUser.activationCodeHash ||
+      !primaryPendingUser.activationCodeExpiresAt
+    ) {
       throw new BadRequestException('Activation code is not available');
     }
 
-    if (user.activationCodeExpiresAt.getTime() < Date.now()) {
+    if (primaryPendingUser.activationCodeExpiresAt.getTime() < Date.now()) {
       throw new BadRequestException('Activation code expired');
     }
 
-    if (user.activationCodeAttempts >= 5) {
+    if (primaryPendingUser.activationCodeAttempts >= 5) {
       throw new BadRequestException('Activation code locked');
     }
 
-    const isActivationCodeValid = await bcrypt.compare(
-      dto.activationCode,
-      user.activationCodeHash,
-    );
+    let matchedPendingUser: (typeof activePendingUsers)[number] | null = null;
 
-    if (!isActivationCodeValid) {
+    for (const candidate of activePendingUsers) {
+      if (
+        !candidate.activationCodeHash ||
+        !candidate.activationCodeExpiresAt ||
+        candidate.activationCodeAttempts >= 5 ||
+        candidate.activationCodeExpiresAt.getTime() < Date.now()
+      ) {
+        continue;
+      }
+
+      const isActivationCodeValid = await bcrypt.compare(
+        dto.activationCode,
+        candidate.activationCodeHash,
+      );
+
+      if (!isActivationCodeValid) {
+        continue;
+      }
+
+      matchedPendingUser = candidate;
+      break;
+    }
+
+    if (!matchedPendingUser) {
       await this.prisma.user.update({
-        where: { id: user.id },
+        where: { id: primaryPendingUser.id },
         data: { activationCodeAttempts: { increment: 1 } },
       });
+
       throw new UnauthorizedException('Invalid activation code');
     }
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
     const updatedUser = await this.prisma.user.update({
-      where: { id: user.id },
+      where: { id: matchedPendingUser.id },
       data: {
         password: hashedPassword,
         passwordSetupRequired: false,
@@ -418,27 +480,16 @@ export class AuthService {
           },
         },
         createdAt: true,
+        updatedAt: true,
+        isActive: true,
       },
     });
 
-    if (!user) {
-      throw new UnauthorizedException('User not found');
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('User not found or inactive');
     }
 
-    const mappedRole = this.mapRoleForResponse(user.role || null);
-
-    return {
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        roleId: user.roleId,
-        restaurantId: user.restaurantId,
-        restaurant: user.restaurant,
-        role: mappedRole,
-        createdAt: user.createdAt,
-      },
-    };
+    return { user };
   }
 
   private mapRoleForResponse(

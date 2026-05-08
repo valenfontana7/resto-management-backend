@@ -86,6 +86,7 @@ export class RestaurantUsersService {
     },
   ) {
     const roleIdentifier = inviteDto.roleId || inviteDto.roleName;
+    const normalizedEmail = inviteDto.email.trim().toLowerCase();
 
     if (!roleIdentifier) {
       throw new BadRequestException('Either roleId or role name is required');
@@ -105,16 +106,24 @@ export class RestaurantUsersService {
       throw new BadRequestException('Invalid role for this restaurant');
     }
 
-    // Verificar si el usuario ya existe en el restaurante
+    // El login usa email como identificador global. No permitir duplicados.
     const existingUser = await this.prisma.user.findFirst({
       where: {
-        restaurantId,
-        email: inviteDto.email,
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        restaurantId: true,
       },
     });
 
     if (existingUser) {
-      throw new ConflictException('User already exists in this restaurant');
+      if (existingUser.restaurantId === restaurantId) {
+        throw new ConflictException('User already exists in this restaurant');
+      }
+
+      throw new ConflictException('Email already registered');
     }
 
     const restaurant = await this.prisma.restaurant.findUnique({
@@ -132,8 +141,8 @@ export class RestaurantUsersService {
 
     const createdUser = await this.prisma.user.create({
       data: {
-        name: inviteDto.name || inviteDto.email.split('@')[0],
-        email: inviteDto.email,
+        name: inviteDto.name || normalizedEmail.split('@')[0],
+        email: normalizedEmail,
         password: hashedPassword,
         restaurantId,
         roleId: role.id,

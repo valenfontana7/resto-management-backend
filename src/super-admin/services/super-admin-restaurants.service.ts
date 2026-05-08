@@ -430,16 +430,17 @@ export class SuperAdminRestaurantsService {
         });
       }
 
-      const adminEmail = dto.adminEmail || dto.email;
+      const adminEmail = (dto.adminEmail || dto.email).trim().toLowerCase();
 
       const existingUser = await tx.user.findFirst({
-        where: { email: adminEmail, restaurantId: restaurant.id },
+        where: {
+          email: { equals: adminEmail, mode: 'insensitive' },
+          deletedAt: null,
+        },
       });
 
       if (existingUser) {
-        throw new BadRequestException(
-          'Ya existe un administrador con este email para este restaurante',
-        );
+        throw new BadRequestException('Ya existe un usuario con este email');
       }
 
       const adminUser = await tx.user.create({
