@@ -514,7 +514,20 @@ export class RestaurantsController {
       name: dto.name,
     });
 
-    return { success: true, user: newUser };
+    const {
+      activationCode,
+      activationCodeExpiresAt,
+      activationCodeEmailSent,
+      ...user
+    } = newUser;
+
+    return {
+      success: true,
+      user,
+      activationCode,
+      activationCodeExpiresAt,
+      activationCodeEmailSent,
+    };
   }
 
   @ApiOperation({ summary: 'Update user role or status' })

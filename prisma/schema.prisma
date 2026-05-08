@@ -589,6 +589,10 @@ model User {
   restaurantId       String?
   email              String
   password           String
+  passwordSetupRequired Boolean          @default(false)
+  activationCodeHash String?
+  activationCodeExpiresAt DateTime?
+  activationCodeAttempts Int             @default(0)
   isActive           Boolean             @default(true)
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt

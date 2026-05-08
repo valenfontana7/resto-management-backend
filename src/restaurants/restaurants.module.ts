@@ -10,9 +10,10 @@ import { BranchesService } from './services/branches.service';
 import { StorageModule } from '../storage/storage.module';
 import { AuthModule } from '../auth/auth.module';
 import { AdminAlertsModule } from '../admin-alerts/admin-alerts.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
-  imports: [StorageModule, AuthModule, AdminAlertsModule],
+  imports: [StorageModule, AuthModule, AdminAlertsModule, EmailModule],
   controllers: [
     RestaurantsController,
     RestaurantsPublicController,

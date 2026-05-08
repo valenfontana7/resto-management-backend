@@ -6,8 +6,10 @@ import {
   Optional,
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AdminAlertsService } from '../../admin-alerts/admin-alerts.service';
+import { EmailService } from '../../email/email.service';
 
 /**
  * Servicio para gestión de usuarios de restaurante.
@@ -18,6 +20,7 @@ export class RestaurantUsersService {
   constructor(
     private readonly prisma: PrismaService,
     @Optional() private readonly adminAlerts?: AdminAlertsService,
+    @Optional() private readonly emailService?: EmailService,
   ) {}
 
   /**
@@ -114,8 +117,18 @@ export class RestaurantUsersService {
       throw new ConflictException('User already exists in this restaurant');
     }
 
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { name: true },
+    });
+
     // Crear usuario con contraseña temporal
-    const hashedPassword = await bcrypt.hash('TempPassword123!', 10);
+    const temporaryPassword = randomBytes(32).toString('hex');
+    const hashedPassword = await bcrypt.hash(temporaryPassword, 10);
+    const activationCode = this.generateActivationCode();
+    const activationCodeHash = await bcrypt.hash(activationCode, 10);
+    const activationCodeExpiresAt = new Date();
+    activationCodeExpiresAt.setHours(activationCodeExpiresAt.getHours() + 48);
 
     const createdUser = await this.prisma.user.create({
       data: {
@@ -125,6 +138,10 @@ export class RestaurantUsersService {
         restaurantId,
         roleId: role.id,
         isActive: true,
+        passwordSetupRequired: true,
+        activationCodeHash,
+        activationCodeExpiresAt,
+        activationCodeAttempts: 0,
       },
       select: {
         id: true,
@@ -144,7 +161,20 @@ export class RestaurantUsersService {
       restaurantName: null,
     });
 
-    return createdUser;
+    const activationCodeEmailSent = await this.sendActivationCodeEmail({
+      to: createdUser.email,
+      name: createdUser.name,
+      restaurantName: restaurant?.name ?? 'tu restaurante',
+      activationCode,
+      activationCodeExpiresAt,
+    });
+
+    return {
+      ...createdUser,
+      activationCode,
+      activationCodeExpiresAt,
+      activationCodeEmailSent,
+    };
   }
 
   /**
@@ -200,7 +230,7 @@ export class RestaurantUsersService {
   }
 
   /**
-   * Eliminar usuario del restaurante (soft delete)
+   * Eliminar usuario del restaurante (hard delete)
    */
   async removeUser(restaurantId: string, userId: string) {
     // Verificar que el usuario pertenece al restaurante
@@ -212,10 +242,15 @@ export class RestaurantUsersService {
       throw new NotFoundException('User not found in this restaurant');
     }
 
-    // Soft delete: desactivar usuario
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { isActive: false },
+    await this.prisma.$transaction(async (tx) => {
+      // AdminAuditLog no tiene onDelete: Cascade para User.
+      await tx.adminAuditLog.deleteMany({
+        where: { adminId: userId },
+      });
+
+      await tx.user.delete({
+        where: { id: userId },
+      });
     });
 
     return { success: true, message: 'User removed successfully' };
@@ -295,5 +330,61 @@ export class RestaurantUsersService {
     }
 
     return role;
+  }
+
+  private generateActivationCode() {
+    const value = randomBytes(4).readUInt32BE(0) % 1_000_000;
+    return value.toString().padStart(6, '0');
+  }
+
+  private async sendActivationCodeEmail(params: {
+    to: string;
+    name: string;
+    restaurantName: string;
+    activationCode: string;
+    activationCodeExpiresAt: Date;
+  }): Promise<boolean> {
+    if (!this.emailService) return false;
+
+    const formattedCode = params.activationCode.replace(
+      /(\d{3})(\d{3})/,
+      '$1-$2',
+    );
+    const expiresAt = params.activationCodeExpiresAt.toLocaleString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: 'America/Argentina/Buenos_Aires',
+    });
+    const safeName = this.escapeHtml(params.name);
+    const safeRestaurantName = this.escapeHtml(params.restaurantName);
+
+    return this.emailService.sendGenericEmail(
+      params.to,
+      `Tu codigo de activacion para ${safeRestaurantName}`,
+      `
+        <div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.5;">
+          <h2 style="margin: 0 0 12px;">Hola ${safeName}</h2>
+          <p>Te crearon un acceso al panel de <strong>${safeRestaurantName}</strong>.</p>
+          <p>Usa este codigo en el primer ingreso para crear tu contrasena:</p>
+          <div style="font-size: 30px; font-weight: 700; letter-spacing: 6px; padding: 16px 20px; background: #f1f5f9; border-radius: 8px; display: inline-block;">
+            ${formattedCode}
+          </div>
+          <p style="margin-top: 18px; color: #475569;">El codigo vence el ${expiresAt} y solo puede usarse una vez.</p>
+          <p style="color: #64748b; font-size: 13px;">Si no esperabas este acceso, ignora este email.</p>
+        </div>
+      `,
+      'Bentoo',
+    );
+  }
+
+  private escapeHtml(value: string) {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 }

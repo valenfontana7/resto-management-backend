@@ -1,5 +1,6 @@
 import {
   Injectable,
+  BadRequestException,
   ConflictException,
   UnauthorizedException,
   NotFoundException,
@@ -8,7 +9,12 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
-import { RegisterDto, LoginDto } from './dto/auth.dto';
+import {
+  RegisterDto,
+  LoginDto,
+  LoginIntentDto,
+  CompletePasswordSetupDto,
+} from './dto/auth.dto';
 import { User } from '@prisma/client';
 import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
 
@@ -34,6 +40,12 @@ export interface AuthResponse {
   token: string;
   expiresAt: string;
   needsSetup?: boolean;
+}
+
+export interface LoginIntentResponse {
+  mode: 'password' | 'password_setup';
+  email: string;
+  name?: string;
 }
 
 @Injectable()
@@ -215,6 +227,32 @@ export class AuthService {
     return await this.generateAuthResponse(result.user);
   }
 
+  async getLoginIntent(dto: LoginIntentDto): Promise<LoginIntentResponse> {
+    const normalizedEmail = this.normalizeEmail(dto.email);
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+      },
+      select: {
+        email: true,
+        name: true,
+        isActive: true,
+        passwordSetupRequired: true,
+      },
+    });
+
+    if (!user || !user.isActive || !user.passwordSetupRequired) {
+      return { mode: 'password', email: normalizedEmail };
+    }
+
+    return {
+      mode: 'password_setup',
+      email: normalizedEmail,
+      name: user.name,
+    };
+  }
+
   async login(dto: LoginDto): Promise<AuthResponse> {
     const normalizedEmail = this.normalizeEmail(dto.email);
 
@@ -240,6 +278,10 @@ export class AuthService {
       throw new UnauthorizedException('User account is inactive');
     }
 
+    if (user.passwordSetupRequired) {
+      throw new UnauthorizedException('Password setup required');
+    }
+
     const isPasswordValid = await bcrypt.compare(dto.password, user.password);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
@@ -249,6 +291,78 @@ export class AuthService {
     const updatedUser = await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLogin: new Date() },
+      include: {
+        restaurant: {
+          include: {
+            hours: true,
+          },
+        },
+        role: true,
+      },
+    });
+
+    return await this.generateAuthResponse(updatedUser as User);
+  }
+
+  async completePasswordSetup(
+    dto: CompletePasswordSetupDto,
+  ): Promise<AuthResponse> {
+    const normalizedEmail = this.normalizeEmail(dto.email);
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException('User account is inactive');
+    }
+
+    if (!user.passwordSetupRequired) {
+      throw new BadRequestException('Password already configured');
+    }
+
+    if (!user.activationCodeHash || !user.activationCodeExpiresAt) {
+      throw new BadRequestException('Activation code is not available');
+    }
+
+    if (user.activationCodeExpiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('Activation code expired');
+    }
+
+    if (user.activationCodeAttempts >= 5) {
+      throw new BadRequestException('Activation code locked');
+    }
+
+    const isActivationCodeValid = await bcrypt.compare(
+      dto.activationCode,
+      user.activationCodeHash,
+    );
+
+    if (!isActivationCodeValid) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { activationCodeAttempts: { increment: 1 } },
+      });
+      throw new UnauthorizedException('Invalid activation code');
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    const updatedUser = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        passwordSetupRequired: false,
+        activationCodeHash: null,
+        activationCodeExpiresAt: null,
+        activationCodeAttempts: 0,
+        lastLogin: new Date(),
+      },
       include: {
         restaurant: {
           include: {

@@ -262,6 +262,7 @@ export class OrdersService {
           items: {
             include: {
               dish: true,
+              selectedModifiers: true,
             },
           },
           statusHistory: true,
@@ -844,6 +845,7 @@ export class OrdersService {
           items: {
             include: {
               dish: true,
+              selectedModifiers: true,
             },
           },
           table: true,
@@ -915,6 +917,7 @@ export class OrdersService {
         items: {
           include: {
             dish: true,
+            selectedModifiers: true,
           },
         },
         table: true,
@@ -967,6 +970,7 @@ export class OrdersService {
         items: {
           include: {
             dish: true,
+            selectedModifiers: true,
           },
         },
       },
@@ -993,6 +997,7 @@ export class OrdersService {
           items: {
             include: {
               dish: true,
+              selectedModifiers: true,
             },
           },
           statusHistory: {
@@ -1033,6 +1038,7 @@ export class OrdersService {
         items: {
           include: {
             dish: true,
+            selectedModifiers: true,
           },
         },
         statusHistory: {
@@ -1288,6 +1294,7 @@ export class OrdersService {
         items: {
           include: {
             dish: true,
+            selectedModifiers: true,
           },
         },
         statusHistory: {

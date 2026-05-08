@@ -1,4 +1,10 @@
-import { IsEmail, IsString, MinLength, IsOptional } from 'class-validator';
+import {
+  IsEmail,
+  IsString,
+  MinLength,
+  IsOptional,
+  Matches,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class RegisterDto {
@@ -28,5 +34,33 @@ export class LoginDto {
 
   @ApiProperty({ example: 'securePassword123' })
   @IsString()
+  password: string;
+}
+
+export class LoginIntentDto {
+  @ApiProperty({ example: 'john@example.com' })
+  @IsEmail()
+  email: string;
+}
+
+export class CompletePasswordSetupDto {
+  @ApiProperty({ example: 'john@example.com' })
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({ example: '482913' })
+  @IsString()
+  @Matches(/^\d{6}$/, {
+    message: 'Activation code must contain exactly 6 digits',
+  })
+  activationCode: string;
+
+  @ApiProperty({ example: 'SecurePass123', minLength: 6 })
+  @IsString()
+  @MinLength(6)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+    message:
+      'Password must contain at least one uppercase letter, one lowercase letter, and one number',
+  })
   password: string;
 }

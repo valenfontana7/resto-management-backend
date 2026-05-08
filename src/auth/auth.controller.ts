@@ -7,7 +7,12 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto } from './dto/auth.dto';
+import {
+  RegisterDto,
+  LoginDto,
+  LoginIntentDto,
+  CompletePasswordSetupDto,
+} from './dto/auth.dto';
 import { ImpersonateDto } from './dto/impersonate.dto';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -68,6 +73,15 @@ export class AuthController {
   }
 
   @Public()
+  @Post('login/intent')
+  @Throttle({ default: { ttl: 60000, limit: 20 } })
+  @ApiOperation({ summary: 'Resolve login mode for an email' })
+  @ApiResponse({ status: 200, description: 'Login mode resolved' })
+  async loginIntent(@Body() dto: LoginIntentDto) {
+    return this.authService.getLoginIntent(dto);
+  }
+
+  @Public()
   @Post('login')
   @Throttle({ default: { ttl: 60000, limit: 10 } })
   @ApiOperation({ summary: 'Login user' })
@@ -78,6 +92,23 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const result = await this.authService.login(dto);
+    this.setAuthCookie(res, result.token);
+    return result;
+  }
+
+  @Public()
+  @Post('password-setup')
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @ApiOperation({ summary: 'Complete pending password setup' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password configured and login completed',
+  })
+  async completePasswordSetup(
+    @Body() dto: CompletePasswordSetupDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.completePasswordSetup(dto);
     this.setAuthCookie(res, result.token);
     return result;
   }
