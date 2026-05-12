@@ -9,13 +9,14 @@ import {
 } from '@nestjs/common';
 import { LoyaltyService } from './loyalty.service';
 import { RedeemPointsDto } from './dto/redeem-points.dto';
+import { EnrollLoyaltyDto } from './dto/enroll-loyalty.dto';
 import { Public } from '../auth/decorators/public.decorator';
 import {
   FeatureGuard,
   RequireFeature,
 } from '../subscriptions/guards/feature.guard';
 
-@Controller('restaurants/:restaurantId/loyalty')
+@Controller('api/restaurants/:restaurantId/loyalty')
 export class LoyaltyController {
   constructor(private readonly loyaltyService: LoyaltyService) {}
 
@@ -34,7 +35,7 @@ export class LoyaltyController {
   @Post('enroll')
   enroll(
     @Param('restaurantId') restaurantId: string,
-    @Body() body: { email: string; name: string; phone?: string },
+    @Body() body: EnrollLoyaltyDto,
   ) {
     return this.loyaltyService.getOrCreateAccount(restaurantId, body);
   }

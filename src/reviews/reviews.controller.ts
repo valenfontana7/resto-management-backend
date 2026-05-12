@@ -17,7 +17,7 @@ import {
   RequireFeature,
 } from '../subscriptions/guards/feature.guard';
 
-@Controller('restaurants/:restaurantId/reviews')
+@Controller('api/restaurants/:restaurantId/reviews')
 export class ReviewsController {
   constructor(private readonly reviewsService: ReviewsService) {}
 

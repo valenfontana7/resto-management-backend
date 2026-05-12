@@ -12,6 +12,7 @@ type FeatureKey =
   | 'reservations'
   | 'delivery'
   | 'loyalty'
+  | 'reviews'
   | 'giftCards'
   | 'catering';
 
@@ -85,8 +86,15 @@ export class FeatureFlagsGuard implements CanActivate {
       return 'delivery';
     }
 
-    if (/^\/api\/loyalty\b/.test(url)) {
+    if (
+      /^\/api\/restaurants\/[^/]+\/loyalty\b/.test(url) ||
+      /^\/api\/loyalty\b/.test(url)
+    ) {
       return 'loyalty';
+    }
+
+    if (/^\/api\/restaurants\/[^/]+\/reviews\b/.test(url)) {
+      return 'reviews';
     }
 
     if (/^\/api\/gift-cards\b/.test(url)) {

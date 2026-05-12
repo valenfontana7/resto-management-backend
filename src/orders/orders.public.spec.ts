@@ -19,6 +19,7 @@ import { CouponsService } from '../coupons/coupons.service';
 import { PaymentProviderFactory } from '../payment-providers/payment-provider.factory';
 import { DeliveryPricingService } from '../delivery/services/delivery-pricing.service';
 import { DeliveryDispatchService } from '../delivery/services/delivery-dispatch.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 
 class InMemoryPrisma {
   restaurant = {
@@ -183,6 +184,13 @@ describe('Orders public tracking', () => {
         {
           provide: DeliveryDispatchService,
           useValue: { dispatchOrder: jest.fn() },
+        },
+        {
+          provide: LoyaltyService,
+          useValue: {
+            getOrCreateAccount: jest.fn(),
+            earnPoints: jest.fn(),
+          },
         },
         { provide: KitchenNotificationsService, useValue: {} },
         { provide: NotificationsService, useValue: {} },

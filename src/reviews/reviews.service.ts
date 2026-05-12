@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 
@@ -7,13 +12,31 @@ export class ReviewsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(restaurantId: string, dto: CreateReviewDto) {
+    await this.assertReviewTargetIsValid(restaurantId, dto);
+
+    if (dto.orderId) {
+      const duplicateWhere: any = {
+        restaurantId,
+        orderId: dto.orderId,
+        dishId: dto.dishId ?? null,
+      };
+      const existingReview = await this.prisma.review.findFirst({
+        where: duplicateWhere,
+        select: { id: true },
+      });
+
+      if (existingReview) {
+        throw new ConflictException('Ya recibimos una reseña para este pedido');
+      }
+    }
+
     const review = await this.prisma.review.create({
       data: {
         restaurantId,
         orderId: dto.orderId,
         dishId: dto.dishId,
         customerName: dto.customerName,
-        customerEmail: dto.customerEmail,
+        customerEmail: this.normalizeEmail(dto.customerEmail),
         rating: dto.rating,
         comment: dto.comment,
       },
@@ -155,5 +178,53 @@ export class ReviewsService {
         reviewCount: agg._count.id,
       },
     });
+  }
+
+  private async assertReviewTargetIsValid(
+    restaurantId: string,
+    dto: CreateReviewDto,
+  ) {
+    if (dto.dishId) {
+      const dish = await this.prisma.dish.findFirst({
+        where: { id: dto.dishId, restaurantId },
+        select: { id: true },
+      });
+
+      if (!dish) {
+        throw new BadRequestException('El plato no pertenece al restaurante');
+      }
+    }
+
+    if (!dto.orderId) return;
+
+    const order = await this.prisma.order.findFirst({
+      where: { id: dto.orderId, restaurantId },
+      select: { id: true, status: true },
+    });
+
+    if (!order) {
+      throw new BadRequestException('El pedido no pertenece al restaurante');
+    }
+
+    if (String(order.status) !== 'DELIVERED') {
+      throw new BadRequestException(
+        'Solo se pueden reseñar pedidos entregados',
+      );
+    }
+
+    if (!dto.dishId) return;
+
+    const orderItem = await this.prisma.orderItem.findFirst({
+      where: { orderId: dto.orderId, dishId: dto.dishId },
+      select: { id: true },
+    });
+
+    if (!orderItem) {
+      throw new BadRequestException('El plato no pertenece al pedido');
+    }
+  }
+
+  private normalizeEmail(email?: string) {
+    return email?.trim().toLowerCase();
   }
 }

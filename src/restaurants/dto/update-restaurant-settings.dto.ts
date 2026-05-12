@@ -764,4 +764,13 @@ export class UpdateRestaurantSettingsDto {
   @IsOptional()
   @IsBoolean()
   isPublished?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Whether the restaurant public website can be indexed by search engines',
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isIndexable?: boolean;
 }

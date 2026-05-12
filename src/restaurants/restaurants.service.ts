@@ -51,6 +51,7 @@ export class RestaurantsService {
         socialMedia: true,
         onboardingIncomplete: true,
         isPublished: true,
+        isIndexable: true,
         hours: true,
         createdAt: true,
         updatedAt: true,
@@ -102,6 +103,7 @@ export class RestaurantsService {
         socialMedia: true,
         onboardingIncomplete: true,
         isPublished: true,
+        isIndexable: true,
         hours: true,
         createdAt: true,
         updatedAt: true,
@@ -841,6 +843,11 @@ export class RestaurantsService {
       updateData.isPublished = payload.isPublished;
     }
 
+    // Handle isIndexable flag
+    if (payload.isIndexable !== undefined) {
+      updateData.isIndexable = payload.isIndexable;
+    }
+
     // Process embedded base64 assets in branding (hero, sections, etc.)
     // Normalize/validate hero and layout primitives before asset processing
     if (updateData.branding) {
@@ -1317,6 +1324,7 @@ export class RestaurantsService {
       where: {
         status: RestaurantStatus.ACTIVE, // Solo restaurantes activos
         isPublished: true, // Solo restaurantes publicados
+        isIndexable: true, // Solo restaurantes permitidos para indexación
       },
       select: {
         id: true,
@@ -1328,6 +1336,7 @@ export class RestaurantsService {
         country: true,
         logo: true,
         isPublished: true,
+        isIndexable: true,
         createdAt: true,
         updatedAt: true,
       },

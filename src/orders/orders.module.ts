@@ -13,6 +13,7 @@ import { KitchenModule } from '../kitchen/kitchen.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { CouponsModule } from '../coupons/coupons.module';
 import { DeliveryModule } from '../delivery/delivery.module';
+import { LoyaltyModule } from '../loyalty/loyalty.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { DeliveryModule } from '../delivery/delivery.module';
     NotificationsModule,
     CouponsModule,
     DeliveryModule,
+    LoyaltyModule,
   ],
   controllers: [OrdersController, PublicOrdersController],
   providers: [OrdersService, OrderAnalyticsService, OrderNotificationsService],

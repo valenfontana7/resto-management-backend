@@ -38,6 +38,7 @@ model Restaurant {
   verificationStatus    VerificationStatus     @default(UNVERIFIED)
   onboardingIncomplete  Boolean                @default(true)
   isPublished           Boolean                @default(false)
+  isIndexable           Boolean                @default(true)
   // Multi-branch support
   parentId              String?
   parent                Restaurant?            @relation("RestaurantBranches", fields: [parentId], references: [id])

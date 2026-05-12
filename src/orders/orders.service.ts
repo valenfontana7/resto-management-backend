@@ -14,6 +14,7 @@ import { CouponsService } from '../coupons/coupons.service';
 import { PaymentProviderFactory } from '../payment-providers/payment-provider.factory';
 import { DeliveryPricingService } from '../delivery/services/delivery-pricing.service';
 import { DeliveryDispatchService } from '../delivery/services/delivery-dispatch.service';
+import { LoyaltyService } from '../loyalty/loyalty.service';
 import * as crypto from 'crypto';
 import {
   CreateOrderDto,
@@ -40,6 +41,7 @@ export class OrdersService {
     private readonly paymentProviderFactory: PaymentProviderFactory,
     private readonly deliveryPricingService: DeliveryPricingService,
     private readonly deliveryDispatchService: DeliveryDispatchService,
+    private readonly loyaltyService: LoyaltyService,
   ) {}
 
   async create(
@@ -586,6 +588,8 @@ export class OrdersService {
     createdAt: Date;
     paidAt: Date | null;
     items: Array<{
+      dishId: string;
+      name: string;
       title: string;
       quantity: number;
       unitPrice: number;
@@ -625,6 +629,7 @@ export class OrdersService {
         paidAt: true,
         items: {
           select: {
+            dishId: true,
             quantity: true,
             unitPrice: true,
             subtotal: true,
@@ -666,6 +671,8 @@ export class OrdersService {
         createdAt: order.createdAt,
         paidAt: order.paidAt,
         items: order.items.map((it) => ({
+          dishId: it.dishId,
+          name: it.dish.name,
           title: it.dish.name,
           quantity: it.quantity,
           unitPrice: it.unitPrice,
@@ -730,6 +737,8 @@ export class OrdersService {
       createdAt: checkout.createdAt,
       paidAt: checkout.paidAt,
       items: items.map((it) => ({
+        dishId: String(it?.dishId ?? ''),
+        name: String(it?.name ?? ''),
         title: String(it?.name ?? ''),
         quantity: Number(it?.quantity ?? 0),
         unitPrice: Number(it?.unitPrice ?? 0),
@@ -927,6 +936,7 @@ export class OrdersService {
             email: true,
             phone: true,
             address: true,
+            features: true,
           },
         },
         statusHistory: {
@@ -965,6 +975,7 @@ export class OrdersService {
             email: true,
             phone: true,
             address: true,
+            features: true,
           },
         },
         items: {
@@ -1070,6 +1081,13 @@ export class OrdersService {
       parsed.status,
     );
 
+    if (parsed.status === OrderStatus.DELIVERED) {
+      await this.awardLoyaltyPointsForDeliveredOrder(
+        updatedOrder,
+        order.restaurant,
+      );
+    }
+
     return updatedOrder;
   }
 
@@ -1152,6 +1170,51 @@ export class OrdersService {
         `Cannot transition from ${currentStatus} to ${newStatus}. Allowed: ${allowed.join(', ')}`,
       );
     }
+  }
+
+  private async awardLoyaltyPointsForDeliveredOrder(
+    order: {
+      id: string;
+      restaurantId: string;
+      customerName: string;
+      customerEmail?: string | null;
+      customerPhone?: string | null;
+      total: number;
+    },
+    restaurant?: { features?: unknown } | null,
+  ) {
+    if (!this.isRestaurantFeatureEnabled(restaurant?.features, 'loyalty')) {
+      return;
+    }
+
+    if (!order.customerEmail) return;
+
+    try {
+      await this.loyaltyService.getOrCreateAccount(order.restaurantId, {
+        email: order.customerEmail,
+        name: order.customerName,
+        phone: order.customerPhone || undefined,
+      });
+      await this.loyaltyService.earnPoints(
+        order.restaurantId,
+        order.customerEmail,
+        order.total,
+        order.id,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `No se pudieron acreditar puntos de fidelización para el pedido ${order.id}: ${message}`,
+      );
+    }
+  }
+
+  private isRestaurantFeatureEnabled(features: unknown, feature: string) {
+    return (
+      !!features &&
+      typeof features === 'object' &&
+      (features as Record<string, unknown>)[feature] === true
+    );
   }
 
   // ─────────────────────────────────────────────────────────────

@@ -1,0 +1,2 @@
+ALTER TABLE "Restaurant"
+ADD COLUMN "isIndexable" BOOLEAN NOT NULL DEFAULT true;

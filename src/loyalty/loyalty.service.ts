@@ -21,23 +21,36 @@ export class LoyaltyService {
     restaurantId: string,
     customer: { email: string; name: string; phone?: string },
   ) {
+    const customerEmail = this.normalizeEmail(customer.email);
+    const customerName = customer.name?.trim();
+
+    if (!customerEmail) {
+      throw new BadRequestException('Email requerido');
+    }
+
+    if (!customerName) {
+      throw new BadRequestException('Nombre requerido');
+    }
+
     let account = await this.prisma.loyaltyAccount.findUnique({
       where: {
         restaurantId_customerEmail: {
           restaurantId,
-          customerEmail: customer.email,
+          customerEmail,
         },
       },
+      include: this.accountInclude(),
     });
 
     if (!account) {
       account = await this.prisma.loyaltyAccount.create({
         data: {
           restaurantId,
-          customerEmail: customer.email,
-          customerName: customer.name,
-          customerPhone: customer.phone,
+          customerEmail,
+          customerName,
+          customerPhone: customer.phone?.trim() || undefined,
         },
+        include: this.accountInclude(),
       });
     }
 
@@ -45,16 +58,19 @@ export class LoyaltyService {
   }
 
   async getAccount(restaurantId: string, customerEmail: string) {
+    const normalizedEmail = this.normalizeEmail(customerEmail);
+    if (!normalizedEmail) {
+      throw new BadRequestException('Email requerido');
+    }
+
     const account = await this.prisma.loyaltyAccount.findUnique({
       where: {
-        restaurantId_customerEmail: { restaurantId, customerEmail },
-      },
-      include: {
-        transactions: {
-          orderBy: { createdAt: 'desc' },
-          take: 20,
+        restaurantId_customerEmail: {
+          restaurantId,
+          customerEmail: normalizedEmail,
         },
       },
+      include: this.accountInclude(),
     });
 
     if (!account)
@@ -71,13 +87,28 @@ export class LoyaltyService {
     const points = Math.floor(orderTotal / 100) * POINTS_PER_CURRENCY_UNIT;
     if (points <= 0) return null;
 
+    const normalizedEmail = this.normalizeEmail(customerEmail);
+    if (!normalizedEmail) return null;
+
     const account = await this.prisma.loyaltyAccount.findUnique({
       where: {
-        restaurantId_customerEmail: { restaurantId, customerEmail },
+        restaurantId_customerEmail: {
+          restaurantId,
+          customerEmail: normalizedEmail,
+        },
       },
     });
 
     if (!account) return null;
+
+    if (orderId) {
+      const existingEarn = await this.prisma.loyaltyTransaction.findFirst({
+        where: { accountId: account.id, type: 'EARN', orderId },
+        select: { id: true },
+      });
+
+      if (existingEarn) return account;
+    }
 
     const [updatedAccount] = await this.prisma.$transaction([
       this.prisma.loyaltyAccount.update({
@@ -110,9 +141,17 @@ export class LoyaltyService {
     description?: string,
     orderId?: string,
   ) {
+    const normalizedEmail = this.normalizeEmail(customerEmail);
+    if (!normalizedEmail) {
+      throw new BadRequestException('Email requerido');
+    }
+
     const account = await this.prisma.loyaltyAccount.findUnique({
       where: {
-        restaurantId_customerEmail: { restaurantId, customerEmail },
+        restaurantId_customerEmail: {
+          restaurantId,
+          customerEmail: normalizedEmail,
+        },
       },
     });
 
@@ -188,5 +227,18 @@ export class LoyaltyService {
     if (totalEarned >= TIER_THRESHOLDS.GOLD) return 'GOLD';
     if (totalEarned >= TIER_THRESHOLDS.SILVER) return 'SILVER';
     return 'BRONZE';
+  }
+
+  private accountInclude() {
+    return {
+      transactions: {
+        orderBy: { createdAt: 'desc' as const },
+        take: 20,
+      },
+    };
+  }
+
+  private normalizeEmail(email?: string | null) {
+    return email?.trim().toLowerCase() || '';
   }
 }
