@@ -39,6 +39,7 @@ import { PlansModule } from './subscriptions/plans/plans.module';
 import { BuilderModule } from './builder/builder.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { LoyaltyModule } from './loyalty/loyalty.module';
+import { CustomersModule } from './customers/customers.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { ExperimentsModule } from './experiments/experiments.module';
 import { DigestModule } from './digest/digest.module';
@@ -115,6 +116,7 @@ import { validateEnvironment } from './common/config/env.validation';
     BuilderModule, // Website Builder module
     ReviewsModule,
     LoyaltyModule,
+    CustomersModule,
     IntegrationsModule,
     ExperimentsModule,
     DigestModule,

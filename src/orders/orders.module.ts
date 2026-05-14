@@ -14,6 +14,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { CouponsModule } from '../coupons/coupons.module';
 import { DeliveryModule } from '../delivery/delivery.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
+import { CustomersModule } from '../customers/customers.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
     NotificationsModule,
     CouponsModule,
     DeliveryModule,
+    CustomersModule,
     LoyaltyModule,
   ],
   controllers: [OrdersController, PublicOrdersController],

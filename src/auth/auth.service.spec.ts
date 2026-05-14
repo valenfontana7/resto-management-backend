@@ -46,7 +46,14 @@ describe('AuthService', () => {
         findFirst: jest.fn(),
         createMany: jest.fn(),
       },
-      $transaction: jest.fn((fn) => fn(prisma)),
+      authLoginLink: {
+        updateMany: jest.fn(),
+        create: jest.fn(),
+        findUnique: jest.fn(),
+      },
+      $transaction: jest.fn((input) =>
+        Array.isArray(input) ? Promise.all(input) : input(prisma),
+      ),
     };
 
     jwt = {
@@ -294,6 +301,146 @@ describe('AuthService', () => {
         where: { id: 'user-1' },
         data: { activationCodeAttempts: { increment: 1 } },
       });
+    });
+  });
+
+  describe('magic link', () => {
+    it('should create a one-time login link for configured active users', async () => {
+      prisma.user.findFirst.mockResolvedValue(mockUser);
+      prisma.authLoginLink.updateMany.mockResolvedValue({ count: 1 });
+      prisma.authLoginLink.create.mockResolvedValue({
+        id: 'link-1',
+        userId: mockUser.id,
+        tokenHash: 'hash',
+        expiresAt: new Date(Date.now() + 60_000),
+        usedAt: null,
+        createdAt: new Date(),
+      });
+
+      const result = await service.requestMagicLink({
+        email: ' TEST@EXAMPLE.COM ',
+        redirect: '/admin/orders',
+      });
+
+      expect(result.sent).toBe(true);
+      expect(result.expiresInMinutes).toBe(15);
+      expect(result.devLink).toContain('/admin/magic-link');
+      expect(result.devLink).toContain('redirect=%2Fadmin%2Forders');
+      expect(prisma.authLoginLink.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: mockUser.id,
+            usedAt: null,
+          }),
+        }),
+      );
+      expect(prisma.authLoginLink.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            userId: mockUser.id,
+            tokenHash: expect.any(String),
+            expiresAt: expect.any(Date),
+          }),
+        }),
+      );
+    });
+
+    it('should sanitize auth callback redirects to admin root', async () => {
+      prisma.user.findFirst.mockResolvedValue(mockUser);
+      prisma.authLoginLink.updateMany.mockResolvedValue({ count: 1 });
+      prisma.authLoginLink.create.mockResolvedValue({
+        id: 'link-1',
+        userId: mockUser.id,
+        tokenHash: 'hash',
+        expiresAt: new Date(Date.now() + 60_000),
+        usedAt: null,
+        createdAt: new Date(),
+      });
+
+      const result = await service.requestMagicLink({
+        email: 'test@example.com',
+        redirect: '/admin/magic-link?token=stale',
+      });
+
+      expect(result.devLink).toContain('redirect=%2Fadmin');
+      expect(result.devLink).not.toContain('redirect=%2Fadmin%2Fmagic-link');
+    });
+
+    it('should return generic response without creating link when user is missing', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+
+      const result = await service.requestMagicLink({
+        email: 'missing@example.com',
+      });
+
+      expect(result.sent).toBe(true);
+      expect(prisma.authLoginLink.create).not.toHaveBeenCalled();
+    });
+
+    it('should consume a valid magic link and return an auth response', async () => {
+      prisma.user.findFirst.mockResolvedValue(mockUser);
+      prisma.authLoginLink.updateMany.mockResolvedValue({ count: 1 });
+      prisma.authLoginLink.create.mockResolvedValue({
+        id: 'link-1',
+        userId: mockUser.id,
+        tokenHash: 'hash',
+        expiresAt: new Date(Date.now() + 60_000),
+        usedAt: null,
+        createdAt: new Date(),
+      });
+      prisma.user.update.mockResolvedValue(mockUser);
+
+      const request = await service.requestMagicLink({
+        email: 'test@example.com',
+      });
+      const rawToken = new URL(request.devLink!).searchParams.get('token')!;
+      const createdTokenHash =
+        prisma.authLoginLink.create.mock.calls[0][0].data.tokenHash;
+
+      prisma.authLoginLink.findUnique.mockResolvedValue({
+        id: 'link-1',
+        userId: mockUser.id,
+        tokenHash: createdTokenHash,
+        expiresAt: new Date(Date.now() + 60_000),
+        usedAt: null,
+        createdAt: new Date(),
+        user: mockUser,
+      });
+
+      const result = await service.consumeMagicLink({ token: rawToken });
+
+      expect(result).toHaveProperty('token', 'mock-jwt-token');
+      expect(prisma.authLoginLink.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { tokenHash: createdTokenHash },
+        }),
+      );
+      expect(prisma.authLoginLink.updateMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            usedAt: null,
+          }),
+          data: { usedAt: expect.any(Date) },
+        }),
+      );
+    });
+
+    it('should reject expired or already used magic links', async () => {
+      prisma.authLoginLink.findUnique.mockResolvedValue({
+        id: 'link-1',
+        userId: mockUser.id,
+        tokenHash: 'hash',
+        expiresAt: new Date(Date.now() - 1_000),
+        usedAt: null,
+        createdAt: new Date(),
+        user: mockUser,
+      });
+
+      await expect(
+        service.consumeMagicLink({
+          token: 'abcdefghijklmnopqrstuvwxyz1234567890',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
     });
   });
 

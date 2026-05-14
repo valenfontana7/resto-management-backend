@@ -2,8 +2,10 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CustomersService } from '../customers/customers.service';
 
 const POINTS_PER_CURRENCY_UNIT = 1; // 1 punto por cada $100 gastados (centavos)
 const TIER_THRESHOLDS = {
@@ -15,7 +17,10 @@ const TIER_THRESHOLDS = {
 
 @Injectable()
 export class LoyaltyService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly customersService: CustomersService,
+  ) {}
 
   async getOrCreateAccount(
     restaurantId: string,
@@ -32,6 +37,15 @@ export class LoyaltyService {
       throw new BadRequestException('Nombre requerido');
     }
 
+    const customerProfile = await this.customersService.upsertProfile(
+      restaurantId,
+      {
+        email: customerEmail,
+        name: customerName,
+        phone: customer.phone,
+      },
+    );
+
     let account = await this.prisma.loyaltyAccount.findUnique({
       where: {
         restaurantId_customerEmail: {
@@ -46,10 +60,17 @@ export class LoyaltyService {
       account = await this.prisma.loyaltyAccount.create({
         data: {
           restaurantId,
+          customerProfileId: customerProfile.id,
           customerEmail,
           customerName,
           customerPhone: customer.phone?.trim() || undefined,
         },
+        include: this.accountInclude(),
+      });
+    } else if (!account.customerProfileId) {
+      account = await this.prisma.loyaltyAccount.update({
+        where: { id: account.id },
+        data: { customerProfileId: customerProfile.id },
         include: this.accountInclude(),
       });
     }
@@ -75,6 +96,43 @@ export class LoyaltyService {
 
     if (!account)
       throw new NotFoundException('Cuenta de fidelización no encontrada');
+    return account;
+  }
+
+  async getAccountForSession(restaurantId: string, authorization?: string) {
+    const session = await this.customersService.resolveSessionProfile(
+      restaurantId,
+      authorization,
+    );
+
+    if (!session) {
+      throw new UnauthorizedException('Sesion de cliente invalida');
+    }
+
+    const normalizedEmail = this.normalizeEmail(session.profile.email);
+    let account = await this.prisma.loyaltyAccount.findFirst({
+      where: {
+        restaurantId,
+        OR: [
+          { customerProfileId: session.profile.id },
+          ...(normalizedEmail ? [{ customerEmail: normalizedEmail }] : []),
+        ],
+      },
+      include: this.accountInclude(),
+    });
+
+    if (!account) {
+      throw new NotFoundException('Cuenta de fidelización no encontrada');
+    }
+
+    if (!account.customerProfileId) {
+      account = await this.prisma.loyaltyAccount.update({
+        where: { id: account.id },
+        data: { customerProfileId: session.profile.id },
+        include: this.accountInclude(),
+      });
+    }
+
     return account;
   }
 

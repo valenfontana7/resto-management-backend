@@ -12,6 +12,8 @@ import {
   LoginDto,
   LoginIntentDto,
   CompletePasswordSetupDto,
+  RequestMagicLinkDto,
+  ConsumeMagicLinkDto,
 } from './dto/auth.dto';
 import { ImpersonateDto } from './dto/impersonate.dto';
 import { Public } from './decorators/public.decorator';
@@ -79,6 +81,29 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Login mode resolved' })
   async loginIntent(@Body() dto: LoginIntentDto) {
     return this.authService.getLoginIntent(dto);
+  }
+
+  @Public()
+  @Post('magic-link/request')
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @ApiOperation({ summary: 'Request a passwordless login link' })
+  @ApiResponse({ status: 200, description: 'Magic link request accepted' })
+  async requestMagicLink(@Body() dto: RequestMagicLinkDto) {
+    return this.authService.requestMagicLink(dto);
+  }
+
+  @Public()
+  @Post('magic-link/consume')
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @ApiOperation({ summary: 'Consume a passwordless login link' })
+  @ApiResponse({ status: 200, description: 'Login completed' })
+  async consumeMagicLink(
+    @Body() dto: ConsumeMagicLinkDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.consumeMagicLink(dto);
+    this.setAuthCookie(res, result.token);
+    return result;
   }
 
   @Public()

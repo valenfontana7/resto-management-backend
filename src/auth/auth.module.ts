@@ -8,12 +8,14 @@ import { JwtStrategy } from './strategies/jwt.strategy';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AdminAlertsModule } from '../admin-alerts/admin-alerts.module';
+import { EmailModule } from '../email/email.module';
 import { getJwtSecret } from '../common/config/jwt.config';
 
 @Module({
   imports: [
     PrismaModule,
     AdminAlertsModule,
+    EmailModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

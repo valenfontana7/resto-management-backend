@@ -15,6 +15,7 @@ import { PaymentProviderFactory } from '../payment-providers/payment-provider.fa
 import { DeliveryPricingService } from '../delivery/services/delivery-pricing.service';
 import { DeliveryDispatchService } from '../delivery/services/delivery-dispatch.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { CustomersService } from '../customers/customers.service';
 import * as crypto from 'crypto';
 import {
   CreateOrderDto,
@@ -42,6 +43,7 @@ export class OrdersService {
     private readonly deliveryPricingService: DeliveryPricingService,
     private readonly deliveryDispatchService: DeliveryDispatchService,
     private readonly loyaltyService: LoyaltyService,
+    private readonly customersService: CustomersService,
   ) {}
 
   async create(
@@ -206,11 +208,21 @@ export class OrdersService {
     const resolvedProvider = this.normalizePaymentProvider(
       createDto.paymentProvider ?? paymentMethod,
     );
+    const customerProfile = await this.createCustomerProfileForOrder(
+      restaurantId,
+      {
+        name: customerName,
+        email: createDto.customerEmail,
+        phone: customerPhone,
+      },
+    );
+
     if (!shouldCreateOnlineCheckout) {
       const order = await this.prisma.order.create({
         data: {
           orderNumber,
           restaurantId,
+          customerProfileId: customerProfile?.id,
           publicTrackingToken,
           customerName,
           customerEmail: createDto.customerEmail,
@@ -311,6 +323,7 @@ export class OrdersService {
     const checkout = await this.prisma.checkoutSession.create({
       data: {
         restaurantId,
+        customerProfileId: customerProfile?.id,
         orderNumber,
         publicTrackingToken,
         customerName,
@@ -1217,6 +1230,21 @@ export class OrdersService {
     );
   }
 
+  private async createCustomerProfileForOrder(
+    restaurantId: string,
+    customer: { name: string; email?: string | null; phone?: string | null },
+  ) {
+    try {
+      return await this.customersService.upsertProfile(restaurantId, customer);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `No se pudo vincular perfil de cliente para restaurante ${restaurantId}: ${message}`,
+      );
+      return null;
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────
   // Analytics (delegated)
   // ─────────────────────────────────────────────────────────────
@@ -1286,12 +1314,20 @@ export class OrdersService {
     const items = Array.isArray(checkout.items)
       ? (checkout.items as any[])
       : [];
+    const customerProfile = checkout.customerProfileId
+      ? { id: checkout.customerProfileId }
+      : await this.createCustomerProfileForOrder(checkout.restaurantId, {
+          name: checkout.customerName,
+          email: checkout.customerEmail,
+          phone: checkout.customerPhone,
+        });
 
     const createdOrder = await this.prisma.order.create({
       data: {
         id: checkout.id,
         orderNumber: checkout.orderNumber,
         restaurantId: checkout.restaurantId,
+        customerProfileId: customerProfile?.id,
         publicTrackingToken: checkout.publicTrackingToken,
         customerName: checkout.customerName,
         customerEmail: checkout.customerEmail,

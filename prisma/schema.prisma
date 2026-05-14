@@ -66,6 +66,7 @@ model Restaurant {
   externalOrders        ExternalOrder[]
   experiments           Experiment[]
   digestPreferences     DigestPreference[]
+  customerProfiles      RestaurantCustomerProfile[]
 
   @@index([slug])
   @@index([status])
@@ -180,6 +181,7 @@ model Modifier {
 model Order {
   id                  String               @id @default(cuid())
   restaurantId        String
+  customerProfileId   String?
   customerName        String
   customerEmail       String?
   customerPhone       String
@@ -217,6 +219,7 @@ model Order {
   readyAt             DateTime?
   deliveryOrder       DeliveryOrder?
   deliveryZone        DeliveryZone?        @relation(fields: [deliveryZoneId], references: [id])
+  customerProfile     RestaurantCustomerProfile? @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
   restaurant          Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   table               Table?               @relation("TableOrders", fields: [tableId], references: [id])
   items               OrderItem[]
@@ -227,6 +230,7 @@ model Order {
 
   @@unique([restaurantId, orderNumber])
   @@index([restaurantId])
+  @@index([customerProfileId])
   @@index([restaurantId, status])
   @@index([restaurantId, createdAt])
   @@index([orderNumber])
@@ -235,6 +239,7 @@ model Order {
 model CheckoutSession {
   id                  String        @id @default(cuid())
   restaurantId        String
+  customerProfileId   String?
   orderNumber         String
   publicTrackingToken String        @unique
   customerName        String
@@ -263,9 +268,11 @@ model CheckoutSession {
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
   restaurant          Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  customerProfile     RestaurantCustomerProfile? @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
   table               Table?        @relation(fields: [tableId], references: [id])
 
   @@unique([restaurantId, orderNumber])
+  @@index([customerProfileId])
   @@index([restaurantId, createdAt])
 }
 
@@ -361,6 +368,7 @@ model WebhookEvent {
 model Reservation {
   id              String            @id @default(cuid())
   restaurantId    String
+  customerProfileId String?
   customerName    String
   customerEmail   String
   customerPhone   String
@@ -373,11 +381,13 @@ model Reservation {
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   notes           String?
+  customerProfile RestaurantCustomerProfile? @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
   restaurant      Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   table           Table?            @relation("TableReservations", fields: [tableId], references: [id])
   currentTable    Table?            @relation("CurrentTableReservation")
 
   @@index([restaurantId])
+  @@index([customerProfileId])
   @@index([restaurantId, date])
   @@index([restaurantId, status])
 }
@@ -608,11 +618,84 @@ model User {
   restaurant         Restaurant?         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   role               Role?               @relation(fields: [roleId], references: [id])
   paymentMethods     UserPaymentMethod[]
+  loginLinks         AuthLoginLink[]
 
   @@index([email])
   @@index([restaurantId])
   @@index([restaurantId, roleId])
   @@index([isActive])
+}
+
+model AuthLoginLink {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([usedAt])
+}
+
+model CustomerIdentity {
+  id            String                       @id @default(cuid())
+  email         String?
+  phone         String?
+  emailVerified Boolean                      @default(false)
+  phoneVerified Boolean                      @default(false)
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
+  profiles      RestaurantCustomerProfile[]
+
+  @@unique([email])
+  @@unique([phone])
+  @@index([email])
+  @@index([phone])
+}
+
+model RestaurantCustomerProfile {
+  id             String            @id @default(cuid())
+  restaurantId   String
+  identityId     String
+  displayName    String
+  email          String?
+  phone          String?
+  marketingOptIn Boolean           @default(false)
+  defaultAddress Json?
+  preferences    Json?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  identity       CustomerIdentity  @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  restaurant     Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  orders         Order[]
+  checkoutSessions CheckoutSession[]
+  reservations   Reservation[]
+  loyaltyAccounts LoyaltyAccount[]
+  loginLinks     CustomerLoginLink[]
+
+  @@unique([restaurantId, identityId])
+  @@index([restaurantId])
+  @@index([identityId])
+  @@index([restaurantId, email])
+  @@index([restaurantId, phone])
+}
+
+model CustomerLoginLink {
+  id                String                    @id @default(cuid())
+  customerProfileId String
+  tokenHash         String                    @unique
+  channel           String                    @default("email")
+  expiresAt         DateTime
+  usedAt            DateTime?
+  createdAt         DateTime                  @default(now())
+  customerProfile   RestaurantCustomerProfile @relation(fields: [customerProfileId], references: [id], onDelete: Cascade)
+
+  @@index([customerProfileId])
+  @@index([expiresAt])
+  @@index([usedAt])
 }
 
 model SubscriptionPlan {
@@ -1000,6 +1083,7 @@ model Review {
 model LoyaltyAccount {
   id             String               @id @default(cuid())
   restaurantId   String
+  customerProfileId String?
   customerEmail  String
   customerName   String
   customerPhone  String?
@@ -1009,10 +1093,12 @@ model LoyaltyAccount {
   tier           LoyaltyTier          @default(BRONZE)
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
+  customerProfile RestaurantCustomerProfile? @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
   transactions   LoyaltyTransaction[]
 
   @@unique([restaurantId, customerEmail])
   @@index([restaurantId])
+  @@index([customerProfileId])
 }
 
 model LoyaltyTransaction {

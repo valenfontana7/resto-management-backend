@@ -8,15 +8,19 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   RegisterDto,
   LoginDto,
   LoginIntentDto,
   CompletePasswordSetupDto,
+  RequestMagicLinkDto,
+  ConsumeMagicLinkDto,
 } from './dto/auth.dto';
 import { User } from '@prisma/client';
 import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
+import { EmailService } from '../email/email.service';
 
 export interface JwtPayload {
   sub: string; // userId
@@ -48,16 +52,64 @@ export interface LoginIntentResponse {
   name?: string;
 }
 
+export interface MagicLinkRequestResponse {
+  sent: true;
+  expiresInMinutes: number;
+  devLink?: string;
+}
+
+const MAGIC_LINK_EXPIRY_MINUTES = 15;
+
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
     @Optional() private readonly adminAlerts?: AdminAlertsService,
+    @Optional() private readonly emailService?: EmailService,
   ) {}
 
   private normalizeEmail(email: string): string {
     return email.trim().toLowerCase();
+  }
+
+  private hashLoginToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+  }
+
+  private getFrontendUrl(): string {
+    return (
+      process.env.FRONTEND_URL?.trim().replace(/\/$/, '') ||
+      process.env.BASE_URL?.trim().replace(/\/$/, '') ||
+      'http://localhost:3000'
+    );
+  }
+
+  private normalizeRedirect(redirect?: string): string {
+    if (!redirect) return '/admin';
+
+    const trimmed = redirect.trim();
+    if (!trimmed.startsWith('/')) return '/admin';
+    if (trimmed.startsWith('//')) return '/admin';
+
+    const normalizedPath =
+      (trimmed.split(/[?#]/, 1)[0] || '/').replace(/\/+$/, '') || '/';
+    if (
+      normalizedPath === '/admin/login' ||
+      normalizedPath === '/admin/register' ||
+      normalizedPath === '/admin/magic-link'
+    ) {
+      return '/admin';
+    }
+
+    return trimmed;
+  }
+
+  private buildMagicLink(token: string, redirect?: string): string {
+    const url = new URL('/admin/magic-link', this.getFrontendUrl());
+    url.searchParams.set('token', token);
+    url.searchParams.set('redirect', this.normalizeRedirect(redirect));
+    return url.toString();
   }
 
   async register(dto: RegisterDto): Promise<AuthResponse> {
@@ -265,6 +317,144 @@ export class AuthService {
       email: normalizedEmail,
       name: pendingUser.name,
     };
+  }
+
+  async requestMagicLink(
+    dto: RequestMagicLinkDto,
+  ): Promise<MagicLinkRequestResponse> {
+    const normalizedEmail = this.normalizeEmail(dto.email);
+    const response: MagicLinkRequestResponse = {
+      sent: true,
+      expiresInMinutes: MAGIC_LINK_EXPIRY_MINUTES,
+    };
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+        isActive: true,
+        passwordSetupRequired: false,
+        deletedAt: null,
+      },
+      include: {
+        restaurant: true,
+        role: true,
+      },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    if (!user) {
+      return response;
+    }
+
+    const rawToken = randomBytes(32).toString('base64url');
+    const tokenHash = this.hashLoginToken(rawToken);
+    const expiresAt = new Date(
+      Date.now() + MAGIC_LINK_EXPIRY_MINUTES * 60 * 1000,
+    );
+
+    await this.prisma.$transaction([
+      this.prisma.authLoginLink.updateMany({
+        where: {
+          userId: user.id,
+          usedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        data: { usedAt: new Date() },
+      }),
+      this.prisma.authLoginLink.create({
+        data: {
+          userId: user.id,
+          tokenHash,
+          expiresAt,
+        },
+      }),
+    ]);
+
+    const link = this.buildMagicLink(rawToken, dto.redirect);
+    const html = this.renderMagicLinkEmail({
+      name: user.name,
+      link,
+      expiresInMinutes: MAGIC_LINK_EXPIRY_MINUTES,
+    });
+
+    await this.emailService?.sendGenericEmail(
+      user.email,
+      'Tu link de acceso a Bentoo',
+      html,
+      'Bentoo',
+    );
+
+    if (process.env.NODE_ENV !== 'production') {
+      response.devLink = link;
+    }
+
+    return response;
+  }
+
+  async consumeMagicLink(dto: ConsumeMagicLinkDto): Promise<AuthResponse> {
+    const token = dto.token?.trim();
+    if (!token || token.length < 24) {
+      throw new UnauthorizedException('Invalid or expired magic link');
+    }
+
+    const tokenHash = this.hashLoginToken(token);
+    const link = await this.prisma.authLoginLink.findUnique({
+      where: { tokenHash },
+      include: {
+        user: {
+          include: {
+            restaurant: {
+              include: {
+                hours: true,
+              },
+            },
+            role: true,
+          },
+        },
+      },
+    });
+
+    const now = new Date();
+    if (
+      !link ||
+      link.usedAt ||
+      link.expiresAt.getTime() < now.getTime() ||
+      !link.user.isActive ||
+      link.user.deletedAt ||
+      link.user.passwordSetupRequired
+    ) {
+      throw new UnauthorizedException('Invalid or expired magic link');
+    }
+
+    const updatedUser = await this.prisma.$transaction(async (tx) => {
+      const consumed = await tx.authLoginLink.updateMany({
+        where: {
+          id: link.id,
+          usedAt: null,
+          expiresAt: { gte: now },
+        },
+        data: { usedAt: now },
+      });
+
+      if (consumed.count !== 1) {
+        throw new UnauthorizedException('Invalid or expired magic link');
+      }
+
+      return tx.user.update({
+        where: { id: link.userId },
+        data: { lastLogin: now },
+        include: {
+          restaurant: {
+            include: {
+              hours: true,
+            },
+          },
+          role: true,
+        },
+      });
+    });
+
+    return await this.generateAuthResponse(updatedUser as User);
   }
 
   async login(dto: LoginDto): Promise<AuthResponse> {
@@ -595,6 +785,76 @@ export class AuthService {
     }
 
     return Array.from(normalized);
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  private renderMagicLinkEmail(params: {
+    name: string;
+    link: string;
+    expiresInMinutes: number;
+  }): string {
+    const safeName = this.escapeHtml(params.name || 'Hola');
+    const safeLink = this.escapeHtml(params.link);
+
+    return `
+      <!doctype html>
+      <html lang="es">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <title>Acceso a Bentoo</title>
+        </head>
+        <body style="margin:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#0f172a;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f5f9;padding:32px 16px;">
+            <tr>
+              <td align="center">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">
+                  <tr>
+                    <td style="padding:32px;background:#071316;color:#ffffff;">
+                      <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#99f6e4;">Bentoo</p>
+                      <h1 style="margin:0;font-size:26px;line-height:1.2;">Entrar a tu panel</h1>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:32px;">
+                      <p style="margin:0 0 16px;font-size:16px;line-height:1.6;">Hola ${safeName},</p>
+                      <p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:#475569;">
+                        Recibimos una solicitud para entrar a tu panel de Bentoo sin contraseña.
+                        Este link vence en ${params.expiresInMinutes} minutos y se puede usar una sola vez.
+                      </p>
+                      <p style="margin:0 0 28px;text-align:center;">
+                        <a href="${safeLink}" style="display:inline-block;border-radius:12px;background:#14b8a6;color:#042f2e;text-decoration:none;padding:14px 24px;font-size:15px;font-weight:700;">
+                          Entrar al panel
+                        </a>
+                      </p>
+                      <p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#64748b;">
+                        Si el boton no funciona, copia y pega este enlace en tu navegador:
+                      </p>
+                      <p style="margin:0;word-break:break-all;font-size:12px;line-height:1.6;color:#0f766e;">${safeLink}</p>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:20px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;">
+                      <p style="margin:0;font-size:12px;line-height:1.6;color:#64748b;">
+                        Si no pediste este acceso, podes ignorar este email. Tu cuenta sigue protegida.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+      </html>
+    `;
   }
 
   async generateAuthResponse(user: User): Promise<AuthResponse> {

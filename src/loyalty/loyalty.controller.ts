@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Body,
+  Headers,
   Param,
   Query,
   UseGuards,
@@ -28,6 +29,19 @@ export class LoyaltyController {
     @Query('email') email: string,
   ) {
     return this.loyaltyService.getAccount(restaurantId, email);
+  }
+
+  /** Public: consultar puntos de la sesión verificada del cliente */
+  @Public()
+  @Get('account/me')
+  getOwnAccount(
+    @Param('restaurantId') restaurantId: string,
+    @Headers('authorization') authorization?: string,
+  ) {
+    return this.loyaltyService.getAccountForSession(
+      restaurantId,
+      authorization,
+    );
   }
 
   /** Public: registrarse en programa de fidelización */

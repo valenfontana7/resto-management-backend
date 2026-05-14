@@ -3,9 +3,11 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
+import { CustomersService } from '../customers/customers.service';
 import {
   CreateReservationDto as CreateReservationDtoOld,
   UpdateReservationDto,
@@ -25,6 +27,7 @@ export class ReservationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
+    @Optional() private readonly customersService?: CustomersService,
   ) {}
 
   /**
@@ -55,9 +58,19 @@ export class ReservationsService {
       );
     }
 
+    const customerProfile = await this.customersService?.upsertProfile(
+      restaurantId,
+      {
+        email: createDto.customer.email,
+        phone: createDto.customer.phone,
+        name: createDto.customer.name,
+      },
+    );
+
     const reservation = await this.prisma.reservation.create({
       data: {
         restaurantId,
+        customerProfileId: customerProfile?.id,
         customerName: createDto.customer.name,
         customerEmail: createDto.customer.email || '',
         customerPhone: createDto.customer.phone,

@@ -64,3 +64,20 @@ export class CompletePasswordSetupDto {
   })
   password: string;
 }
+
+export class RequestMagicLinkDto {
+  @ApiProperty({ example: 'john@example.com' })
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({ example: '/admin', required: false })
+  @IsOptional()
+  @IsString()
+  redirect?: string;
+}
+
+export class ConsumeMagicLinkDto {
+  @ApiProperty({ example: 'raw-token-from-email' })
+  @IsString()
+  token: string;
+}

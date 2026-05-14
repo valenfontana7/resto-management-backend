@@ -20,6 +20,7 @@ import { PaymentProviderFactory } from '../payment-providers/payment-provider.fa
 import { DeliveryPricingService } from '../delivery/services/delivery-pricing.service';
 import { DeliveryDispatchService } from '../delivery/services/delivery-dispatch.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
+import { CustomersService } from '../customers/customers.service';
 
 class InMemoryPrisma {
   restaurant = {
@@ -190,6 +191,14 @@ describe('Orders public tracking', () => {
           useValue: {
             getOrCreateAccount: jest.fn(),
             earnPoints: jest.fn(),
+          },
+        },
+        {
+          provide: CustomersService,
+          useValue: {
+            upsertProfile: jest
+              .fn()
+              .mockResolvedValue({ id: 'customer-profile-1' }),
           },
         },
         { provide: KitchenNotificationsService, useValue: {} },
