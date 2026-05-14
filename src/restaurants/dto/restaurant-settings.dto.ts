@@ -306,6 +306,16 @@ export class CartSectionDto {
 }
 
 export class MenuSectionDto {
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  showSection?: boolean;
+
+  @ApiPropertyOptional({ enum: ['grid', 'list'] })
+  @IsOptional()
+  @IsEnum(['grid', 'list'])
+  layout?: string;
+
   @IsOptional()
   @IsString()
   @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
@@ -382,6 +392,11 @@ export class ReservationsSectionDto {
 }
 
 export class NavConfigDto {
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  showSection?: boolean;
+
   @IsOptional()
   @IsEnum(['sm', 'md', 'lg'])
   logoSize?: string;

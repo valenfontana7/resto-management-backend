@@ -231,6 +231,9 @@ export interface LayoutConfig {
 // ==================== NAVIGATION SECTION ====================
 
 export interface NavigationConfig {
+  // Visibility
+  showSection?: boolean;
+
   // Position & Behavior
   position: PositionValue;
   sticky?: boolean;
@@ -419,6 +422,7 @@ export interface HeroConfig {
   meta?: {
     color?: ColorValue;
   };
+  metaTextColor?: ColorValue;
 
   // Text effects
   textShadow?: boolean;
@@ -427,7 +431,11 @@ export interface HeroConfig {
 // ==================== MENU SECTION ====================
 
 export interface MenuConfig {
+  // Visibility
+  showSection?: boolean;
+
   // Section styling
+  layout?: 'grid' | 'list' | 'masonry' | 'carousel';
   backgroundColor?: ColorValue;
   textColor?: ColorValue;
 
@@ -993,6 +1001,7 @@ export const DEFAULT_BUILDER_CONFIG: BuilderConfiguration = {
 
   sections: {
     nav: {
+      showSection: true,
       position: 'sticky',
       logoSize: 'md',
       showOpenStatus: true,
@@ -1011,6 +1020,8 @@ export const DEFAULT_BUILDER_CONFIG: BuilderConfiguration = {
     },
 
     menu: {
+      showSection: true,
+      layout: 'grid',
       cardStyle: 'elevated',
       showImages: true,
       showPrices: true,

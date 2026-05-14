@@ -157,6 +157,11 @@ export class BrandingLayoutDto {
 
 // Nav Section
 export class NavSectionDto {
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  showSection?: boolean;
+
   @ApiPropertyOptional({ enum: ['sm', 'md', 'lg'] })
   @IsOptional()
   @IsEnum(['sm', 'md', 'lg'])
@@ -287,6 +292,11 @@ export class MenuCardStyleDto {
 }
 
 export class MenuSectionDto {
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  showSection?: boolean;
+
   @ApiPropertyOptional({ enum: ['grid', 'list'] })
   @IsOptional()
   @IsEnum(['grid', 'list'])

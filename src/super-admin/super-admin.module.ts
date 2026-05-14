@@ -8,9 +8,10 @@ import { SuperAdminSubscriptionsService } from './services/super-admin-subscript
 import { AuthModule } from '../auth/auth.module';
 import { KitchenModule } from '../kitchen/kitchen.module';
 import { AdminAlertsModule } from '../admin-alerts/admin-alerts.module';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
-  imports: [AuthModule, KitchenModule, AdminAlertsModule],
+  imports: [AuthModule, KitchenModule, AdminAlertsModule, StorageModule],
   controllers: [SuperAdminController],
   providers: [
     SuperAdminService,

@@ -139,6 +139,11 @@ export class BrandingVisualDto {
 }
 
 export class BrandingSectionColorDto {
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  showSection?: boolean;
+
   @ApiPropertyOptional({ example: '#ffffff' })
   @IsOptional()
   @IsString()
@@ -383,6 +388,16 @@ export class BrandingCartDto {
 }
 
 export class BrandingMenuDto {
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  showSection?: boolean;
+
+  @ApiPropertyOptional({ example: 'grid', enum: ['grid', 'list'] })
+  @IsOptional()
+  @IsEnum(['grid', 'list'])
+  layout?: string;
+
   @ApiPropertyOptional({ example: '#000000' })
   @IsOptional()
   @IsString()

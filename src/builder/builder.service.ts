@@ -1063,6 +1063,7 @@ export class BuilderService {
       },
       sections: {
         nav: {
+          showSection: oldBranding.sections?.nav?.showSection ?? true,
           position: 'sticky',
           logoSize: oldBranding.sections?.nav?.logoSize || 'md',
           showOpenStatus: oldBranding.sections?.nav?.showOpenStatus ?? true,
@@ -1087,6 +1088,8 @@ export class BuilderService {
           subtitle: oldBranding.sections?.hero?.subtitle,
         },
         menu: {
+          showSection: oldBranding.sections?.menu?.showSection ?? true,
+          layout: oldBranding.sections?.menu?.layout || 'grid',
           cardStyle: oldBranding.sections?.menu?.cardStyle || 'elevated',
           showImages: oldBranding.sections?.menu?.showImages ?? true,
           showPrices: oldBranding.sections?.menu?.showPrices ?? true,

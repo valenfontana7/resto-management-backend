@@ -510,6 +510,11 @@ export class LayoutConfigDto {
 // ==================== NAVIGATION SECTION DTO ====================
 
 export class NavigationConfigDto {
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  showSection?: boolean;
+
   @ApiPropertyOptional({
     enum: ['static', 'relative', 'absolute', 'fixed', 'sticky'],
   })
@@ -1177,6 +1182,17 @@ export class HeroConfigDto {
   @IsString()
   locationInfoCardValueText?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'Deprecated flat alias. Prefer meta.color for new builder payloads.',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'metaTextColor must be a valid hex color',
+  })
+  metaTextColor?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
@@ -1418,6 +1434,16 @@ export class MenuTitleDto {
 }
 
 export class MenuConfigDto {
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  showSection?: boolean;
+
+  @ApiPropertyOptional({ enum: ['grid', 'list', 'masonry', 'carousel'] })
+  @IsOptional()
+  @IsIn(['grid', 'list', 'masonry', 'carousel'])
+  layout?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
