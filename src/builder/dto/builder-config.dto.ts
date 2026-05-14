@@ -577,6 +577,14 @@ export class NavigationConfigDto {
 
   @ApiPropertyOptional()
   @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'homeTitleColor must be a valid hex color',
+  })
+  homeTitleColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
   @IsBoolean()
   showTitle?: boolean;
 
