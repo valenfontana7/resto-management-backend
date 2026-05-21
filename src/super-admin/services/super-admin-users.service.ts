@@ -264,6 +264,113 @@ export class SuperAdminUsersService {
     return updatedUser;
   }
 
+  async deleteUser(userId: string, adminId: string) {
+    if (userId === adminId) {
+      throw new BadRequestException(
+        'No podes eliminar permanentemente tu propio usuario',
+      );
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        role: true,
+        restaurant: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    const roleName = user.role?.name ?? null;
+
+    if (roleName === 'SUPER_ADMIN') {
+      const remainingActiveSuperAdmins = await this.prisma.user.count({
+        where: {
+          id: { not: userId },
+          deletedAt: null,
+          isActive: true,
+          role: {
+            is: {
+              name: 'SUPER_ADMIN',
+            },
+          },
+        },
+      });
+
+      if (remainingActiveSuperAdmins === 0) {
+        throw new BadRequestException(
+          'No podes eliminar el ultimo SUPER_ADMIN activo',
+        );
+      }
+    }
+
+    const performedAuditLogs = await this.prisma.adminAuditLog.count({
+      where: { adminId: userId },
+    });
+
+    await this.prisma.$transaction(async (tx) => {
+      // AdminAuditLog no tiene cascade contra User; sin esto el hard delete falla.
+      await tx.adminAuditLog.deleteMany({
+        where: { adminId: userId },
+      });
+
+      await tx.user.delete({
+        where: { id: userId },
+      });
+
+      await tx.adminAuditLog.create({
+        data: {
+          adminId,
+          action: 'DELETE_USER',
+          targetRestaurantId: user.restaurantId,
+          details: {
+            deletedUserId: user.id,
+            deletedUserEmail: user.email,
+            deletedUserName: user.name,
+            deletedUserRole: roleName,
+            deletedUserRestaurantId: user.restaurantId,
+            deletedUserRestaurantName: user.restaurant?.name ?? null,
+            deletedUserWasActive: user.isActive,
+            deletedUserCreatedAt: user.createdAt.toISOString(),
+            deletedUserSoftDeletedAt: user.deletedAt?.toISOString() ?? null,
+            removedPerformedAuditLogs: performedAuditLogs,
+            hardDeleted: true,
+          },
+        },
+      });
+    });
+
+    void this.adminAlerts?.notifyAdminEvent({
+      source: 'super-admin.delete-user',
+      event: 'USER_UPDATED',
+      subject: 'Usuario eliminado permanentemente',
+      title: 'Usuario eliminado permanentemente',
+      message: `Se elimino permanentemente el usuario ${user.email}.`,
+      data: {
+        deletedUserId: user.id,
+        deletedUserEmail: user.email,
+        deletedUserRole: roleName,
+        restaurantId: user.restaurantId,
+        restaurantName: user.restaurant?.name ?? null,
+        hardDeleted: true,
+      },
+    });
+
+    return {
+      success: true,
+      id: user.id,
+      email: user.email,
+      message: 'Usuario eliminado permanentemente',
+    };
+  }
+
   async getRoles() {
     const roles = await this.prisma.role.findMany({
       select: {

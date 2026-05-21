@@ -848,13 +848,24 @@ export class BuilderService {
       issues.push('Completá el nombre del restaurante');
     }
 
+    const draftSocialWebsite = this.extractWebsiteFromSocialMedia(
+      draft?.socialMedia,
+    );
+    const liveSocialWebsite = this.extractWebsiteFromSocialMedia(
+      restaurant.socialMedia,
+    );
+
     const hasContactChannel =
       typeof this.normalizeScalarValue(draft?.phone ?? restaurant.phone) ===
         'string' ||
       typeof this.normalizeScalarValue(draft?.email ?? restaurant.email) ===
         'string' ||
-      typeof this.normalizeScalarValue(draft?.website ?? restaurant.website) ===
-        'string';
+      typeof this.normalizeScalarValue(
+        draft?.website ??
+          draftSocialWebsite ??
+          restaurant.website ??
+          liveSocialWebsite,
+      ) === 'string';
 
     if (config.sections?.nav?.showContactButton && !hasContactChannel) {
       issues.push(
@@ -951,6 +962,15 @@ export class BuilderService {
 
       return normalized.replace(/^\/+/, '');
     }
+  }
+
+  private extractWebsiteFromSocialMedia(value: unknown): string | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return undefined;
+    }
+
+    const website = (value as Record<string, unknown>).website;
+    return this.normalizeScalarValue(website) as string | undefined;
   }
 
   private areStringArraysEqual(left: unknown, right: unknown): boolean {

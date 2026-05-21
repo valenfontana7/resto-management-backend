@@ -335,10 +335,18 @@ export class RestaurantsService {
     if (hours && Object.keys(hours).length > 0) {
       for (const [day, schedule] of Object.entries(hours)) {
         if (daysMap[day] !== undefined) {
+          const firstTimeRange = Array.isArray((schedule as any).timeRanges)
+            ? (schedule as any).timeRanges[0]
+            : undefined;
+
           hoursData.push({
             dayOfWeek: daysMap[day],
-            openTime: (schedule as any).openTime || '09:00',
-            closeTime: (schedule as any).closeTime || '22:00',
+            openTime:
+              firstTimeRange?.openTime || (schedule as any).openTime || '09:00',
+            closeTime:
+              firstTimeRange?.closeTime ||
+              (schedule as any).closeTime ||
+              '22:00',
             isOpen: (schedule as any).isOpen !== false,
           });
         }

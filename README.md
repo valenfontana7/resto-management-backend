@@ -52,7 +52,11 @@ JWT_SECRET="your-secret-key"
 MERCADOPAGO_ACCESS_TOKEN="your-mp-token"
 FRONTEND_URL="http://localhost:5173"
 BACKEND_URL="http://localhost:3000"
+GEMINI_API_KEY="your-gemini-api-key"
+ONBOARDING_AI_MODEL="gemini-2.5-flash-lite"
 ```
+
+If `GEMINI_API_KEY` is not configured, the onboarding draft endpoint falls back to the local heuristic generator.
 
 4. Setup database
 

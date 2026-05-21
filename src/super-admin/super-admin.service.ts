@@ -134,6 +134,10 @@ export class SuperAdminService {
     return this.users.updateUser(userId, dto, adminId);
   }
 
+  deleteUser(userId: string, adminId: string) {
+    return this.users.deleteUser(userId, adminId);
+  }
+
   getRoles() {
     return this.users.getRoles();
   }

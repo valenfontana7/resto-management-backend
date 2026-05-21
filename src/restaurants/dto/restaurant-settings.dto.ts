@@ -3,6 +3,7 @@ import {
   IsEmail,
   IsOptional,
   IsBoolean,
+  IsIn,
   IsInt,
   IsArray,
   ValidateNested,
@@ -283,6 +284,37 @@ export class HeroSectionDto {
   @IsString()
   @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
   titleColor?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  showCuisineTypes?: boolean;
+
+  @IsOptional()
+  @IsEnum(['soft', 'filled', 'outline'])
+  cuisineTypesStyle?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  cuisineTypesColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  cuisineTypesBackgroundColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  cuisineTypesBorderColor?: string;
+
+  @IsOptional()
+  @IsEnum(['xs', 'sm', 'md', 'lg'])
+  cuisineTypesFontSize?: string;
+
+  @IsOptional()
+  @IsIn([400, 500, 600, 700])
+  cuisineTypesFontWeight?: number;
 }
 
 export class CartSectionDto {

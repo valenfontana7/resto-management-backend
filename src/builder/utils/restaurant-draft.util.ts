@@ -118,5 +118,35 @@ export function normalizeRestaurantDraftPayload(
     delete (normalized as LooseRecord).cuisineTypes;
   }
 
+  // Compatibilidad: si la web se cargó en socialMedia.website, reflejarla
+  // en el campo plano website que usa el flujo de publicación.
+  if (
+    normalized.website === undefined &&
+    isPlainObject(normalized.socialMedia) &&
+    typeof normalized.socialMedia.website === 'string'
+  ) {
+    const normalizedWebsite = normalized.socialMedia.website.trim();
+    if (normalizedWebsite.length > 0) {
+      normalized.website = normalizedWebsite;
+    }
+  }
+
+  // Compatibilidad inversa: si website plano existe y socialMedia ya existe
+  // (con redes), completar socialMedia.website para consumidores legacy.
+  if (
+    typeof normalized.website === 'string' &&
+    isPlainObject(normalized.socialMedia) &&
+    (typeof normalized.socialMedia.website !== 'string' ||
+      normalized.socialMedia.website.trim().length === 0)
+  ) {
+    const normalizedWebsite = normalized.website.trim();
+    if (normalizedWebsite.length > 0) {
+      normalized.socialMedia = {
+        ...normalized.socialMedia,
+        website: normalizedWebsite,
+      };
+    }
+  }
+
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }

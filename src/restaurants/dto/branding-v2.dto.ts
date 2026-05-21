@@ -2,6 +2,7 @@ import {
   IsString,
   IsOptional,
   IsBoolean,
+  IsIn,
   IsInt,
   IsArray,
   ValidateNested,
@@ -274,6 +275,44 @@ export class HeroSectionDto {
   @ValidateNested()
   @Type(() => HeroMetaDto)
   meta?: HeroMetaDto;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  showCuisineTypes?: boolean;
+
+  @ApiPropertyOptional({ enum: ['soft', 'filled', 'outline'] })
+  @IsOptional()
+  @IsEnum(['soft', 'filled', 'outline'])
+  cuisineTypesStyle?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  cuisineTypesColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  cuisineTypesBackgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  cuisineTypesBorderColor?: string;
+
+  @ApiPropertyOptional({ enum: ['xs', 'sm', 'md', 'lg'] })
+  @IsOptional()
+  @IsEnum(['xs', 'sm', 'md', 'lg'])
+  cuisineTypesFontSize?: string;
+
+  @ApiPropertyOptional({ enum: [400, 500, 600, 700] })
+  @IsOptional()
+  @IsIn([400, 500, 600, 700])
+  cuisineTypesFontWeight?: number;
 }
 
 // Menu Section

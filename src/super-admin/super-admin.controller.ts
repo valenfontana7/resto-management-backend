@@ -126,6 +126,11 @@ export class SuperAdminController {
     return this.superAdminService.updateUser(userId, dto, req.user.userId);
   }
 
+  @Delete('users/:userId')
+  async deleteUser(@Param('userId') userId: string, @Request() req) {
+    return this.superAdminService.deleteUser(userId, req.user.userId);
+  }
+
   @Get('roles')
   async getRoles() {
     return this.superAdminService.getRoles();

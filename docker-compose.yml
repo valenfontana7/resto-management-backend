@@ -77,6 +77,9 @@ services:
       # Resend (Email)
       RESEND_API_KEY: ${RESEND_API_KEY}
       EMAIL_FROM: ${EMAIL_FROM}
+      # Gemini Onboarding AI
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      ONBOARDING_AI_MODEL: ${ONBOARDING_AI_MODEL:-gemini-2.5-flash-lite}
     ports:
       - '4000:4000'
     healthcheck:
