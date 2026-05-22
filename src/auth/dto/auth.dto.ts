@@ -85,6 +85,11 @@ export class RegisterMagicLinkDto {
   @IsString()
   name: string;
 
+  @ApiProperty({ example: 'Str0ngPass!' })
+  @IsString()
+  @MinLength(6)
+  password: string;
+
   @ApiProperty({ example: '/onboarding', required: false })
   @IsOptional()
   @IsString()

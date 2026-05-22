@@ -338,15 +338,11 @@ export class AuthService {
     });
 
     if (!existing) {
-      // Crear usuario passwordless. Password placeholder bcrypt para no dejar campo vacío.
-      const placeholder = await bcrypt.hash(
-        randomBytes(24).toString('hex'),
-        10,
-      );
+      const hashedPassword = await bcrypt.hash(dto.password, 10);
       const created = await this.prisma.user.create({
         data: {
           email: normalizedEmail,
-          password: placeholder,
+          password: hashedPassword,
           name,
           isActive: true,
           passwordSetupRequired: false,
@@ -362,12 +358,13 @@ export class AuthService {
         restaurantName: null,
       });
     } else if (!existing.isActive || existing.passwordSetupRequired) {
-      // Reactivar usuario passwordless si quedo en estado inconsistente
+      const hashedPassword = await bcrypt.hash(dto.password, 10);
       await this.prisma.user.update({
         where: { id: existing.id },
         data: {
           isActive: true,
           passwordSetupRequired: false,
+          password: hashedPassword,
           name: existing.name || name,
         },
       });
