@@ -18,15 +18,25 @@ async function main() {
 
   const starterPlan = await prisma.subscriptionPlan.upsert({
     where: { id: 'STARTER' },
-    update: {},
+    update: {
+      displayName: 'Directo',
+      description: 'Para empezar a vender por link y QR.',
+      price: 2500000, // $25.000 ARS (en centavos)
+      interval: 'monthly',
+      trialDays: 0,
+      color: 'from-stone-500 to-stone-700',
+      order: 1,
+      isActive: true,
+      isDefault: true,
+    },
     create: {
       id: 'STARTER',
-      displayName: 'Starter',
-      description: 'Ideal para empezar tu negocio de restaurante',
-      price: 0,
+      displayName: 'Directo',
+      description: 'Para empezar a vender por link y QR.',
+      price: 2500000, // $25.000 ARS (en centavos)
       interval: 'monthly',
-      trialDays: 30,
-      color: 'from-blue-400 to-blue-600',
+      trialDays: 0,
+      color: 'from-slate-500 to-slate-600',
       order: 1,
       isActive: true,
       isDefault: true,
@@ -36,7 +46,7 @@ async function main() {
           {
             key: 'products',
             type: 'limit',
-            value: '50',
+            value: '10',
             displayName: 'Productos',
             description: 'Cantidad máxima de productos en el menú',
             category: 'limits',
@@ -44,7 +54,7 @@ async function main() {
           {
             key: 'users',
             type: 'limit',
-            value: '3',
+            value: '1',
             displayName: 'Usuarios',
             description: 'Cantidad de usuarios del sistema',
             category: 'limits',
@@ -52,7 +62,7 @@ async function main() {
           {
             key: 'tables',
             type: 'limit',
-            value: '10',
+            value: '3',
             displayName: 'Mesas',
             description: 'Cantidad de mesas gestionables',
             category: 'limits',
@@ -60,7 +70,7 @@ async function main() {
           {
             key: 'orders_per_month',
             type: 'limit',
-            value: '100',
+            value: '0',
             displayName: 'Órdenes mensuales',
             description: 'Límite de órdenes por mes',
             category: 'limits',
@@ -78,7 +88,7 @@ async function main() {
           {
             key: 'online_orders',
             type: 'boolean',
-            value: 'true',
+            value: 'false',
             displayName: 'Pedidos Online',
             description: 'Sistema de pedidos en línea',
             category: 'features',
@@ -120,7 +130,7 @@ async function main() {
           {
             key: 'mercadopago',
             type: 'boolean',
-            value: 'true',
+            value: 'false',
             displayName: 'MercadoPago',
             description: 'Integración con MercadoPago',
             category: 'integrations',
@@ -138,7 +148,7 @@ async function main() {
           {
             key: 'support_level',
             type: 'text',
-            value: 'email',
+            value: 'self_service',
             displayName: 'Soporte',
             description: 'Nivel de soporte técnico',
             category: 'support',
@@ -148,14 +158,96 @@ async function main() {
     },
   });
 
+  const starterRestrictionUpdates = [
+    {
+      key: 'products',
+      type: 'limit',
+      value: '10',
+      displayName: 'Productos',
+      description: 'Cantidad maxima de productos en el menu',
+      category: 'limits',
+    },
+    {
+      key: 'users',
+      type: 'limit',
+      value: '1',
+      displayName: 'Usuarios',
+      description: 'Cantidad de usuarios del sistema',
+      category: 'limits',
+    },
+    {
+      key: 'tables',
+      type: 'limit',
+      value: '3',
+      displayName: 'Mesas',
+      description: 'Cantidad de mesas gestionables',
+      category: 'limits',
+    },
+    {
+      key: 'orders_per_month',
+      type: 'limit',
+      value: '0',
+      displayName: 'Ordenes mensuales',
+      description: 'Limite de ordenes por mes',
+      category: 'limits',
+    },
+    {
+      key: 'online_orders',
+      type: 'boolean',
+      value: 'false',
+      displayName: 'Pedidos Online',
+      description: 'Sistema de pedidos en linea',
+      category: 'features',
+    },
+    {
+      key: 'mercadopago',
+      type: 'boolean',
+      value: 'false',
+      displayName: 'MercadoPago',
+      description: 'Integracion con MercadoPago',
+      category: 'integrations',
+    },
+    {
+      key: 'support_level',
+      type: 'text',
+      value: 'self_service',
+      displayName: 'Soporte',
+      description: 'Nivel de soporte tecnico',
+      category: 'support',
+    },
+  ];
+
+  await Promise.all(
+    starterRestrictionUpdates.map((restriction) =>
+      prisma.planRestriction.upsert({
+        where: {
+          planId_key: {
+            planId: 'STARTER',
+            key: restriction.key,
+          },
+        },
+        update: restriction,
+        create: {
+          ...restriction,
+          planId: 'STARTER',
+        },
+      }),
+    ),
+  );
+
   const professionalPlan = await prisma.subscriptionPlan.upsert({
     where: { id: 'PROFESSIONAL' },
-    update: {},
+    update: {
+      displayName: 'Operación',
+      description: 'Para ordenar pedidos, cocina y reservas.',
+      price: 4500000, // $45.000 ARS (en centavos)
+      color: 'from-teal-500 to-emerald-600',
+    },
     create: {
       id: 'PROFESSIONAL',
-      displayName: 'Professional',
-      description: 'Para restaurantes establecidos que buscan crecer',
-      price: 29999, // $29,999
+      displayName: 'Operación',
+      description: 'Para ordenar pedidos, cocina y reservas.',
+      price: 4500000, // $45.000 ARS (en centavos)
       interval: 'monthly',
       trialDays: 14,
       color: 'from-purple-400 to-purple-600',
@@ -282,15 +374,20 @@ async function main() {
 
   const enterprisePlan = await prisma.subscriptionPlan.upsert({
     where: { id: 'ENTERPRISE' },
-    update: {},
+    update: {
+      displayName: 'Full',
+      description: 'Para locales con necesidades puntuales.',
+      price: 7000000, // $70.000 ARS (en centavos)
+      color: 'from-amber-500 to-orange-600',
+    },
     create: {
       id: 'ENTERPRISE',
-      displayName: 'Enterprise',
-      description: 'Solución completa para cadenas y grandes restaurantes',
-      price: 79999, // $79,999
+      displayName: 'Full',
+      description: 'Para locales con necesidades puntuales.',
+      price: 7000000, // $70.000 ARS (en centavos)
       interval: 'monthly',
       trialDays: 7,
-      color: 'from-amber-400 to-amber-600',
+      color: 'from-amber-500 to-orange-600',
       order: 3,
       isActive: true,
       isDefault: false,

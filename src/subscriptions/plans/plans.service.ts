@@ -35,9 +35,7 @@ export class PlansService {
           },
         },
       },
-      orderBy: {
-        order: 'asc',
-      },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
     });
   }
 
@@ -56,9 +54,7 @@ export class PlansService {
           },
         },
       },
-      orderBy: {
-        order: 'asc',
-      },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
     });
   }
 

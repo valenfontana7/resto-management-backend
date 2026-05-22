@@ -10,6 +10,8 @@ import {
   ImageProcessingService,
   ImageType,
 } from '../../common/services/image-processing.service';
+import { PLAN_LIMITS } from '../../subscriptions/constants';
+import { PlanType } from '../../subscriptions/dto';
 
 export interface DishFilters {
   categoryId?: string;
@@ -93,6 +95,27 @@ export class DishesService {
 
   async create(restaurantId: string, userId: string, dto: CreateDishDto) {
     await this.ownership.verifyUserOwnsRestaurant(restaurantId, userId);
+
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { restaurantId },
+      select: { planType: true },
+    });
+    const planType = (subscription?.planType as PlanType) || PlanType.STARTER;
+    const maxProducts =
+      PLAN_LIMITS[planType]?.maxProducts ??
+      PLAN_LIMITS[PlanType.STARTER].maxProducts;
+
+    if (maxProducts >= 0) {
+      const currentProducts = await this.prisma.dish.count({
+        where: { restaurantId, deletedAt: null },
+      });
+
+      if (currentProducts >= maxProducts) {
+        throw new BadRequestException(
+          `Tu plan actual permite hasta ${maxProducts} productos. Actualiza tu plan para agregar más.`,
+        );
+      }
+    }
 
     const category = await this.prisma.category.findFirst({
       where: { id: dto.categoryId, restaurantId, deletedAt: null },

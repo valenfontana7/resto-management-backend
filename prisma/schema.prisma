@@ -39,6 +39,10 @@ model Restaurant {
   onboardingIncomplete  Boolean                @default(true)
   isPublished           Boolean                @default(false)
   isIndexable           Boolean                @default(true)
+  // WhatsApp del dueño para alertas críticas (CallMeBot)
+  ownerWhatsappPhone    String?
+  ownerWhatsappApiKey   String?
+  ownerWhatsappEnabled  Boolean                @default(false)
   // Multi-branch support
   parentId              String?
   parent                Restaurant?            @relation("RestaurantBranches", fields: [parentId], references: [id])
@@ -67,6 +71,7 @@ model Restaurant {
   experiments           Experiment[]
   digestPreferences     DigestPreference[]
   customerProfiles      RestaurantCustomerProfile[]
+  pushSubscriptions     PushSubscription[]
 
   @@index([slug])
   @@index([status])
@@ -640,6 +645,15 @@ model AuthLoginLink {
   @@index([usedAt])
 }
 
+model OnboardingDraft {
+  userId    String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([updatedAt])
+}
+
 model CustomerIdentity {
   id            String                       @id @default(cuid())
   email         String?
@@ -899,6 +913,38 @@ model Analytics {
 
   @@index([restaurantId, date])
   @@index([restaurantId, metric])
+}
+
+model PushSubscription {
+  id           String     @id @default(cuid())
+  restaurantId String
+  userId       String?
+  endpoint     String     @unique
+  p256dh       String
+  auth         String
+  userAgent    String?
+  createdAt    DateTime   @default(now())
+  lastUsedAt   DateTime?
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([userId])
+}
+
+model OnboardingEvent {
+  id           String   @id @default(cuid())
+  sessionId    String
+  event        String
+  userId       String?
+  restaurantId String?
+  props        Json?
+  createdAt    DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([event])
+  @@index([createdAt])
+  @@index([userId])
+  @@index([restaurantId])
 }
 
 model Notification {

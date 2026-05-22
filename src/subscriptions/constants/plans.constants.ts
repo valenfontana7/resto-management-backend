@@ -23,7 +23,7 @@ export const GRACE_PERIOD_DAYS = 3;
  * Features disponibles por plan
  */
 export const PLAN_FEATURES: Record<PlanType, string[]> = {
-  [PlanType.STARTER]: ['menu_digital', 'qr_code', 'basic_orders', 'branding'],
+  [PlanType.STARTER]: ['menu_digital', 'qr_code'],
   [PlanType.PROFESSIONAL]: [
     'menu_digital',
     'qr_code',
@@ -63,7 +63,7 @@ export const PLAN_LIMITS: Record<
   PlanType,
   { maxProducts: number; maxCategories: number }
 > = {
-  [PlanType.STARTER]: { maxProducts: 20, maxCategories: 5 },
+  [PlanType.STARTER]: { maxProducts: 10, maxCategories: 3 },
   [PlanType.PROFESSIONAL]: { maxProducts: -1, maxCategories: -1 }, // Ilimitado
   [PlanType.ENTERPRISE]: { maxProducts: -1, maxCategories: -1 }, // Ilimitado
 };
@@ -72,9 +72,9 @@ export const PLAN_LIMITS: Record<
  * Nombres de los planes para mostrar
  */
 export const PLAN_NAMES: Record<PlanType, string> = {
-  [PlanType.STARTER]: 'Starter',
-  [PlanType.PROFESSIONAL]: 'Professional',
-  [PlanType.ENTERPRISE]: 'Enterprise',
+  [PlanType.STARTER]: 'Directo',
+  [PlanType.PROFESSIONAL]: 'Operación',
+  [PlanType.ENTERPRISE]: 'Full',
 };
 
 /**
@@ -129,16 +129,16 @@ export const DEFAULT_FEATURES_BY_PLAN: Record<
 > = {
   [PlanType.STARTER]: {
     menu: true,
-    orders: true,
+    orders: false,
     reservations: false,
     delivery: false,
     loyalty: false,
     reviews: false,
     giftCards: false,
     catering: false,
-    onlineOrdering: true,
-    takeaway: true,
-    socialMedia: true,
+    onlineOrdering: false,
+    takeaway: false,
+    socialMedia: false,
   },
   [PlanType.PROFESSIONAL]: {
     menu: true,

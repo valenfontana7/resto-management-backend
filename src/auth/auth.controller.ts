@@ -13,6 +13,7 @@ import {
   LoginIntentDto,
   CompletePasswordSetupDto,
   RequestMagicLinkDto,
+  RegisterMagicLinkDto,
   ConsumeMagicLinkDto,
 } from './dto/auth.dto';
 import { ImpersonateDto } from './dto/impersonate.dto';
@@ -90,6 +91,18 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Magic link request accepted' })
   async requestMagicLink(@Body() dto: RequestMagicLinkDto) {
     return this.authService.requestMagicLink(dto);
+  }
+
+  @Public()
+  @Post('register/magic-link')
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @ApiOperation({ summary: 'Register a new user and send a passwordless link' })
+  @ApiResponse({
+    status: 200,
+    description: 'Magic link sent (account created if missing)',
+  })
+  async registerWithMagicLink(@Body() dto: RegisterMagicLinkDto) {
+    return this.authService.registerWithMagicLink(dto);
   }
 
   @Public()

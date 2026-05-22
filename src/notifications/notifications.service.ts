@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { KitchenNotificationsService } from '../kitchen/kitchen-notifications.service';
+import { PushNotificationService } from './push-notification.service';
 import {
   Notification,
   NotificationType,
@@ -38,6 +39,7 @@ export class NotificationsService {
     private prisma: PrismaService,
     private emailService: EmailService,
     private kitchenNotifications: KitchenNotificationsService,
+    private pushNotifications: PushNotificationService,
   ) {}
 
   /**
@@ -87,10 +89,7 @@ export class NotificationsService {
             // Ya está guardada en DB, no necesita envío adicional
             break;
           case NotificationChannel.PUSH:
-            // TODO: Implementar push notifications
-            this.logger.warn(
-              `Push notifications no implementadas aún para notificación ${notification.id}`,
-            );
+            await this.sendPushNotification(notification);
             break;
         }
       } catch (error) {
@@ -149,6 +148,51 @@ export class NotificationsService {
 
     // Para otras notificaciones, podríamos crear un nuevo evento SSE
     // this.kitchenNotifications.emitNotification(notification.restaurantId, sseData);
+  }
+
+  /**
+   * Enviar Web Push al usuario destinatario (y, si no tiene suscripciones, al
+   * restaurante completo para alcanzar otros dispositivos del staff).
+   */
+  private async sendPushNotification(
+    notification: Notification,
+  ): Promise<void> {
+    const payload = {
+      title: notification.title,
+      body: notification.message,
+      tag: notification.type,
+      data: {
+        notificationId: notification.id,
+        type: notification.type,
+        url: this.resolveUrlForNotification(notification),
+        ...((notification.data as Record<string, unknown> | null) ?? {}),
+      },
+    };
+
+    let delivered = await this.pushNotifications.sendToUser(
+      notification.userId,
+      payload,
+    );
+
+    if (delivered === 0 && notification.restaurantId) {
+      delivered = await this.pushNotifications.sendToRestaurant(
+        notification.restaurantId,
+        payload,
+      );
+    }
+
+    if (delivered > 0) {
+      this.logger.log(
+        `Push enviado (${delivered} dispositivo/s) para notificación ${notification.id}`,
+      );
+    }
+  }
+
+  private resolveUrlForNotification(notification: Notification): string {
+    if (notification.type.startsWith('ORDER_')) return '/admin/orders';
+    if (notification.type.startsWith('RESERVATION_'))
+      return '/admin/reservations';
+    return '/admin';
   }
 
   /**
@@ -286,7 +330,11 @@ export class NotificationsService {
       title: titles[type],
       message: messages[type],
       data: orderData,
-      channels: [NotificationChannel.IN_APP, NotificationChannel.EMAIL],
+      channels: [
+        NotificationChannel.IN_APP,
+        NotificationChannel.PUSH,
+        NotificationChannel.EMAIL,
+      ],
     });
   }
 }

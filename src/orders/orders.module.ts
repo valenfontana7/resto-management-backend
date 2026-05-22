@@ -25,7 +25,7 @@ import { CustomersModule } from '../customers/customers.module';
     EmailModule,
     WebsocketModule,
     forwardRef(() => KitchenModule),
-    NotificationsModule,
+    forwardRef(() => NotificationsModule),
     CouponsModule,
     DeliveryModule,
     CustomersModule,

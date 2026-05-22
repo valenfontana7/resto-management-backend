@@ -45,6 +45,7 @@ import { ExperimentsModule } from './experiments/experiments.module';
 import { DigestModule } from './digest/digest.module';
 import { PaymentProvidersModule } from './payment-providers/payment-providers.module';
 import { OnboardingAiModule } from './onboarding-ai/onboarding-ai.module';
+import { OnboardingAnalyticsModule } from './onboarding-analytics/onboarding-analytics.module';
 import { getJwtSecret } from './common/config/jwt.config';
 import { validateEnvironment } from './common/config/env.validation';
 
@@ -123,6 +124,7 @@ import { validateEnvironment } from './common/config/env.validation';
     DigestModule,
     PaymentProvidersModule,
     OnboardingAiModule,
+    OnboardingAnalyticsModule,
   ],
   controllers: [AppController],
   providers: [

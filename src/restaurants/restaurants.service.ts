@@ -11,7 +11,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import * as path from 'path';
 import { S3Service } from '../storage/s3.service';
 import { RestaurantSettingsService } from './services/restaurant-settings.service';
-import { RestaurantStatus } from '@prisma/client';
+import { RestaurantStatus, SubscriptionStatus } from '@prisma/client';
+import { adjustFeaturesForPlan } from '../subscriptions/constants';
+import { PlanType } from '../subscriptions/dto';
 
 @Injectable()
 export class RestaurantsService {
@@ -74,6 +76,48 @@ export class RestaurantsService {
     });
 
     return this.mapRestaurantForClient(restaurant);
+  }
+
+  async checkSlugAvailability(rawSlug: string) {
+    const normalized = (rawSlug || '').trim().toLowerCase();
+    const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+    if (
+      !normalized ||
+      normalized.length < 3 ||
+      normalized.length > 50 ||
+      !slugRegex.test(normalized)
+    ) {
+      return {
+        available: false,
+        reason: 'invalid',
+        suggestions: [],
+      };
+    }
+
+    const existing = await this.prisma.restaurant.findUnique({
+      where: { slug: normalized },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      return { available: true, suggestions: [] };
+    }
+
+    const candidates = [
+      `${normalized}-ba`,
+      `${normalized}-resto`,
+      `${normalized}-${Math.floor(Math.random() * 90 + 10)}`,
+      `${normalized}-${Math.floor(Math.random() * 900 + 100)}`,
+    ];
+    const taken = await this.prisma.restaurant.findMany({
+      where: { slug: { in: candidates } },
+      select: { slug: true },
+    });
+    const takenSet = new Set(taken.map((r) => r.slug));
+    const suggestions = candidates.filter((c) => !takenSet.has(c)).slice(0, 3);
+
+    return { available: false, reason: 'taken', suggestions };
   }
 
   async findById(id: string) {
@@ -177,6 +221,27 @@ export class RestaurantsService {
     return normalized;
   }
 
+  private normalizePlanType(value: unknown): PlanType {
+    const plan = typeof value === 'string' ? value.toUpperCase() : '';
+    if ((Object.values(PlanType) as string[]).includes(plan)) {
+      return plan as PlanType;
+    }
+
+    return PlanType.STARTER;
+  }
+
+  private addYears(date: Date, years: number) {
+    const next = new Date(date);
+    next.setFullYear(next.getFullYear() + years);
+    return next;
+  }
+
+  private addDays(date: Date, days: number) {
+    const next = new Date(date);
+    next.setDate(next.getDate() + days);
+    return next;
+  }
+
   async getVisitsCount(restaurantId: string, from?: Date, to?: Date) {
     const wherePrisma: any = { restaurantId, metric: 'page_view' };
     if (from || to) wherePrisma.date = {};
@@ -245,6 +310,11 @@ export class RestaurantsService {
   async create(payload: any) {
     // Support both old structure (config/businessInfo) and new structure (onboardingData)
     const data = payload.onboardingData || payload.config || payload;
+    const selectedPlan = this.normalizePlanType(
+      data.planSelection?.selectedPlan ||
+        data.subscriptionPlan ||
+        data.planType,
+    );
 
     // Map frontend field names to backend field names
     const businessInfo = data.businessInfo || {};
@@ -318,7 +388,10 @@ export class RestaurantsService {
         orderLeadTime: 30,
       },
     };
-    const features = this.normalizeFeatures(data.features);
+    const features = adjustFeaturesForPlan(
+      this.normalizeFeatures(data.features),
+      selectedPlan,
+    );
     const hours = data.hours || {};
 
     const hoursData: any[] = [];
@@ -516,6 +589,31 @@ export class RestaurantsService {
         ],
       });
 
+      const now = new Date();
+      const isStarter = selectedPlan === PlanType.STARTER;
+      const trialEnd = this.addDays(now, 14);
+
+      await tx.subscription.create({
+        data: {
+          restaurant: { connect: { id: restaurant.id } },
+          plan: { connect: { id: selectedPlan } },
+          planType: selectedPlan,
+          status: isStarter
+            ? SubscriptionStatus.ACTIVE
+            : SubscriptionStatus.TRIALING,
+          currentPeriodStart: now,
+          currentPeriodEnd: isStarter ? this.addYears(now, 10) : trialEnd,
+          ...(isStarter
+            ? {}
+            : {
+                trialStart: now,
+                trialEnd,
+                nextPaymentDate: trialEnd,
+              }),
+          isFreeAccount: isStarter,
+        },
+      });
+
       return restaurant;
     });
   }
@@ -711,7 +809,14 @@ export class RestaurantsService {
         ...currentFeatures,
         ...(incomingFeatures || {}),
       };
-      updateData.features = this.normalizeFeatures(mergedFeatures);
+      const subscription = await this.prisma.subscription.findUnique({
+        where: { restaurantId: id },
+        select: { planType: true },
+      });
+      updateData.features = adjustFeaturesForPlan(
+        this.normalizeFeatures(mergedFeatures),
+        this.normalizePlanType(subscription?.planType),
+      );
 
       if (userId) {
         updateData.modulesUpdatedBy = userId;
@@ -1352,5 +1457,42 @@ export class RestaurantsService {
         updatedAt: 'desc',
       },
     });
+  }
+
+  /**
+   * Actualiza únicamente la configuración de WhatsApp del dueño (CallMeBot).
+   * Si se desactiva, se conservan teléfono/apikey por comodidad pero no se envían mensajes.
+   */
+  async updateOwnerWhatsapp(
+    restaurantId: string,
+    payload: {
+      phone?: string | null;
+      apiKey?: string | null;
+      enabled?: boolean;
+    },
+  ) {
+    const data: Record<string, unknown> = {};
+    if (payload.phone !== undefined) {
+      data.ownerWhatsappPhone = payload.phone?.trim() || null;
+    }
+    if (payload.apiKey !== undefined) {
+      data.ownerWhatsappApiKey = payload.apiKey?.trim() || null;
+    }
+    if (payload.enabled !== undefined) {
+      data.ownerWhatsappEnabled = !!payload.enabled;
+    }
+
+    const restaurant = await this.prisma.restaurant.update({
+      where: { id: restaurantId },
+      data,
+      select: {
+        id: true,
+        ownerWhatsappPhone: true,
+        ownerWhatsappApiKey: true,
+        ownerWhatsappEnabled: true,
+      },
+    });
+
+    return restaurant;
   }
 }

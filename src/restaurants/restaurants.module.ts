@@ -11,9 +11,16 @@ import { StorageModule } from '../storage/storage.module';
 import { AuthModule } from '../auth/auth.module';
 import { AdminAlertsModule } from '../admin-alerts/admin-alerts.module';
 import { EmailModule } from '../email/email.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [StorageModule, AuthModule, AdminAlertsModule, EmailModule],
+  imports: [
+    StorageModule,
+    AuthModule,
+    AdminAlertsModule,
+    EmailModule,
+    NotificationsModule,
+  ],
   controllers: [
     RestaurantsController,
     RestaurantsPublicController,

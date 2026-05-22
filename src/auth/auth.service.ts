@@ -16,6 +16,7 @@ import {
   LoginIntentDto,
   CompletePasswordSetupDto,
   RequestMagicLinkDto,
+  RegisterMagicLinkDto,
   ConsumeMagicLinkDto,
 } from './dto/auth.dto';
 import { User } from '@prisma/client';
@@ -317,6 +318,65 @@ export class AuthService {
       email: normalizedEmail,
       name: pendingUser.name,
     };
+  }
+
+  async registerWithMagicLink(
+    dto: RegisterMagicLinkDto,
+  ): Promise<MagicLinkRequestResponse> {
+    const normalizedEmail = this.normalizeEmail(dto.email);
+    const name = dto.name?.trim();
+    if (!name) {
+      throw new BadRequestException('Name is required');
+    }
+
+    const existing = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+        deletedAt: null,
+      },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    if (!existing) {
+      // Crear usuario passwordless. Password placeholder bcrypt para no dejar campo vacío.
+      const placeholder = await bcrypt.hash(
+        randomBytes(24).toString('hex'),
+        10,
+      );
+      const created = await this.prisma.user.create({
+        data: {
+          email: normalizedEmail,
+          password: placeholder,
+          name,
+          isActive: true,
+          passwordSetupRequired: false,
+        },
+      });
+
+      void this.adminAlerts?.notifyUserRegistered({
+        source: 'auth.register-magic-link',
+        userId: created.id,
+        name: created.name,
+        email: created.email,
+        restaurantId: null,
+        restaurantName: null,
+      });
+    } else if (!existing.isActive || existing.passwordSetupRequired) {
+      // Reactivar usuario passwordless si quedo en estado inconsistente
+      await this.prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          isActive: true,
+          passwordSetupRequired: false,
+          name: existing.name || name,
+        },
+      });
+    }
+
+    return this.requestMagicLink({
+      email: normalizedEmail,
+      redirect: dto.redirect,
+    });
   }
 
   async requestMagicLink(

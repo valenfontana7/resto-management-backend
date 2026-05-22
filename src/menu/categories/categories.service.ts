@@ -10,6 +10,8 @@ import {
   ImageProcessingService,
   ImageType,
 } from '../../common/services/image-processing.service';
+import { PLAN_LIMITS } from '../../subscriptions/constants';
+import { PlanType } from '../../subscriptions/dto';
 
 /**
  * Servicio para gestión de categorías.
@@ -66,6 +68,27 @@ export class CategoriesService {
 
   async create(restaurantId: string, userId: string, dto: CreateCategoryDto) {
     await this.ownership.verifyUserOwnsRestaurant(restaurantId, userId);
+
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { restaurantId },
+      select: { planType: true },
+    });
+    const planType = (subscription?.planType as PlanType) || PlanType.STARTER;
+    const maxCategories =
+      PLAN_LIMITS[planType]?.maxCategories ??
+      PLAN_LIMITS[PlanType.STARTER].maxCategories;
+
+    if (maxCategories >= 0) {
+      const currentCategories = await this.prisma.category.count({
+        where: { restaurantId, deletedAt: null },
+      });
+
+      if (currentCategories >= maxCategories) {
+        throw new ConflictException(
+          `Tu plan actual permite hasta ${maxCategories} categorías. Actualiza tu plan para agregar más.`,
+        );
+      }
+    }
 
     // Verificar nombre único
     const existing = await this.prisma.category.findFirst({

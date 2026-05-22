@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   EmailService,
@@ -11,6 +11,7 @@ import {
 } from '../../websocket/orders.gateway';
 import { KitchenNotificationsService } from '../../kitchen/kitchen-notifications.service';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { CallMeBotService } from '../../notifications/callmebot.service';
 import { OrderStatus, OrderType } from '../dto/order.dto';
 
 @Injectable()
@@ -22,7 +23,9 @@ export class OrderNotificationsService {
     private readonly emailService: EmailService,
     private readonly ordersGateway: OrdersGateway,
     private readonly kitchenNotifications: KitchenNotificationsService,
+    @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
+    private readonly callMeBot: CallMeBotService,
   ) {}
 
   mapOrderToEmailData(order: any): OrderData {
@@ -123,6 +126,11 @@ export class OrderNotificationsService {
     this.ordersGateway.emitNewOrder(restaurantId, wsPayload);
   }
 
+  emitNewOrderCreated(restaurantId: string, order: any) {
+    const wsPayload = this.mapOrderToWebSocketPayload(order);
+    this.ordersGateway.emitNewOrder(restaurantId, wsPayload);
+  }
+
   async emitKitchenNotification(order: any, newStatus: OrderStatus) {
     let notificationType:
       | 'order_created'
@@ -131,6 +139,8 @@ export class OrderNotificationsService {
       | 'order_ready';
 
     switch (newStatus) {
+      case OrderStatus.PENDING:
+      case OrderStatus.PAID:
       case OrderStatus.CONFIRMED:
         notificationType = 'order_created';
         break;
@@ -202,6 +212,8 @@ export class OrderNotificationsService {
         | 'ORDER_READY';
 
       switch (newStatus) {
+        case OrderStatus.PENDING:
+        case OrderStatus.PAID:
         case OrderStatus.CONFIRMED:
           notificationType = 'ORDER_CREATED';
           break;
@@ -240,8 +252,55 @@ export class OrderNotificationsService {
           );
         }
       }
+
+      if (notificationType === 'ORDER_CREATED') {
+        void this.notifyOwnerWhatsapp(order);
+      }
     } catch (error) {
       this.logger.error('Error enviando notificaciones de orden:', error);
+    }
+  }
+
+  /**
+   * Avisa al dueño por WhatsApp (CallMeBot) cuando llega un nuevo pedido,
+   * siempre y cuando haya activado el canal y tenga apikey configurada.
+   */
+  private async notifyOwnerWhatsapp(order: any): Promise<void> {
+    try {
+      const restaurant = await this.prisma.restaurant.findUnique({
+        where: { id: order.restaurantId },
+        select: {
+          ownerWhatsappEnabled: true,
+          ownerWhatsappPhone: true,
+          ownerWhatsappApiKey: true,
+          name: true,
+        },
+      });
+
+      if (
+        !restaurant?.ownerWhatsappEnabled ||
+        !restaurant.ownerWhatsappPhone ||
+        !restaurant.ownerWhatsappApiKey
+      ) {
+        return;
+      }
+
+      const total = Number(order.total ?? 0).toLocaleString('es-AR');
+      const customer = order.customerName || 'Cliente sin nombre';
+      const text =
+        `🍕 Nuevo pedido #${order.orderNumber} en ${restaurant.name}\n` +
+        `Total: $${total} — ${customer}\n` +
+        `Abrí el panel para aceptar.`;
+
+      await this.callMeBot.sendMessage(
+        restaurant.ownerWhatsappPhone,
+        restaurant.ownerWhatsappApiKey,
+        text,
+      );
+    } catch (err: any) {
+      this.logger.warn(
+        `No se pudo enviar WhatsApp al dueño (${order.restaurantId}): ${err?.message ?? err}`,
+      );
     }
   }
 }

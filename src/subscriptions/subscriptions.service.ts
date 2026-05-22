@@ -82,10 +82,12 @@ export class SubscriptionsService {
       where: { restaurantId },
       create: {
         restaurant: { connect: { id: restaurantId } },
+        plan: { connect: { id: 'STARTER' } },
         planType: 'STARTER',
         status: 'ACTIVE',
         currentPeriodStart: new Date(),
         currentPeriodEnd: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 5),
+        isFreeAccount: true,
         mpCustomerId,
       } as any,
       update: { mpCustomerId },
@@ -132,10 +134,12 @@ export class SubscriptionsService {
       where: { restaurantId },
       create: {
         restaurant: { connect: { id: restaurantId } },
+        plan: { connect: { id: 'STARTER' } },
         planType: 'STARTER',
         status: 'ACTIVE',
         currentPeriodStart: new Date(),
         currentPeriodEnd: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 5),
+        isFreeAccount: true,
         mpCustomerId,
       } as any,
       update: {},
@@ -562,9 +566,11 @@ export class SubscriptionsService {
       // Plan gratuito: activo inmediatamente, sin trial
       subscriptionData = {
         restaurant: { connect: { id: restaurantId } },
+        plan: { connect: { id: planType } },
         planType,
         status: SubscriptionStatus.ACTIVE,
         currentPeriodStart: now,
+        isFreeAccount: true,
         currentPeriodEnd: addMonths(now, 120), // 10 años, prácticamente sin vencimiento
       };
     } else {
@@ -572,6 +578,7 @@ export class SubscriptionsService {
       const trialEnd = addDays(now, TRIAL_DAYS);
       subscriptionData = {
         restaurant: { connect: { id: restaurantId } },
+        plan: { connect: { id: planType } },
         planType,
         status: SubscriptionStatus.TRIALING,
         currentPeriodStart: now,
@@ -579,6 +586,7 @@ export class SubscriptionsService {
         trialStart: now,
         trialEnd,
         nextPaymentDate: trialEnd,
+        isFreeAccount: false,
       };
     }
 
@@ -823,7 +831,9 @@ export class SubscriptionsService {
     if (isUpgrade) {
       // Upgrade: aplicar inmediatamente
       const updateData: any = {
+        planId: newPlan,
         planType: newPlan,
+        isFreeAccount: newPlan === PlanType.STARTER,
       };
 
       if (subscription.status === SubscriptionStatus.TRIALING) {
@@ -857,7 +867,9 @@ export class SubscriptionsService {
         data: {
           // Guardamos el nuevo plan en metadata para aplicar al renovar
           // Por ahora, aplicamos inmediatamente también
+          planId: newPlan,
           planType: newPlan,
+          isFreeAccount: newPlan === PlanType.STARTER,
         },
       });
 

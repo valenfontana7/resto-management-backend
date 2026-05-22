@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateSubscriptionDto } from '../dto/update-subscription.dto';
 import { PlanType } from '@prisma/client';
+import { addMonths } from 'date-fns';
 import { AdminAlertsService } from '../../admin-alerts/admin-alerts.service';
 
 @Injectable()
@@ -104,6 +105,8 @@ export class SuperAdminSubscriptionsService {
     const oldPlanType = restaurant.subscription.planType;
 
     const newPlanType = plan.id as PlanType;
+    const now = new Date();
+    const isPaidPlan = newPlanType !== PlanType.STARTER;
 
     const subscription = await this.prisma.subscription.update({
       where: { id: restaurant.subscription.id },
@@ -111,6 +114,13 @@ export class SuperAdminSubscriptionsService {
         planId: plan.id,
         planType: newPlanType,
         previousPlanType: oldPlanType,
+        status: 'ACTIVE',
+        isFreeAccount: !isPaidPlan,
+        currentPeriodStart: now,
+        currentPeriodEnd: isPaidPlan ? addMonths(now, 1) : addMonths(now, 120),
+        trialStart: null,
+        trialEnd: null,
+        nextPaymentDate: isPaidPlan ? addMonths(now, 1) : null,
       },
       include: {
         plan: true,

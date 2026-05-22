@@ -1,9 +1,10 @@
-import { Controller, Get, Post, Body } from '@nestjs/common';
+import { Controller, Get, Post, Body, Headers, Req } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../prisma/prisma.service';
+import { Request } from 'express';
 import { Public } from '../auth/decorators/public.decorator';
 import { IsString, IsOptional, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
+import { PushNotificationService } from './push-notification.service';
 
 class PushKeysDto {
   @IsString()
@@ -30,16 +31,25 @@ class PushSubscribeDto {
   @IsString()
   restaurantId: string;
 
+  @IsOptional()
+  @IsString()
+  userId?: string;
+
   @ValidateNested()
   @Type(() => PushSubscriptionDto)
   subscription: PushSubscriptionDto;
+}
+
+class PushUnsubscribeDto {
+  @IsString()
+  endpoint: string;
 }
 
 @Controller('notifications')
 export class PushNotificationsController {
   constructor(
     private readonly config: ConfigService,
-    private readonly prisma: PrismaService,
+    private readonly pushService: PushNotificationService,
   ) {}
 
   @Public()
@@ -49,29 +59,34 @@ export class PushNotificationsController {
     if (!publicKey) {
       return { publicKey: null, enabled: false };
     }
-    return { publicKey, enabled: true };
+    return { publicKey, enabled: this.pushService.isEnabled() };
   }
 
   @Public()
   @Post('push-subscribe')
-  async subscribe(@Body() dto: PushSubscribeDto) {
-    // Store subscription as JSON in Analytics model for simplicity
-    // In production, consider a dedicated PushSubscription table
-    await this.prisma.analytics.create({
-      data: {
-        restaurantId: dto.restaurantId,
-        metric: 'push_subscription',
-        value: 1,
-        metadata: {
-          endpoint: dto.subscription.endpoint,
-          keys: {
-            p256dh: dto.subscription.keys.p256dh,
-            auth: dto.subscription.keys.auth,
-          },
-        } as any,
-      },
+  async subscribe(
+    @Body() dto: PushSubscribeDto,
+    @Req() req: Request,
+    @Headers('user-agent') userAgent?: string,
+  ) {
+    const userId = dto.userId ?? (req as any).user?.id ?? null;
+
+    await this.pushService.subscribe({
+      restaurantId: dto.restaurantId,
+      userId,
+      endpoint: dto.subscription.endpoint,
+      p256dh: dto.subscription.keys.p256dh,
+      auth: dto.subscription.keys.auth,
+      userAgent,
     });
 
     return { subscribed: true };
+  }
+
+  @Public()
+  @Post('push-unsubscribe')
+  async unsubscribe(@Body() dto: PushUnsubscribeDto) {
+    await this.pushService.unsubscribe(dto.endpoint);
+    return { unsubscribed: true };
   }
 }

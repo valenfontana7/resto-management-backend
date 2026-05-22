@@ -62,6 +62,7 @@ import {
 } from './dto/branding-v2.dto';
 import { UpdateRestaurantSettingsDto } from './dto/update-restaurant-settings.dto';
 import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
+import { CallMeBotService } from '../notifications/callmebot.service';
 
 @ApiTags('Restaurants')
 @Controller('api/restaurants')
@@ -72,6 +73,7 @@ export class RestaurantsController {
     private readonly brandingService: RestaurantBrandingV2Service,
     private readonly settingsService: RestaurantSettingsService,
     private readonly authService: AuthService,
+    private readonly callMeBot: CallMeBotService,
     @Optional() private readonly adminAlerts?: AdminAlertsService,
   ) {}
 
@@ -202,6 +204,7 @@ export class RestaurantsController {
       const paymentMethods = d.paymentMethods || {};
 
       payload = {
+        planSelection: d.planSelection,
         businessInfo: {
           name: businessInfo.name || businessInfo.restaurantName || null,
           type: businessInfo.type || businessInfo.businessType || null,
@@ -282,6 +285,47 @@ export class RestaurantsController {
     );
 
     return { restaurant };
+  }
+
+  @Patch(':id/owner-whatsapp')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Update owner WhatsApp (CallMeBot) settings for the restaurant',
+  })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  async updateOwnerWhatsapp(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+    @Body()
+    body: { phone?: string | null; apiKey?: string | null; enabled?: boolean },
+  ) {
+    const restaurant = await this.restaurantsService.updateOwnerWhatsapp(
+      restaurantId,
+      body,
+    );
+    return { restaurant };
+  }
+
+  @Post(':id/owner-whatsapp/test')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Send a test WhatsApp message to the owner via CallMeBot',
+  })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  async testOwnerWhatsapp(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+    @Body() body: { phone?: string; apiKey?: string },
+  ) {
+    const phone = body.phone?.trim();
+    const apiKey = body.apiKey?.trim();
+    if (!phone || !apiKey) {
+      throw new BadRequestException('phone y apiKey son requeridos');
+    }
+    const ok = await this.callMeBot.sendMessage(
+      phone,
+      apiKey,
+      '✅ Bentoo: tu canal de WhatsApp está activo. Vas a recibir avisos de pedidos nuevos.',
+    );
+    return { success: ok };
   }
 
   @Post(':id/complete-onboarding')

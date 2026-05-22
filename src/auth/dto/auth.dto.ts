@@ -76,6 +76,21 @@ export class RequestMagicLinkDto {
   redirect?: string;
 }
 
+export class RegisterMagicLinkDto {
+  @ApiProperty({ example: 'john@example.com' })
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({ example: 'John Doe' })
+  @IsString()
+  name: string;
+
+  @ApiProperty({ example: '/onboarding', required: false })
+  @IsOptional()
+  @IsString()
+  redirect?: string;
+}
+
 export class ConsumeMagicLinkDto {
   @ApiProperty({ example: 'raw-token-from-email' })
   @IsString()

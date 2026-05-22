@@ -1,6 +1,7 @@
-import { Controller, Get, UseInterceptors } from '@nestjs/common';
+import { Controller, Get, Query, UseInterceptors } from '@nestjs/common';
 import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { ApiTags, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
 import { RestaurantsService } from './restaurants.service';
 
@@ -18,5 +19,18 @@ export class RestaurantsPublicController {
   async getPublicRestaurants() {
     // Retornar restaurantes activos con campos básicos para sitemap
     return this.restaurantsService.getPublicRestaurants();
+  }
+
+  @Get('api/public/restaurants/slug-available')
+  @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  @ApiOperation({ summary: 'Chequear disponibilidad de slug para onboarding' })
+  @ApiQuery({ name: 'slug', required: true, description: 'Slug a validar' })
+  @ApiResponse({
+    status: 200,
+    description: 'Disponibilidad + sugerencias alternativas',
+  })
+  async checkSlugAvailable(@Query('slug') slug: string) {
+    return this.restaurantsService.checkSlugAvailability(slug);
   }
 }

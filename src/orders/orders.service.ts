@@ -304,6 +304,13 @@ export class OrdersService {
         });
       }
 
+      // Notificar al admin (Socket.IO) y a cocina (SSE) que entró un pedido nuevo
+      this.notifications.emitNewOrderCreated(restaurantId, order);
+      void this.notifications.emitKitchenNotification(
+        order,
+        OrderStatus.PENDING,
+      );
+
       return {
         order: {
           id: order.id,
