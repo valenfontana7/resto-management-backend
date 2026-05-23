@@ -23,7 +23,7 @@ async function main() {
       description: 'Para empezar a vender por link y QR.',
       price: 2500000, // $25.000 ARS (en centavos)
       interval: 'monthly',
-      trialDays: 0,
+      trialDays: 14,
       color: 'from-stone-500 to-stone-700',
       order: 1,
       isActive: true,
@@ -35,7 +35,7 @@ async function main() {
       description: 'Para empezar a vender por link y QR.',
       price: 2500000, // $25.000 ARS (en centavos)
       interval: 'monthly',
-      trialDays: 0,
+      trialDays: 14,
       color: 'from-slate-500 to-slate-600',
       order: 1,
       isActive: true,
@@ -241,7 +241,12 @@ async function main() {
       displayName: 'Operación',
       description: 'Para ordenar pedidos, cocina y reservas.',
       price: 4500000, // $45.000 ARS (en centavos)
+      interval: 'monthly',
+      trialDays: 14,
       color: 'from-teal-500 to-emerald-600',
+      order: 2,
+      isActive: true,
+      isDefault: false,
     },
     create: {
       id: 'PROFESSIONAL',
@@ -378,7 +383,12 @@ async function main() {
       displayName: 'Full',
       description: 'Para locales con necesidades puntuales.',
       price: 7000000, // $70.000 ARS (en centavos)
+      interval: 'monthly',
+      trialDays: 14,
       color: 'from-amber-500 to-orange-600',
+      order: 3,
+      isActive: true,
+      isDefault: false,
     },
     create: {
       id: 'ENTERPRISE',
@@ -386,7 +396,7 @@ async function main() {
       description: 'Para locales con necesidades puntuales.',
       price: 7000000, // $70.000 ARS (en centavos)
       interval: 'monthly',
-      trialDays: 7,
+      trialDays: 14,
       color: 'from-amber-500 to-orange-600',
       order: 3,
       isActive: true,

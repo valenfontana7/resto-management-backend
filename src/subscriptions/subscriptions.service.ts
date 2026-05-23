@@ -76,18 +76,30 @@ export class SubscriptionsService {
       metadata,
       true,
     );
+    const defaultPlan = await this.prisma.subscriptionPlan.findUnique({
+      where: { id: PlanType.STARTER },
+    });
+    const now = new Date();
+    const isDefaultPlanPaid = (defaultPlan?.price ?? 0) > 0;
+    const trialDays = defaultPlan?.trialDays || TRIAL_DAYS;
+    const trialEnd = addDays(now, trialDays);
 
     // Upsert subscription row minimalmente
     await this.prisma.subscription.upsert({
       where: { restaurantId },
       create: {
         restaurant: { connect: { id: restaurantId } },
-        plan: { connect: { id: 'STARTER' } },
-        planType: 'STARTER',
-        status: 'ACTIVE',
-        currentPeriodStart: new Date(),
-        currentPeriodEnd: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 5),
-        isFreeAccount: true,
+        plan: { connect: { id: PlanType.STARTER } },
+        planType: PlanType.STARTER,
+        status: isDefaultPlanPaid
+          ? SubscriptionStatus.TRIALING
+          : SubscriptionStatus.ACTIVE,
+        currentPeriodStart: now,
+        currentPeriodEnd: isDefaultPlanPaid ? trialEnd : addMonths(now, 120),
+        trialStart: isDefaultPlanPaid ? now : undefined,
+        trialEnd: isDefaultPlanPaid ? trialEnd : undefined,
+        nextPaymentDate: isDefaultPlanPaid ? trialEnd : undefined,
+        isFreeAccount: !isDefaultPlanPaid,
         mpCustomerId,
       } as any,
       update: { mpCustomerId },
@@ -559,14 +571,28 @@ export class SubscriptionsService {
 
     const now = new Date();
     const planType = dto.planType;
+    const plan = await this.prisma.subscriptionPlan.findUnique({
+      where: { id: planType },
+    });
+
+    if (!plan) {
+      throw new NotFoundException('Plan no encontrado');
+    }
+
+    if (!plan.isActive) {
+      throw new BadRequestException('El plan seleccionado no está activo');
+    }
+
+    const isPaidPlan = plan.price > 0;
+    const trialDays = plan.trialDays || TRIAL_DAYS;
 
     let subscriptionData: Prisma.SubscriptionCreateInput;
 
-    if (planType === PlanType.STARTER) {
-      // Plan gratuito: activo inmediatamente, sin trial
+    if (!isPaidPlan) {
+      // Plan sin costo: activo inmediatamente, sin trial
       subscriptionData = {
         restaurant: { connect: { id: restaurantId } },
-        plan: { connect: { id: planType } },
+        plan: { connect: { id: plan.id } },
         planType,
         status: SubscriptionStatus.ACTIVE,
         currentPeriodStart: now,
@@ -574,11 +600,11 @@ export class SubscriptionsService {
         currentPeriodEnd: addMonths(now, 120), // 10 años, prácticamente sin vencimiento
       };
     } else {
-      // Planes de pago: inician con trial de 14 días
-      const trialEnd = addDays(now, TRIAL_DAYS);
+      // Planes de pago: inician con trial
+      const trialEnd = addDays(now, trialDays);
       subscriptionData = {
         restaurant: { connect: { id: restaurantId } },
-        plan: { connect: { id: planType } },
+        plan: { connect: { id: plan.id } },
         planType,
         status: SubscriptionStatus.TRIALING,
         currentPeriodStart: now,
@@ -613,7 +639,7 @@ export class SubscriptionsService {
     );
 
     // Enviar email de bienvenida para planes con trial
-    if (planType !== PlanType.STARTER && subscription.trialEnd) {
+    if (isPaidPlan && subscription.trialEnd) {
       const restaurant = await this.prisma.restaurant.findUnique({
         where: { id: restaurantId },
         select: { email: true, name: true },
@@ -809,6 +835,20 @@ export class SubscriptionsService {
     const currentPlan = subscription.planType as PlanType;
     const newPlan = dto.planType;
 
+    const newPlanRecord = await this.prisma.subscriptionPlan.findUnique({
+      where: { id: newPlan },
+    });
+
+    if (!newPlanRecord) {
+      throw new NotFoundException('Plan no encontrado');
+    }
+
+    if (!newPlanRecord.isActive) {
+      throw new BadRequestException('El plan seleccionado no está activo');
+    }
+
+    const isNewPlanFree = newPlanRecord.price === 0;
+
     if (currentPlan === newPlan) {
       throw new BadRequestException('Ya tienes este plan');
     }
@@ -833,7 +873,7 @@ export class SubscriptionsService {
       const updateData: any = {
         planId: newPlan,
         planType: newPlan,
-        isFreeAccount: newPlan === PlanType.STARTER,
+        isFreeAccount: isNewPlanFree,
       };
 
       if (subscription.status === SubscriptionStatus.TRIALING) {
@@ -869,7 +909,7 @@ export class SubscriptionsService {
           // Por ahora, aplicamos inmediatamente también
           planId: newPlan,
           planType: newPlan,
-          isFreeAccount: newPlan === PlanType.STARTER,
+          isFreeAccount: isNewPlanFree,
         },
       });
 

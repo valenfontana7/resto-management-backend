@@ -590,27 +590,36 @@ export class RestaurantsService {
       });
 
       const now = new Date();
-      const isStarter = selectedPlan === PlanType.STARTER;
-      const trialEnd = this.addDays(now, 14);
+      const selectedSubscriptionPlan = await tx.subscriptionPlan.findUnique({
+        where: { id: selectedPlan },
+      });
+
+      if (!selectedSubscriptionPlan) {
+        throw new BadRequestException('Plan de suscripción no encontrado');
+      }
+
+      const isPaidPlan = selectedSubscriptionPlan.price > 0;
+      const trialDays = selectedSubscriptionPlan.trialDays || 14;
+      const trialEnd = this.addDays(now, trialDays);
 
       await tx.subscription.create({
         data: {
           restaurant: { connect: { id: restaurant.id } },
           plan: { connect: { id: selectedPlan } },
           planType: selectedPlan,
-          status: isStarter
-            ? SubscriptionStatus.ACTIVE
-            : SubscriptionStatus.TRIALING,
+          status: isPaidPlan
+            ? SubscriptionStatus.TRIALING
+            : SubscriptionStatus.ACTIVE,
           currentPeriodStart: now,
-          currentPeriodEnd: isStarter ? this.addYears(now, 10) : trialEnd,
-          ...(isStarter
-            ? {}
-            : {
+          currentPeriodEnd: isPaidPlan ? trialEnd : this.addYears(now, 10),
+          ...(isPaidPlan
+            ? {
                 trialStart: now,
                 trialEnd,
                 nextPaymentDate: trialEnd,
-              }),
-          isFreeAccount: isStarter,
+              }
+            : {}),
+          isFreeAccount: !isPaidPlan,
         },
       });
 

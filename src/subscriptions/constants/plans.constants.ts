@@ -4,9 +4,9 @@ import { PlanType } from '../dto';
  * Precios de los planes en centavos (ARS)
  */
 export const PLAN_PRICES: Record<PlanType, number> = {
-  [PlanType.STARTER]: 0,
-  [PlanType.PROFESSIONAL]: 1500000, // $15.000 ARS
-  [PlanType.ENTERPRISE]: 3500000, // $35.000 ARS
+  [PlanType.STARTER]: 2500000, // $25.000 ARS
+  [PlanType.PROFESSIONAL]: 4500000, // $45.000 ARS
+  [PlanType.ENTERPRISE]: 7000000, // $70.000 ARS
 };
 
 /**

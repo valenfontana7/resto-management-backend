@@ -106,7 +106,7 @@ export class SuperAdminSubscriptionsService {
 
     const newPlanType = plan.id as PlanType;
     const now = new Date();
-    const isPaidPlan = newPlanType !== PlanType.STARTER;
+    const isPaidPlan = plan.price > 0;
 
     const subscription = await this.prisma.subscription.update({
       where: { id: restaurant.subscription.id },
