@@ -60,10 +60,26 @@ class InMemoryPrisma {
   private orderRow: any = null;
   private checkoutRow: any = null;
 
+  reset() {
+    this.orderRow = null;
+    this.checkoutRow = null;
+  }
+
+  private matchesOrderWhere(where: any = {}) {
+    if (!this.orderRow) return false;
+    if (where.id && where.id !== this.orderRow.id) return false;
+    if (where.restaurantId && where.restaurantId !== this.orderRow.restaurantId)
+      return false;
+    if (where.status && where.status !== this.orderRow.status) return false;
+    if (where.type && where.type !== this.orderRow.type) return false;
+    return true;
+  }
+
   order = {
     create: ({ data }: any) => {
       this.orderRow = {
-        id: 'o1',
+        id: data.id ?? 'o1',
+        orderNumber: data.orderNumber,
         restaurantId: data.restaurantId,
         publicTrackingToken: data.publicTrackingToken,
         status: data.status,
@@ -88,13 +104,7 @@ class InMemoryPrisma {
     },
 
     findFirst: ({ where, select }: any) => {
-      if (!this.orderRow) return null;
-      if (where.id !== this.orderRow.id) return null;
-      if (
-        where.restaurantId &&
-        where.restaurantId !== this.orderRow.restaurantId
-      )
-        return null;
+      if (!this.matchesOrderWhere(where)) return null;
 
       if (!select) return this.orderRow;
 
@@ -110,7 +120,15 @@ class InMemoryPrisma {
       return selected;
     },
 
-    count: () => 0,
+    findMany: ({ where }: any = {}) =>
+      this.matchesOrderWhere(where) ? [this.orderRow] : [],
+
+    count: ({ where }: any = {}) => (this.matchesOrderWhere(where) ? 1 : 0),
+
+    groupBy: ({ where }: any = {}) =>
+      this.matchesOrderWhere(where)
+        ? [{ status: this.orderRow.status, _count: { id: 1 } }]
+        : [],
   };
 
   checkoutSession = {
@@ -172,6 +190,8 @@ class InMemoryPrisma {
 
 describe('Orders public tracking', () => {
   let app: INestApplication;
+  let prisma: InMemoryPrisma;
+  let ordersService: OrdersService;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -184,7 +204,10 @@ describe('Orders public tracking', () => {
         // JwtAuthGuard existe como provider (por el decorator), así que aportamos JwtService
         // para evitar errores de DI aunque este test no lo use.
         { provide: JwtService, useValue: { verifyAsync: jest.fn() } },
-        { provide: OwnershipService, useValue: {} },
+        {
+          provide: OwnershipService,
+          useValue: { verifyUserBelongsToRestaurant: jest.fn() },
+        },
         {
           provide: MercadoPagoService,
           useValue: {
@@ -260,11 +283,19 @@ describe('Orders public tracking', () => {
     // Middleware de test: permite simular rol sin auth real.
     app.use((req: any, _res: any, next: any) => {
       if (req?.headers?.['x-test-role'] === 'SUPER_ADMIN') {
-        req.user = { role: 'SUPER_ADMIN' };
+        req.user = { userId: 'u1', role: 'SUPER_ADMIN' };
+      } else if (req?.headers?.['x-test-role']) {
+        req.user = { userId: 'u1', role: String(req.headers['x-test-role']) };
       }
       next();
     });
     await app.init();
+    prisma = app.get(PrismaService);
+    ordersService = app.get(OrdersService);
+  });
+
+  beforeEach(() => {
+    prisma.reset();
   });
 
   afterAll(async () => {
@@ -340,7 +371,7 @@ describe('Orders public tracking', () => {
     expect(publicRes.status).toBe(404);
   });
 
-  it('SUPER_ADMIN no debe ir a MercadoPago aunque paymentMethod=mercadopago', async () => {
+  it('no convierte checkout online en pedido aunque la request publica llegue con SUPER_ADMIN', async () => {
     const createRes = await request(app.getHttpServer())
       .post('/api/restaurants/r1/orders')
       .set('x-test-role', 'SUPER_ADMIN')
@@ -353,8 +384,13 @@ describe('Orders public tracking', () => {
       });
 
     expect(createRes.status).toBe(201);
-    // Si bypass funciona, no se genera paymentUrl (no checkout/preference)
-    expect(createRes.body.paymentUrl).toBeUndefined();
+    expect(createRes.body.paymentUrl).toBe('https://mp.example/checkout');
+    expect(createRes.body.order.id).toBe('checkout-1');
     expect(typeof createRes.body.publicTrackingToken).toBe('string');
+
+    const adminList = await ordersService.findAll('r1', 'u1', {} as any);
+
+    expect(adminList.orders).toEqual([]);
+    expect(adminList.pagination.total).toBe(0);
   });
 });

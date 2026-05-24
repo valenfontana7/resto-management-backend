@@ -42,12 +42,7 @@ export class OrdersController {
     @Req() req: any,
   ) {
     const origin = this.getOrigin(req);
-    return this.ordersService.create(
-      restaurantId,
-      createDto,
-      origin,
-      req?.user?.role ?? null,
-    );
+    return this.ordersService.create(restaurantId, createDto, origin);
   }
 
   // Public endpoint para tracking de orden (sin datos sensibles)

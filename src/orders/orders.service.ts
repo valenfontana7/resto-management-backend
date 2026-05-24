@@ -50,9 +50,7 @@ export class OrdersService {
     restaurantId: string,
     createDto: CreateOrderDto,
     origin?: string,
-    role?: string | null,
   ) {
-    void role;
     if (!createDto) {
       throw new BadRequestException('Request body is required');
     }
@@ -203,8 +201,7 @@ export class OrdersService {
     const orderNumber = await this.generateOrderNumber(restaurantId);
 
     const isOnlinePayment = this.isOnlinePaymentMethod(normalizedPaymentMethod);
-    const shouldCreateOnlineCheckout =
-      isOnlinePayment && String(role || '').toUpperCase() !== 'SUPER_ADMIN';
+    const shouldCreateOnlineCheckout = isOnlinePayment;
     const resolvedProvider = this.normalizePaymentProvider(
       createDto.paymentProvider ?? paymentMethod,
     );
