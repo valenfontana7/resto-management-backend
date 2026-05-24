@@ -58,6 +58,7 @@ class InMemoryPrisma {
   };
 
   private orderRow: any = null;
+  private checkoutRow: any = null;
 
   order = {
     create: ({ data }: any) => {
@@ -114,14 +115,58 @@ class InMemoryPrisma {
 
   checkoutSession = {
     count: () => 0,
-    findFirst: () => null,
+    findFirst: ({ where, select }: any) => {
+      if (!this.checkoutRow) return null;
+      if (where.id !== this.checkoutRow.id) return null;
+      if (
+        where.restaurantId &&
+        where.restaurantId !== this.checkoutRow.restaurantId
+      )
+        return null;
+
+      if (!select) return this.checkoutRow;
+
+      const selected: any = {};
+      for (const key of Object.keys(select)) {
+        if (!select[key]) continue;
+        if (key === 'restaurant') {
+          selected.restaurant = this.checkoutRow.restaurant;
+        } else {
+          selected[key] = this.checkoutRow[key];
+        }
+      }
+      return selected;
+    },
     create: ({ data }: any) => ({
-      id: 'checkout-1',
-      orderNumber: data.orderNumber,
-      publicTrackingToken: data.publicTrackingToken,
-      createdAt: new Date(),
+      ...(this.checkoutRow = {
+        id: 'checkout-1',
+        restaurantId: data.restaurantId,
+        orderNumber: data.orderNumber,
+        publicTrackingToken: data.publicTrackingToken,
+        paymentMethod: data.paymentMethod,
+        paymentStatus: data.paymentStatus,
+        type: data.type,
+        subtotal: data.subtotal,
+        deliveryFee: data.deliveryFee,
+        discount: data.discount ?? 0,
+        tip: data.tip,
+        total: data.total,
+        createdAt: new Date(),
+        paidAt: null,
+        items: data.items,
+        restaurant: {
+          name: 'Mock Resto',
+          phone: '123',
+          address: 'Mock Address',
+        },
+      }),
     }),
-    update: () => ({}),
+    update: ({ data }: any) => {
+      if (this.checkoutRow) {
+        this.checkoutRow = { ...this.checkoutRow, ...data };
+      }
+      return this.checkoutRow ?? {};
+    },
   };
 }
 
@@ -146,8 +191,8 @@ describe('Orders public tracking', () => {
             createPreference: jest.fn().mockResolvedValue({
               preference: {
                 id: 'pref_test',
-                init_point: undefined,
-                sandbox_init_point: undefined,
+                init_point: 'https://mp.example/checkout',
+                sandbox_init_point: 'https://mp.example/sandbox-checkout',
               },
               isSandbox: false,
             }),
@@ -161,6 +206,7 @@ describe('Orders public tracking', () => {
           useValue: {
             sendOrderConfirmationEmails: jest.fn(),
             sendStatusUpdateEmail: jest.fn(),
+            emitNewOrderCreated: jest.fn(),
             emitOrderUpdate: jest.fn(),
             emitKitchenNotification: jest.fn(),
             emitPaymentConfirmed: jest.fn(),
@@ -270,6 +316,28 @@ describe('Orders public tracking', () => {
     expect(okGlobalRes.body.order).toBeDefined();
     expect(okGlobalRes.body.order.id).toBe('o1');
     expect(okGlobalRes.body.order.status).toBeDefined();
+  });
+
+  it('no expone una checkout session pendiente como pedido publico', async () => {
+    const createRes = await request(app.getHttpServer())
+      .post('/api/restaurants/r1/orders')
+      .send({
+        customerName: 'A',
+        customerPhone: '123',
+        type: 'PICKUP',
+        paymentMethod: 'mercadopago',
+        items: [{ dishId: 'd1', quantity: 1 }],
+      });
+
+    expect(createRes.status).toBe(201);
+    expect(createRes.body.paymentUrl).toBe('https://mp.example/checkout');
+    expect(createRes.body.order.id).toBe('checkout-1');
+
+    const publicRes = await request(app.getHttpServer())
+      .get('/api/restaurants/r1/orders/checkout-1/public')
+      .query({ token: createRes.body.publicTrackingToken });
+
+    expect(publicRes.status).toBe(404);
   });
 
   it('SUPER_ADMIN no debe ir a MercadoPago aunque paymentMethod=mercadopago', async () => {

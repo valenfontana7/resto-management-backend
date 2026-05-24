@@ -737,6 +737,13 @@ export class OrdersService {
       throw new NotFoundException('Order not found');
     }
 
+    if (
+      (checkout.paymentStatus as string) !== (PaymentStatus.PAID as string) ||
+      !checkout.paidAt
+    ) {
+      throw new NotFoundException('Order not found');
+    }
+
     const items = Array.isArray(checkout.items)
       ? (checkout.items as any[])
       : [];
