@@ -21,6 +21,11 @@ import { AuthModule } from '../auth/auth.module';
     PaymentProviderFactory,
     PaymentProviderCredentialsService,
   ],
-  exports: [PaymentProviderFactory, MercadoPagoProvider, PaywayProvider],
+  exports: [
+    PaymentProviderFactory,
+    MercadoPagoProvider,
+    PaywayProvider,
+    PaymentProviderCredentialsService,
+  ],
 })
 export class PaymentProvidersModule {}
