@@ -120,6 +120,131 @@ export class PaymentProviderCredentialsController {
     return this.factory.listActiveProviders(restaurantId);
   }
 
+  // ─── Validación de credenciales ──────────────────────────────────
+
+  /**
+   * Valida credenciales sin guardarlas. Útil para el wizard de onboarding.
+   * Devuelve { valid, message, details }.
+   */
+  @Post('credentials/test')
+  @HttpCode(200)
+  async testCredentialsRaw(
+    @Body()
+    body: {
+      restaurantId: string;
+      provider: PaymentProviderName;
+      secretKey: string;
+      publicKey?: string;
+      siteId?: string;
+      merchantId?: string;
+      isSandbox?: boolean;
+    },
+    @CurrentUser() user?: RequestUser,
+  ) {
+    const restaurantId = body?.restaurantId?.trim();
+    if (!restaurantId)
+      throw new BadRequestException('restaurantId es requerido');
+    if (!body.provider) throw new BadRequestException('provider es requerido');
+    if (!body.secretKey)
+      throw new BadRequestException('secretKey es requerida');
+
+    this.assertAccess(user, restaurantId);
+    await this.verifyAccess(user!, restaurantId);
+
+    const provider = this.factory.getProvider(body.provider);
+    if (!provider.validateCredentials) {
+      return {
+        valid: true,
+        message: `El provider ${body.provider} no soporta validación previa`,
+      };
+    }
+
+    return provider.validateCredentials({
+      apiKey: body.secretKey,
+      publicApiKey: body.publicKey,
+      siteId: body.siteId,
+      merchantId: body.merchantId,
+      isSandbox: Boolean(body.isSandbox),
+    });
+  }
+
+  /**
+   * Valida credenciales ya persistidas para el tenant.
+   */
+  @Post('credentials/:provider/test')
+  @HttpCode(200)
+  async testStoredCredentials(
+    @Param('provider') providerName: PaymentProviderName,
+    @Body() body: { restaurantId: string },
+    @CurrentUser() user?: RequestUser,
+  ) {
+    const restaurantId = body?.restaurantId?.trim();
+    if (!restaurantId)
+      throw new BadRequestException('restaurantId es requerido');
+
+    this.assertAccess(user, restaurantId);
+    await this.verifyAccess(user!, restaurantId);
+
+    const stored = await this.credentialsService.getDecryptedCredential(
+      restaurantId,
+      providerName,
+    );
+    if (!stored) {
+      return {
+        valid: false,
+        message: `No hay credenciales guardadas de ${providerName}`,
+      };
+    }
+
+    const provider = this.factory.getProvider(providerName);
+    if (!provider.validateCredentials) {
+      return {
+        valid: true,
+        message: `El provider ${providerName} no soporta validación`,
+      };
+    }
+
+    const result = await provider.validateCredentials({
+      apiKey: stored.secretKey,
+      publicApiKey: stored.publicKey,
+      siteId: stored.siteId,
+      merchantId: stored.merchantId,
+      isSandbox: stored.isSandbox,
+      metadata: stored.metadata,
+    });
+
+    await this.credentialsService.recordTestResult(restaurantId, providerName, {
+      ok: result.valid,
+      error: result.valid ? undefined : result.message,
+    });
+
+    return result;
+  }
+
+  /**
+   * Rota el webhookSecret del provider y devuelve el plaintext nuevo
+   * (única vez que es visible).
+   */
+  @Post('credentials/:provider/rotate-webhook-secret')
+  @HttpCode(200)
+  async rotateWebhookSecret(
+    @Param('provider') providerName: PaymentProviderName,
+    @Body() body: { restaurantId: string },
+    @CurrentUser() user?: RequestUser,
+  ) {
+    const restaurantId = body?.restaurantId?.trim();
+    if (!restaurantId)
+      throw new BadRequestException('restaurantId es requerido');
+
+    this.assertAccess(user, restaurantId);
+    await this.verifyAccess(user!, restaurantId);
+
+    return this.credentialsService.rotateWebhookSecret(
+      restaurantId,
+      providerName,
+    );
+  }
+
   // ─── Helpers ─────────────────────────────────────────────────────
 
   private assertAccess(user: RequestUser | undefined, restaurantId: string) {

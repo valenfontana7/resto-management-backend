@@ -15,6 +15,8 @@ import {
   WebhookPayload,
   RefundInput,
   RefundResult,
+  ValidateCredentialsInput,
+  ValidateCredentialsResult,
 } from '../interfaces';
 import * as crypto from 'crypto';
 
@@ -32,7 +34,54 @@ export class MercadoPagoProvider implements IPaymentProvider {
 
   constructor(private readonly configService: ConfigService) {}
 
-  // ─── Checkout ────────────────────────────────────────────────────
+  // ─── Validación de credenciales ──────────────────────────────────
+
+  async validateCredentials(
+    input: ValidateCredentialsInput,
+  ): Promise<ValidateCredentialsResult> {
+    const accessToken =
+      input.apiKey || (input.metadata?.accessToken as string | undefined);
+    if (!accessToken) {
+      return { valid: false, message: 'Falta el access token de MercadoPago' };
+    }
+
+    try {
+      const res = await fetch(`${this.apiBase}/users/me`, {
+        method: 'GET',
+        headers: this.headers(accessToken),
+      });
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        return {
+          valid: false,
+          message: `MercadoPago rechazó las credenciales (HTTP ${res.status})`,
+          details: json ?? undefined,
+        };
+      }
+
+      return {
+        valid: true,
+        message: 'Credenciales válidas',
+        details: {
+          userId: json?.id,
+          nickname: json?.nickname,
+          email: json?.email,
+          siteId: json?.site_id,
+        },
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `Error validando credenciales MercadoPago: ${error?.message}`,
+      );
+      return {
+        valid: false,
+        message: `No se pudo contactar a MercadoPago: ${error?.message ?? 'error desconocido'}`,
+      };
+    }
+  }
+
+  // ─── Checkout ────────────────────────────────────────────────────────────────────
 
   async createCheckout(input: CreateCheckoutInput): Promise<CheckoutResult> {
     const accessToken = this.resolveAccessToken(

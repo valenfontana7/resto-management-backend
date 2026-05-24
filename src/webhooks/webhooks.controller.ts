@@ -16,6 +16,8 @@ import { MercadoPagoWebhookService } from '../mercadopago/mercadopago-webhook.se
 import { OrdersService } from '../orders/orders.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { PaymentProviderFactory } from '../payment-providers/payment-provider.factory';
+import { PaymentProviderCredentialsService } from '../payment-providers/payment-provider-credentials.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { PlanType } from '../subscriptions/dto';
 
 @ApiTags('webhooks')
@@ -28,6 +30,8 @@ export class WebhooksController {
     private readonly ordersService: OrdersService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly paymentProviderFactory: PaymentProviderFactory,
+    private readonly credentialsService: PaymentProviderCredentialsService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Post()
@@ -310,11 +314,62 @@ export class WebhooksController {
     );
 
     try {
+      // Resolver tenant a partir de site_transaction_id (formato:
+      // "order_<checkoutSessionId>" o "sub_<restaurantId>_<planType>") para
+      // poder validar la firma con el secret per-tenant.
+      const siteTransactionId = body?.site_transaction_id ?? '';
+      let tenantWebhookSecret: string | undefined;
+      try {
+        if (
+          typeof siteTransactionId === 'string' &&
+          siteTransactionId.startsWith('order_')
+        ) {
+          const checkoutSessionId = siteTransactionId.replace('order_', '');
+          const session = await this.prisma.checkoutSession.findUnique({
+            where: { id: checkoutSessionId },
+            select: { restaurantId: true },
+          });
+          if (session) {
+            const cred = await this.credentialsService.getDecryptedCredential(
+              session.restaurantId,
+              'payway',
+            );
+            if (cred?.webhookSecret) {
+              tenantWebhookSecret = cred.webhookSecret;
+            }
+          }
+        } else if (
+          typeof siteTransactionId === 'string' &&
+          siteTransactionId.startsWith('sub_')
+        ) {
+          const parts = siteTransactionId.split('_');
+          if (parts.length >= 3) {
+            const restaurantId = parts[1];
+            const cred = await this.credentialsService.getDecryptedCredential(
+              restaurantId,
+              'payway',
+            );
+            if (cred?.webhookSecret) {
+              tenantWebhookSecret = cred.webhookSecret;
+            }
+          }
+        }
+      } catch (lookupErr: any) {
+        this.logger.warn(
+          `No se pudo resolver tenant para validar firma Payway: ${lookupErr?.message}`,
+        );
+      }
+
       const provider = this.paymentProviderFactory.getProvider('payway');
       const webhook = await provider.validateAndParseWebhook({
         headers,
         rawBody: rawBody || JSON.stringify(body),
-        query,
+        query: {
+          ...query,
+          ...(tenantWebhookSecret
+            ? { __webhookSecret: tenantWebhookSecret }
+            : {}),
+        },
       });
 
       this.logger.log(

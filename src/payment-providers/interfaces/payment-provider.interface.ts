@@ -162,10 +162,38 @@ export interface RefundResult {
   raw?: Record<string, unknown>;
 }
 
+// ─── Validación de credenciales ──────────────────────────────────────
+
+export interface ValidateCredentialsInput {
+  /** Para Payway: private key. Para MP: access token. */
+  apiKey?: string;
+  /** Public key (opcional, según proveedor) */
+  publicApiKey?: string;
+  siteId?: string;
+  merchantId?: string;
+  isSandbox?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ValidateCredentialsResult {
+  valid: boolean;
+  message?: string;
+  /** Datos extra devueltos por el proveedor (ej. nombre del comercio) */
+  details?: Record<string, unknown>;
+}
+
 // ─── Interfaz principal del proveedor ────────────────────────────────
 
 export interface IPaymentProvider {
   readonly name: PaymentProviderName;
+
+  /**
+   * Valida credenciales contra el proveedor (no las persiste).
+   * Útil antes de guardar para evitar credenciales rotas.
+   */
+  validateCredentials?(
+    input: ValidateCredentialsInput,
+  ): Promise<ValidateCredentialsResult>;
 
   /** Crear una sesión de checkout (redirect al gateway) */
   createCheckout(input: CreateCheckoutInput): Promise<CheckoutResult>;

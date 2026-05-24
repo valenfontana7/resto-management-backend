@@ -63,6 +63,7 @@ import {
 import { UpdateRestaurantSettingsDto } from './dto/update-restaurant-settings.dto';
 import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
 import { CallMeBotService } from '../notifications/callmebot.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('Restaurants')
 @Controller('api/restaurants')
@@ -74,6 +75,7 @@ export class RestaurantsController {
     private readonly settingsService: RestaurantSettingsService,
     private readonly authService: AuthService,
     private readonly callMeBot: CallMeBotService,
+    private readonly prisma: PrismaService,
     @Optional() private readonly adminAlerts?: AdminAlertsService,
   ) {}
 
@@ -337,6 +339,36 @@ export class RestaurantsController {
     description: 'Onboarding marked as complete.',
   })
   async completeOnboarding(@VerifyRestaurantAccess('id') restaurantId: string) {
+    // Guard: para finalizar onboarding, el restaurante necesita al menos un
+    // proveedor de pago online configurado y validado (Payway con
+    // lastTestStatus='ok' o MercadoPago con accessTokenCiphertext). Esto
+    // garantiza que pueda cobrar en su propia cuenta antes de salir a producción.
+    const [payway, mp] = await Promise.all([
+      this.prisma.paymentProviderCredential.findFirst({
+        where: {
+          restaurantId,
+          isActive: true,
+          lastTestStatus: 'ok',
+        },
+        select: { id: true },
+      }),
+      this.prisma.mercadoPagoCredential.findUnique({
+        where: { restaurantId },
+        select: { accessTokenCiphertext: true },
+      }),
+    ]);
+
+    const hasMpConfigured = Boolean(mp?.accessTokenCiphertext);
+    const hasPayway = Boolean(payway);
+
+    if (!hasPayway && !hasMpConfigured) {
+      throw new BadRequestException({
+        code: 'PAYMENT_PROVIDER_REQUIRED',
+        message:
+          'Configurá al menos un proveedor de pago (Payway o MercadoPago) y probá la conexión antes de finalizar el onboarding.',
+      });
+    }
+
     const restaurant = await this.restaurantsService.update(restaurantId, {
       onboardingIncomplete: false,
     });

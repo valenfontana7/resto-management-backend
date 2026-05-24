@@ -201,10 +201,20 @@ export class OrdersService {
     const orderNumber = await this.generateOrderNumber(restaurantId);
 
     const isOnlinePayment = this.isOnlinePaymentMethod(normalizedPaymentMethod);
-    const shouldCreateOnlineCheckout = isOnlinePayment;
     const resolvedProvider = this.normalizePaymentProvider(
       createDto.paymentProvider ?? paymentMethod,
     );
+    // Si el cliente eligió explícitamente un provider online (MP/Payway),
+    // forzamos flujo online aunque el paymentMethod sea credit-card/debit-card
+    // (caso: Payway con tarjeta vía checkout link / formulario integrado).
+    const explicitOnlineProvider = Boolean(
+      createDto.paymentProvider &&
+        ['mercadopago', 'payway'].includes(
+          String(createDto.paymentProvider).trim().toLowerCase(),
+        ),
+    );
+    const shouldCreateOnlineCheckout =
+      isOnlinePayment || explicitOnlineProvider;
     const customerProfile = await this.createCustomerProfileForOrder(
       restaurantId,
       {
@@ -490,7 +500,8 @@ export class OrdersService {
       credit: 'credit-card',
       transfer: 'bank-transfer',
       mercadopago: 'digital-wallet',
-      payway: 'digital-wallet',
+      // 'payway' NO se colapsa a digital-wallet: Payway puede cobrar tarjeta
+      // (credit-card / debit-card) y queremos preservar el método real.
       'digital-wallet': 'digital-wallet',
     };
 

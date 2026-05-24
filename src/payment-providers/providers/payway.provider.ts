@@ -16,6 +16,8 @@ import {
   WebhookPayload,
   RefundInput,
   RefundResult,
+  ValidateCredentialsInput,
+  ValidateCredentialsResult,
 } from '../interfaces';
 
 /**
@@ -43,6 +45,53 @@ export class PaywayProvider implements IPaymentProvider {
     'https://live.decidir.com/web/checkout';
 
   constructor(private readonly configService: ConfigService) {}
+
+  // ─── Validación de credenciales ──────────────────────────────────
+
+  async validateCredentials(
+    input: ValidateCredentialsInput,
+  ): Promise<ValidateCredentialsResult> {
+    const apiKey = input.apiKey;
+    if (!apiKey) {
+      return { valid: false, message: 'Falta la API key privada de Payway' };
+    }
+
+    const isSandbox = Boolean(input.isSandbox);
+    const base = this.getApiBase(isSandbox);
+
+    // Estrategia: POST /tokens con body vacío.
+    //   - 401/403 → credenciales inválidas
+    //   - 400 (validation error) → credenciales válidas (autenticó OK)
+    //   - 2xx → válidas
+    try {
+      const res = await fetch(`${base}/tokens`, {
+        method: 'POST',
+        headers: this.headers(apiKey),
+        body: JSON.stringify({}),
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        return {
+          valid: false,
+          message: `Credenciales rechazadas por Payway (HTTP ${res.status})`,
+        };
+      }
+
+      return {
+        valid: true,
+        message: 'Credenciales válidas',
+        details: { sandbox: isSandbox, siteId: input.siteId },
+      };
+    } catch (error: any) {
+      this.logger.error(
+        `Error validando credenciales Payway: ${error?.message}`,
+      );
+      return {
+        valid: false,
+        message: `No se pudo contactar a Payway: ${error?.message ?? 'error desconocido'}`,
+      };
+    }
+  }
 
   // ─── Checkout (link de pago) ─────────────────────────────────────
 
@@ -263,9 +312,13 @@ export class PaywayProvider implements IPaymentProvider {
   async validateAndParseWebhook(
     input: WebhookValidationInput,
   ): Promise<WebhookPayload> {
-    const webhookSecret = this.configService.get<string>(
-      'PAYWAY_WEBHOOK_SECRET',
-    );
+    // El secret per-tenant se pasa en query.webhookSecret (no llega en headers)
+    const tenantSecret =
+      input.query && typeof input.query.__webhookSecret === 'string'
+        ? input.query.__webhookSecret
+        : undefined;
+    const webhookSecret =
+      tenantSecret || this.configService.get<string>('PAYWAY_WEBHOOK_SECRET');
 
     // Payway puede enviar notificaciones con HMAC
     if (webhookSecret && input.headers['x-signature']) {
