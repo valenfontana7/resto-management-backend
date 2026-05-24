@@ -270,6 +270,8 @@ export interface NavigationConfig {
   buttonStyle?: 'text' | 'outlined' | 'filled';
   actionButtonColor?: ColorValue;
   actionButtonTextColor?: ColorValue;
+  cartButtonColor?: ColorValue;
+  cartButtonTextColor?: ColorValue;
   quickLinksTextColor?: ColorValue;
   homeLinkText?: string;
   menuLinkText?: string;

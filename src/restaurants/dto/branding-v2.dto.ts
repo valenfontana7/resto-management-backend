@@ -186,6 +186,22 @@ export class NavSectionDto {
   @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
   cuisineTypesColor?: string;
 
+  @ApiPropertyOptional({
+    description: 'Color de fondo del botón del carrito en el header',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  cartButtonColor?: string;
+
+  @ApiPropertyOptional({
+    description: 'Color de texto e icono del botón del carrito en el header',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  cartButtonTextColor?: string;
+
   @ApiPropertyOptional({ description: 'Navegación fija al hacer scroll' })
   @IsOptional()
   @IsBoolean()

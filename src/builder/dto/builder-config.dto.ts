@@ -652,6 +652,22 @@ export class NavigationConfigDto {
   @IsOptional()
   @IsString()
   @Matches(HEX_COLOR_REGEX, {
+    message: 'cartButtonColor must be a valid hex color',
+  })
+  cartButtonColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'cartButtonTextColor must be a valid hex color',
+  })
+  cartButtonTextColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
     message: 'quickLinksTextColor must be a valid hex color',
   })
   quickLinksTextColor?: string;

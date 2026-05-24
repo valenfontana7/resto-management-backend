@@ -445,6 +445,16 @@ export class NavConfigDto {
   @IsString()
   @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
   cuisineTypesColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  cartButtonColor?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^#[0-9A-Fa-f]{6}$/, { message: 'Invalid hex color format' })
+  cartButtonTextColor?: string;
 }
 
 export class UpdateBrandingDto {
