@@ -85,11 +85,89 @@ export class BuilderService {
         )
       : { ...DEFAULT_BUILDER_CONFIG, lastModified: new Date().toISOString() };
 
+    const extras = await this.getPreviewExtras(restaurantId);
+
     return {
       config,
-      restaurant: this.buildPreviewRestaurant(config, publishedRestaurant),
+      restaurant: this.buildPreviewRestaurant(
+        config,
+        publishedRestaurant,
+        extras,
+      ),
       publishedRestaurant,
     };
+  }
+
+  /**
+   * Datos extra del restaurante que el builder necesita para que el preview y
+   * el checklist de tareas reflejen el estado real (horarios cargados, platos
+   * con fotos, etc). Se consultan de Prisma pero NO forman parte de
+   * BuilderConfiguration.
+   */
+  private async getPreviewExtras(restaurantId: string): Promise<{
+    hours: Array<{
+      dayOfWeek: number;
+      isOpen: boolean;
+      openTime: string;
+      closeTime: string;
+    }>;
+    categories: Array<{
+      id: string;
+      name: string;
+      description: string | null;
+      image: string | null;
+      order: number;
+      isActive: boolean;
+      dishes: Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        price: number;
+        image: string | null;
+        isAvailable: boolean;
+        isFeatured: boolean;
+      }>;
+    }>;
+  }> {
+    const [hours, categories] = await Promise.all([
+      this.prisma.businessHour.findMany({
+        where: { restaurantId },
+        orderBy: { dayOfWeek: 'asc' },
+        select: {
+          dayOfWeek: true,
+          isOpen: true,
+          openTime: true,
+          closeTime: true,
+        },
+      }),
+      this.prisma.category.findMany({
+        where: { restaurantId, deletedAt: null, isActive: true },
+        orderBy: { order: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          image: true,
+          order: true,
+          isActive: true,
+          dishes: {
+            where: { deletedAt: null },
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              price: true,
+              image: true,
+              isAvailable: true,
+              isFeatured: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    return { hours, categories };
   }
 
   /**
@@ -690,17 +768,37 @@ export class BuilderService {
   private buildPreviewRestaurant(
     config: BuilderConfiguration,
     publishedRestaurant: RestaurantInfo,
+    extras?: {
+      hours: Array<{
+        dayOfWeek: number;
+        isOpen: boolean;
+        openTime: string;
+        closeTime: string;
+      }>;
+      categories: Array<unknown>;
+    },
   ): BuilderPreviewRestaurant {
     const restaurantDraft = config.restaurant;
 
-    return {
+    const base = {
       ...publishedRestaurant,
       ...restaurantDraft,
       branding: this.buildPreviewBranding(config, {
         ...publishedRestaurant,
         ...restaurantDraft,
       }),
-    };
+    } as BuilderPreviewRestaurant;
+
+    if (extras) {
+      // Inyectamos hours y menu en el preview para que el checklist y el live
+      // preview reflejen el contenido real cargado por el dueño.
+      (base as unknown as Record<string, unknown>).hours = extras.hours;
+      (base as unknown as Record<string, unknown>).menu = {
+        categories: extras.categories,
+      };
+    }
+
+    return base;
   }
 
   private buildPreviewBranding(
