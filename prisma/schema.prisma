@@ -976,6 +976,28 @@ model Notification {
   @@index([createdAt])
 }
 
+model DemoExample {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  name         String
+  type         String   @default("restaurant")
+  cuisine      String[] @default([])
+  city         String   @default("")
+  neighborhood String   @default("")
+  isActive     Boolean  @default(true)
+  isFeatured   Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  payload      Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  updatedBy    String?
+
+  @@index([isActive])
+  @@index([isFeatured])
+  @@index([sortOrder])
+  @@index([city])
+}
+
 model SystemSettings {
   id                     String   @id @default(cuid())
   platformName           String   @default("Bentoo")
