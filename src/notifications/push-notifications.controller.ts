@@ -45,7 +45,7 @@ class PushUnsubscribeDto {
   endpoint: string;
 }
 
-@Controller('notifications')
+@Controller('api/notifications')
 export class PushNotificationsController {
   constructor(
     private readonly config: ConfigService,
