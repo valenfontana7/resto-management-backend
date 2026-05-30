@@ -100,15 +100,13 @@ export function normalizeRestaurantDraftPayload(
   const contact = isPlainObject(value.contact) ? value.contact : undefined;
 
   const normalized: RestaurantDraft = {
+    ...pickDraftFields(value, DRAFT_KEYS),
     ...pickDraftFields(businessInfo, BUSINESS_INFO_KEYS),
     ...pickDraftFields(contact, CONTACT_KEYS),
-    ...pickDraftFields(value, DRAFT_KEYS),
   };
 
   const cuisineSource =
-    normalized.cuisineTypes !== undefined
-      ? normalized.cuisineTypes
-      : (businessInfo?.cuisineTypes ?? value.cuisineTypes);
+    businessInfo?.cuisineTypes ?? value.cuisineTypes ?? normalized.cuisineTypes;
 
   const normalizedCuisineTypes = normalizeCuisineTypes(cuisineSource);
 
