@@ -88,7 +88,11 @@ describe('CustomersService', () => {
       sendGenericEmail: jest.fn().mockResolvedValue(true),
     };
 
-    service = new CustomersService(prisma, jwtService, emailService as any);
+    service = new CustomersService(
+      prisma,
+      jwtService as any,
+      emailService as any,
+    );
   });
 
   it('returns a generic response when the profile does not exist', async () => {

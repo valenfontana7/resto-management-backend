@@ -23,7 +23,7 @@ const { Pool } = require('pg');
       console.error('Restaurant not found:', id);
       process.exit(2);
     }
-    const branding = r.branding || {};
+    const branding = /** @type {any} */ (r.branding || {});
     branding.hero = branding.hero || {};
     branding.layout = branding.layout || {};
 
@@ -37,7 +37,10 @@ const { Pool } = require('pg');
     await prisma.restaurant.update({ where: { id }, data: { branding } });
     console.log('Branding patched for', id);
     const updated = await prisma.restaurant.findUnique({ where: { id } });
-    console.log('updated branding:', JSON.stringify(updated.branding, null, 2));
+    console.log(
+      'updated branding:',
+      JSON.stringify(updated && updated.branding, null, 2),
+    );
   } catch (e) {
     console.error(e);
     process.exit(1);

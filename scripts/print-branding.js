@@ -25,13 +25,14 @@ const { Pool } = require('pg');
       process.exit(2);
     }
     console.log('branding (raw):', JSON.stringify(r.branding, null, 2));
+    const branding = /** @type {any} */ (r.branding) || {};
     console.log(
       'typeof hero.overlayOpacity:',
-      typeof r.branding?.hero?.overlayOpacity,
+      typeof branding?.hero?.overlayOpacity,
     );
-    console.log('hero.overlayOpacity value:', r.branding?.hero?.overlayOpacity);
-    console.log('typeof hero.textShadow:', typeof r.branding?.hero?.textShadow);
-    console.log('hero.textShadow value:', r.branding?.hero?.textShadow);
+    console.log('hero.overlayOpacity value:', branding?.hero?.overlayOpacity);
+    console.log('typeof hero.textShadow:', typeof branding?.hero?.textShadow);
+    console.log('hero.textShadow value:', branding?.hero?.textShadow);
   } catch (e) {
     console.error(e);
     process.exit(1);

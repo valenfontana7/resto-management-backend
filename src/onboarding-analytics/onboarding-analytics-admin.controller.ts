@@ -21,4 +21,15 @@ export class OnboardingAnalyticsAdminController {
       Number.isFinite(parsed) && parsed > 0 && parsed <= 90 ? parsed : 7;
     return this.service.getFunnel(safeDays);
   }
+
+  @Get('retention')
+  @ApiOperation({
+    summary: 'Cohortes de retención D1/D7 por día de primer evento',
+  })
+  async getRetention(@Query('days') days?: string) {
+    const parsed = days ? Number(days) : 30;
+    const safeDays =
+      Number.isFinite(parsed) && parsed > 0 && parsed <= 90 ? parsed : 30;
+    return this.service.getRetentionCohorts(safeDays);
+  }
 }

@@ -105,4 +105,83 @@ export class OnboardingAnalyticsService {
       overallConversion,
     };
   }
+
+  /**
+   * Cohorte de retención por día de primer evento (proxy de “activación”).
+   * D1 = usó la app al día siguiente. D7 = volvió una semana después.
+   * Ignora cohortes sin suficiente madurez para D7 (últimos 7 días).
+   */
+  async getRetentionCohorts(days = 30) {
+    const safeDays = Math.min(Math.max(days, 7), 90);
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        cohort_day: Date;
+        users: bigint;
+        d1: bigint;
+        d7: bigint;
+      }>
+    >`
+      WITH cohort AS (
+        SELECT "userId", DATE(MIN("createdAt")) AS cohort_day
+        FROM "OnboardingEvent"
+        WHERE "userId" IS NOT NULL
+          AND "createdAt" >= CURRENT_DATE - (${safeDays}::int || ' day')::interval
+        GROUP BY "userId"
+      ),
+      activity AS (
+        SELECT DISTINCT "userId", DATE("createdAt") AS day
+        FROM "OnboardingEvent"
+        WHERE "userId" IS NOT NULL
+      )
+      SELECT
+        c.cohort_day,
+        COUNT(DISTINCT c."userId")::bigint AS users,
+        COUNT(DISTINCT CASE WHEN a.day = c.cohort_day + INTERVAL '1 day' THEN c."userId" END)::bigint AS d1,
+        COUNT(DISTINCT CASE WHEN a.day = c.cohort_day + INTERVAL '7 day' THEN c."userId" END)::bigint AS d7
+      FROM cohort c
+      LEFT JOIN activity a ON a."userId" = c."userId"
+      GROUP BY c.cohort_day
+      ORDER BY c.cohort_day DESC
+    `;
+
+    const cohorts = rows.map((r) => {
+      const users = Number(r.users);
+      const d1 = Number(r.d1);
+      const d7 = Number(r.d7);
+      return {
+        cohortDay: r.cohort_day.toISOString().slice(0, 10),
+        users,
+        d1Count: d1,
+        d7Count: d7,
+        d1Rate: users > 0 ? Math.round((d1 / users) * 1000) / 10 : null,
+        d7Rate: users > 0 ? Math.round((d7 / users) * 1000) / 10 : null,
+      };
+    });
+
+    const matureForD1 = cohorts.filter(
+      (c) =>
+        new Date(c.cohortDay).getTime() <= Date.now() - 2 * 24 * 60 * 60 * 1000,
+    );
+    const matureForD7 = cohorts.filter(
+      (c) =>
+        new Date(c.cohortDay).getTime() <= Date.now() - 8 * 24 * 60 * 60 * 1000,
+    );
+
+    const sumUsersD1 = matureForD1.reduce((acc, c) => acc + c.users, 0);
+    const sumD1 = matureForD1.reduce((acc, c) => acc + c.d1Count, 0);
+    const sumUsersD7 = matureForD7.reduce((acc, c) => acc + c.users, 0);
+    const sumD7 = matureForD7.reduce((acc, c) => acc + c.d7Count, 0);
+
+    return {
+      sinceDays: safeDays,
+      cohorts,
+      averageD1Rate:
+        sumUsersD1 > 0 ? Math.round((sumD1 / sumUsersD1) * 1000) / 10 : null,
+      averageD7Rate:
+        sumUsersD7 > 0 ? Math.round((sumD7 / sumUsersD7) * 1000) / 10 : null,
+      sampleUsersD1: sumUsersD1,
+      sampleUsersD7: sumUsersD7,
+    };
+  }
 }

@@ -31,7 +31,7 @@ async function createSuperAdminRole() {
     // Assuming the creator email is known, e.g., 'valen@example.com'
     const creatorEmail = 'valen@example.com'; // Replace with actual email
 
-    const user = await prisma.user.findUnique({
+    const user = await prisma.user.findFirst({
       where: { email: creatorEmail },
     });
 
