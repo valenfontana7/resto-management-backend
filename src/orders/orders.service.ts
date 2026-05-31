@@ -17,6 +17,7 @@ import { DeliveryDispatchService } from '../delivery/services/delivery-dispatch.
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CustomersService } from '../customers/customers.service';
 import * as crypto from 'crypto';
+import { Prisma } from '@prisma/client';
 import {
   CreateOrderDto,
   UpdateOrderStatusDto,
@@ -1344,88 +1345,114 @@ export class OrdersService {
           phone: checkout.customerPhone,
         });
 
-    const createdOrder = await this.prisma.order.create({
-      data: {
-        id: checkout.id,
-        orderNumber: checkout.orderNumber,
-        restaurantId: checkout.restaurantId,
-        customerProfileId: customerProfile?.id,
-        publicTrackingToken: checkout.publicTrackingToken,
-        customerName: checkout.customerName,
-        customerEmail: checkout.customerEmail,
-        customerPhone: checkout.customerPhone,
-        type: checkout.type as any,
-        status: OrderStatus.PAID,
-        paymentMethod: checkout.paymentMethod,
-        paymentStatus: PaymentStatus.PAID,
-        paymentId,
-        preferenceId: checkout.preferenceId,
-        subtotal: checkout.subtotal,
-        deliveryFee: checkout.deliveryFee,
-        discount: checkout.discount,
-        couponId: checkout.couponId,
-        couponCode: checkout.couponCode,
-        tip: checkout.tip,
-        total: checkout.total,
-        deliveryAddress: checkout.deliveryAddress,
-        deliveryZoneId: null,
-        deliveryNotes: checkout.deliveryNotes,
-        tableId: checkout.tableId,
-        notes: checkout.notes,
-        paidAt: new Date(),
-        items: {
-          create: items.map((it) => ({
-            dishId: String(it.dishId),
-            quantity: Number(it.quantity),
-            unitPrice: Number(it.unitPrice),
-            subtotal: Number(it.subtotal),
-            notes: it.notes ? String(it.notes) : null,
-            ...(Array.isArray(it.selectedModifiers) &&
-            it.selectedModifiers.length
-              ? {
-                  selectedModifiers: {
-                    create: it.selectedModifiers.map((m: any) => ({
-                      modifierId: String(m.modifierId),
-                      name: String(m.name),
-                      priceAdjustment: Number(m.priceAdjustment),
-                    })),
-                  },
-                }
-              : {}),
-          })),
+    let createdOrder;
+    try {
+      createdOrder = await this.prisma.order.create({
+        data: {
+          id: checkout.id,
+          orderNumber: checkout.orderNumber,
+          restaurantId: checkout.restaurantId,
+          customerProfileId: customerProfile?.id,
+          publicTrackingToken: checkout.publicTrackingToken,
+          customerName: checkout.customerName,
+          customerEmail: checkout.customerEmail,
+          customerPhone: checkout.customerPhone,
+          type: checkout.type as any,
+          status: OrderStatus.PAID,
+          paymentMethod: checkout.paymentMethod,
+          paymentStatus: PaymentStatus.PAID,
+          paymentId,
+          preferenceId: checkout.preferenceId,
+          subtotal: checkout.subtotal,
+          deliveryFee: checkout.deliveryFee,
+          discount: checkout.discount,
+          couponId: checkout.couponId,
+          couponCode: checkout.couponCode,
+          tip: checkout.tip,
+          total: checkout.total,
+          deliveryAddress: checkout.deliveryAddress,
+          deliveryZoneId: checkout.deliveryZoneId,
+          deliveryNotes: checkout.deliveryNotes,
+          tableId: checkout.tableId,
+          notes: checkout.notes,
+          paidAt: new Date(),
+          items: {
+            create: items.map((it) => ({
+              dishId: String(it.dishId),
+              quantity: Number(it.quantity),
+              unitPrice: Number(it.unitPrice),
+              subtotal: Number(it.subtotal),
+              notes: it.notes ? String(it.notes) : null,
+              ...(Array.isArray(it.selectedModifiers) &&
+              it.selectedModifiers.length
+                ? {
+                    selectedModifiers: {
+                      create: it.selectedModifiers.map((m: any) => ({
+                        modifierId: String(m.modifierId),
+                        name: String(m.name),
+                        priceAdjustment: Number(m.priceAdjustment),
+                      })),
+                    },
+                  }
+                : {}),
+            })),
+          },
+          statusHistory: {
+            create: [
+              {
+                fromStatus: null,
+                toStatus: OrderStatus.PENDING,
+                changedBy: 'system',
+                notes: 'Checkout iniciado',
+              },
+              {
+                fromStatus: OrderStatus.PENDING,
+                toStatus: OrderStatus.PAID,
+                changedBy: 'system',
+                notes: `Pago confirmado (MP: ${paymentId})`,
+              },
+            ],
+          },
         },
-        statusHistory: {
-          create: [
-            {
-              fromStatus: null,
-              toStatus: OrderStatus.PENDING,
-              changedBy: 'system',
-              notes: 'Checkout iniciado',
+        include: {
+          items: {
+            include: {
+              dish: true,
+              selectedModifiers: true,
             },
-            {
-              fromStatus: OrderStatus.PENDING,
-              toStatus: OrderStatus.PAID,
-              changedBy: 'system',
-              notes: `Pago confirmado (MP: ${paymentId})`,
+          },
+          statusHistory: {
+            orderBy: {
+              createdAt: 'desc',
             },
-          ],
+            take: 5,
+          },
         },
-      },
-      include: {
-        items: {
+      });
+    } catch (err) {
+      // MercadoPago suele reenviar el mismo evento; si otro worker ya creó la
+      // orden entre el findUnique y el create, devolvemos la existente para
+      // que el webhook responda 200 y MP no siga reintentando.
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        const existing = await this.prisma.order.findUnique({
+          where: { id: checkoutSessionId },
           include: {
-            dish: true,
-            selectedModifiers: true,
+            items: { include: { dish: true, selectedModifiers: true } },
+            statusHistory: { orderBy: { createdAt: 'desc' }, take: 5 },
           },
-        },
-        statusHistory: {
-          orderBy: {
-            createdAt: 'desc',
-          },
-          take: 5,
-        },
-      },
-    });
+        });
+        if (existing) {
+          this.logger.log(
+            `Order ${checkoutSessionId} created concurrently by another webhook, returning existing`,
+          );
+          return existing;
+        }
+      }
+      throw err;
+    }
 
     // Auto-create DeliveryOrder for DELIVERY type
     if (checkout.type === 'DELIVERY') {

@@ -1,14 +1,120 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EncryptionService } from './encryption.service';
 
+export interface TokenValidationResult {
+  ok: boolean;
+  reason?:
+    | 'invalid_token'
+    | 'sandbox_mismatch'
+    | 'live_mismatch'
+    | 'network_error'
+    | 'unexpected_response';
+  message?: string;
+  livemode?: boolean;
+  userId?: number;
+}
+
 @Injectable()
 export class MercadoPagoCredentialsService {
+  private readonly logger = new Logger(MercadoPagoCredentialsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly encryptionService: EncryptionService,
   ) {}
+
+  /**
+   * Verifica que el access token sea válido contra la API de MercadoPago
+   * antes de persistirlo. Además detecta si el flag isSandbox coincide con el
+   * tipo de token (TEST-* vs APP_USR-*), para evitar combinaciones que rompen
+   * el cobro real silenciosamente.
+   */
+  async validateAccessToken(
+    accessToken: string,
+    isSandbox: boolean,
+  ): Promise<TokenValidationResult> {
+    const token = (accessToken ?? '').trim();
+    if (!token) {
+      return {
+        ok: false,
+        reason: 'invalid_token',
+        message: 'Access token vacío',
+      };
+    }
+
+    const looksLikeTest = token.startsWith('TEST-');
+    if (isSandbox && !looksLikeTest) {
+      return {
+        ok: false,
+        reason: 'sandbox_mismatch',
+        message:
+          'Marcaste el token como sandbox pero parece de producción. Usá un token TEST-* o destildá sandbox.',
+      };
+    }
+    if (!isSandbox && looksLikeTest) {
+      return {
+        ok: false,
+        reason: 'live_mismatch',
+        message:
+          'El token es de prueba (TEST-*). Para cobrar de verdad usá tu token de producción APP_USR-*.',
+      };
+    }
+
+    try {
+      const res = await fetch('https://api.mercadopago.com/users/me', {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        return {
+          ok: false,
+          reason: 'invalid_token',
+          message:
+            'MercadoPago rechazó el token. Verificá que lo copiaste completo desde tu panel.',
+        };
+      }
+
+      if (!res.ok) {
+        return {
+          ok: false,
+          reason: 'unexpected_response',
+          message: `MercadoPago respondió ${res.status} al verificar el token.`,
+        };
+      }
+
+      const json = (await res.json().catch(() => null)) as {
+        id?: number;
+        site_id?: string;
+      } | null;
+      if (!json?.id) {
+        return {
+          ok: false,
+          reason: 'unexpected_response',
+          message:
+            'No pudimos confirmar el token con MercadoPago. Intentá nuevamente.',
+        };
+      }
+
+      return {
+        ok: true,
+        userId: json.id,
+        livemode: !looksLikeTest,
+      };
+    } catch (err) {
+      this.logger.warn(
+        `MP token validation network error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return {
+        ok: false,
+        reason: 'network_error',
+        message:
+          'No pudimos contactar a MercadoPago para verificar el token. Probalo de nuevo en unos segundos.',
+      };
+    }
+  }
 
   async getStatus(restaurantId: string): Promise<{
     connected: boolean;

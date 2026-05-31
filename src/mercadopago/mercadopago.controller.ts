@@ -75,6 +75,17 @@ export class MercadoPagoController {
       throw new BadRequestException({ error: 'accessToken es requerido' });
     }
 
+    const validation = await this.credentialsService.validateAccessToken(
+      accessToken,
+      !!body.isSandbox,
+    );
+    if (!validation.ok) {
+      throw new BadRequestException({
+        error: validation.message || 'Access token inválido',
+        reason: validation.reason,
+      });
+    }
+
     await this.credentialsService.setToken(
       restaurantId,
       accessToken,
@@ -108,6 +119,17 @@ export class MercadoPagoController {
     const accessToken = (body?.accessToken ?? '').trim();
     if (!accessToken) {
       throw new BadRequestException({ error: 'accessToken es requerido' });
+    }
+
+    const validation = await this.credentialsService.validateAccessToken(
+      accessToken,
+      !!body.isSandbox,
+    );
+    if (!validation.ok) {
+      throw new BadRequestException({
+        error: validation.message || 'Access token inválido',
+        reason: validation.reason,
+      });
     }
 
     await this.credentialsService.setTokenAndEnableDigitalWallet(
