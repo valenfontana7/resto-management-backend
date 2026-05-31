@@ -266,12 +266,14 @@ model CheckoutSession {
   tip                 Int           @default(0)
   total               Int
   deliveryAddress     String?
+  deliveryZoneId       String?
   deliveryNotes       String?
   tableId             String?
   notes               String?
   paidAt              DateTime?
   createdAt           DateTime      @default(now())
   updatedAt           DateTime      @updatedAt
+  deliveryZone        DeliveryZone? @relation(fields: [deliveryZoneId], references: [id])
   restaurant          Restaurant    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   customerProfile     RestaurantCustomerProfile? @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
   table               Table?        @relation(fields: [tableId], references: [id])
@@ -460,6 +462,7 @@ model DeliveryZone {
   deliveryOrders DeliveryOrder[]
   restaurant     Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   orders         Order[]
+  checkoutSessions CheckoutSession[]
 
   @@unique([restaurantId, name])
   @@index([restaurantId])

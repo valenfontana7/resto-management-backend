@@ -366,6 +366,7 @@ export class OrdersService {
         tip,
         total,
         deliveryAddress: createDto.deliveryAddress,
+        deliveryZoneId: deliveryQuote?.zone?.id,
         deliveryNotes: createDto.deliveryNotes,
         tableId: createDto.tableId,
         notes: createDto.notes,
