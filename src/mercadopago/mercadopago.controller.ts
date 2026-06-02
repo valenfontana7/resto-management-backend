@@ -7,10 +7,12 @@ import {
   Post,
   Query,
   Req,
+  Res,
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/decorators/current-user.decorator';
@@ -18,6 +20,7 @@ import { assertRestaurantAccess } from '../common/decorators/verify-restaurant-a
 import { MercadoPagoCredentialsService } from './mercadopago-credentials.service';
 import { MercadoPagoService } from './mercadopago.service';
 import { MercadoPagoWebhookService } from './mercadopago-webhook.service';
+import { MercadoPagoOAuthService } from './mercadopago-oauth.service';
 import { AuthService } from '../auth/auth.service';
 import type { PreferenceRequestBody } from './mercadopago.service';
 
@@ -28,6 +31,7 @@ export class MercadoPagoController {
     private readonly credentialsService: MercadoPagoCredentialsService,
     private readonly mercadoPagoService: MercadoPagoService,
     private readonly webhookService: MercadoPagoWebhookService,
+    private readonly oauthService: MercadoPagoOAuthService,
     private readonly authService: AuthService,
   ) {}
 
@@ -201,6 +205,120 @@ export class MercadoPagoController {
     );
 
     return { publicKey: key ?? null };
+  }
+
+  // ===== OAuth (Mercado Pago "Conectar cuenta") =====
+
+  /**
+   * Inicia el flujo OAuth.
+   * El usuario debe estar autenticado y ser owner del restaurante.
+   * Devuelve `{ url }` para que el frontend redirija, o redirige 302 si se pasa `?redirect=1`.
+   */
+  @Get('oauth/authorize')
+  async oauthAuthorize(
+    @Query('restaurantId') restaurantId: string | undefined,
+    @Query('returnTo') returnTo: string | undefined,
+    @Query('redirect') redirect: string | undefined,
+    @CurrentUser() user: RequestUser | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ url: string } | void> {
+    const id = (restaurantId ?? '').trim();
+    if (!id) {
+      throw new BadRequestException({ error: 'restaurantId es requerido' });
+    }
+    if (!user) throw new ForbiddenException('Unauthorized');
+
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, id);
+
+    if (!this.oauthService.isConfigured()) {
+      throw new BadRequestException({
+        error: 'OAuth de Mercado Pago no está configurado en este entorno',
+      });
+    }
+
+    const url = this.oauthService.buildAuthorizationUrl(id, returnTo);
+
+    if (redirect === '1' || redirect === 'true') {
+      res.redirect(302, url);
+      return;
+    }
+
+    return { url };
+  }
+
+  /**
+   * Callback público: Mercado Pago redirige aquí con `code` y `state`.
+   * Intercambia el code, persiste tokens cifrados, activa digital-wallet
+   * y redirige al frontend con `?mp=connected` o `?mp=error`.
+   */
+  @Get('oauth/callback')
+  @Public()
+  async oauthCallback(
+    @Query('code') code: string | undefined,
+    @Query('state') state: string | undefined,
+    @Query('error') errorParam: string | undefined,
+    @Query('error_description') errorDescription: string | undefined,
+    @Res() res: Response,
+  ): Promise<void> {
+    if (errorParam) {
+      const target = this.oauthService.buildFrontendRedirect(
+        undefined,
+        'error',
+        { reason: errorDescription || errorParam },
+      );
+      res.redirect(302, target);
+      return;
+    }
+
+    if (!code || !state) {
+      const target = this.oauthService.buildFrontendRedirect(
+        undefined,
+        'error',
+        { reason: 'missing_code_or_state' },
+      );
+      res.redirect(302, target);
+      return;
+    }
+
+    try {
+      const { returnTo } = await this.oauthService.handleCallback({
+        code,
+        state,
+      });
+      const target = this.oauthService.buildFrontendRedirect(
+        returnTo,
+        'connected',
+      );
+      res.redirect(302, target);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'oauth_failed';
+      const target = this.oauthService.buildFrontendRedirect(
+        undefined,
+        'error',
+        { reason: message.slice(0, 120) },
+      );
+      res.redirect(302, target);
+    }
+  }
+
+  @Post('oauth/disconnect')
+  @HttpCode(200)
+  async oauthDisconnect(
+    @Body() body: { restaurantId?: string },
+    @CurrentUser() user?: RequestUser,
+  ) {
+    const id = (body?.restaurantId ?? '').trim();
+    if (!id) {
+      throw new BadRequestException({ error: 'restaurantId es requerido' });
+    }
+    if (!user) throw new ForbiddenException('Unauthorized');
+
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, id);
+
+    await this.credentialsService.clearTokenAndDisableDigitalWallet(id);
+    return { success: true };
   }
 
   // B) Preference

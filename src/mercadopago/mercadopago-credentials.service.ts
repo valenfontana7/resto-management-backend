@@ -123,6 +123,10 @@ export class MercadoPagoCredentialsService {
     isSandbox: boolean;
     accessTokenLast4: string | null;
     publishableKeyConfigured: boolean;
+    connectedVia: 'manual' | 'oauth' | null;
+    expiresAt: string | null;
+    mpUserId: string | null;
+    livemode: boolean | null;
   }> {
     const credential = await this.prisma.mercadoPagoCredential.findUnique({
       where: { restaurantId },
@@ -133,6 +137,10 @@ export class MercadoPagoCredentialsService {
         isSandbox: true,
         createdAt: true,
         updatedAt: true,
+        connectedVia: true,
+        expiresAt: true,
+        mpUserId: true,
+        livemode: true,
       },
     });
 
@@ -144,6 +152,10 @@ export class MercadoPagoCredentialsService {
         isSandbox: false,
         accessTokenLast4: null,
         publishableKeyConfigured: false,
+        connectedVia: null,
+        expiresAt: null,
+        mpUserId: null,
+        livemode: null,
       };
     }
 
@@ -155,6 +167,8 @@ export class MercadoPagoCredentialsService {
       connected = false;
     }
 
+    const via = credential.connectedVia === 'oauth' ? 'oauth' : 'manual';
+
     return {
       connected,
       createdAt: credential.createdAt.toISOString(),
@@ -162,6 +176,10 @@ export class MercadoPagoCredentialsService {
       isSandbox: !!credential.isSandbox,
       accessTokenLast4: credential.accessTokenLast4 ?? null,
       publishableKeyConfigured: !!credential.publishableKey,
+      connectedVia: via,
+      expiresAt: credential.expiresAt?.toISOString() ?? null,
+      mpUserId: credential.mpUserId ?? null,
+      livemode: credential.livemode ?? null,
     };
   }
 
@@ -262,6 +280,173 @@ export class MercadoPagoCredentialsService {
         data: { businessRules: mergedBusinessRules },
       });
     });
+  }
+
+  /**
+   * Guarda credenciales obtenidas via OAuth (incluye refresh_token y expiración)
+   * y activa automáticamente digital-wallet como método de pago del restaurante.
+   */
+  async setOAuthCredentialsAndEnableDigitalWallet(params: {
+    restaurantId: string;
+    accessToken: string;
+    refreshToken?: string | null;
+    publishableKey?: string | null;
+    mpUserId?: string | number | null;
+    scope?: string | null;
+    expiresInSeconds?: number | null;
+    livemode?: boolean | null;
+  }): Promise<void> {
+    const restaurantId = (params.restaurantId ?? '').trim();
+    const accessToken = (params.accessToken ?? '').trim();
+
+    if (!restaurantId) {
+      throw new BadRequestException({ error: 'restaurantId es requerido' });
+    }
+    if (!accessToken) {
+      throw new BadRequestException({ error: 'accessToken es requerido' });
+    }
+
+    const accessCipher = this.encryptionService.encrypt(accessToken);
+    const accessLast4 = accessToken.slice(-4);
+
+    const refreshToken = (params.refreshToken ?? '').trim();
+    const refreshCipher = refreshToken
+      ? this.encryptionService.encrypt(refreshToken)
+      : null;
+    const refreshLast4 = refreshToken ? refreshToken.slice(-4) : null;
+
+    const expiresAt =
+      typeof params.expiresInSeconds === 'number' && params.expiresInSeconds > 0
+        ? new Date(Date.now() + params.expiresInSeconds * 1000)
+        : null;
+
+    const livemode =
+      typeof params.livemode === 'boolean'
+        ? params.livemode
+        : !accessToken.startsWith('TEST-');
+    const isSandbox = !livemode;
+
+    const mpUserId =
+      params.mpUserId === undefined || params.mpUserId === null
+        ? null
+        : String(params.mpUserId);
+
+    await this.prisma.$transaction(async (tx) => {
+      const restaurant = await tx.restaurant.findUnique({
+        where: { id: restaurantId },
+        select: { businessRules: true },
+      });
+      if (!restaurant) {
+        throw new BadRequestException({ error: 'restaurantId no encontrado' });
+      }
+
+      const mergedBusinessRules = this.mergeDigitalWalletIntoBusinessRules(
+        restaurant.businessRules,
+        true,
+      );
+
+      await tx.mercadoPagoCredential.upsert({
+        where: { restaurantId },
+        create: {
+          restaurantId,
+          accessTokenCiphertext: accessCipher,
+          accessTokenLast4: accessLast4,
+          refreshTokenCiphertext: refreshCipher,
+          refreshTokenLast4: refreshLast4,
+          publishableKey: params.publishableKey ?? null,
+          isSandbox,
+          livemode,
+          mpUserId,
+          scope: params.scope ?? null,
+          expiresAt,
+          connectedVia: 'oauth',
+        },
+        update: {
+          accessTokenCiphertext: accessCipher,
+          accessTokenLast4: accessLast4,
+          refreshTokenCiphertext: refreshCipher,
+          refreshTokenLast4: refreshLast4,
+          publishableKey: params.publishableKey ?? undefined,
+          isSandbox,
+          livemode,
+          mpUserId: mpUserId ?? undefined,
+          scope: params.scope ?? undefined,
+          expiresAt,
+          connectedVia: 'oauth',
+        },
+      });
+
+      await tx.restaurant.update({
+        where: { id: restaurantId },
+        data: { businessRules: mergedBusinessRules },
+      });
+    });
+  }
+
+  /**
+   * Actualiza solo los tokens (access + refresh) tras un refresh OAuth.
+   * No toca businessRules ni la activación.
+   */
+  async updateOAuthTokens(params: {
+    restaurantId: string;
+    accessToken: string;
+    refreshToken?: string | null;
+    expiresInSeconds?: number | null;
+    scope?: string | null;
+    livemode?: boolean | null;
+  }): Promise<void> {
+    const restaurantId = (params.restaurantId ?? '').trim();
+    const accessToken = (params.accessToken ?? '').trim();
+    if (!restaurantId || !accessToken) {
+      throw new BadRequestException({
+        error: 'restaurantId y accessToken son requeridos',
+      });
+    }
+
+    const accessCipher = this.encryptionService.encrypt(accessToken);
+    const accessLast4 = accessToken.slice(-4);
+
+    const refreshToken = (params.refreshToken ?? '').trim();
+    const refreshCipher = refreshToken
+      ? this.encryptionService.encrypt(refreshToken)
+      : undefined;
+    const refreshLast4 = refreshToken ? refreshToken.slice(-4) : undefined;
+
+    const expiresAt =
+      typeof params.expiresInSeconds === 'number' && params.expiresInSeconds > 0
+        ? new Date(Date.now() + params.expiresInSeconds * 1000)
+        : undefined;
+
+    await this.prisma.mercadoPagoCredential.update({
+      where: { restaurantId },
+      data: {
+        accessTokenCiphertext: accessCipher,
+        accessTokenLast4: accessLast4,
+        refreshTokenCiphertext: refreshCipher,
+        refreshTokenLast4: refreshLast4,
+        scope: params.scope ?? undefined,
+        livemode:
+          typeof params.livemode === 'boolean' ? params.livemode : undefined,
+        isSandbox:
+          typeof params.livemode === 'boolean' ? !params.livemode : undefined,
+        expiresAt,
+      },
+    });
+  }
+
+  async getDecryptedRefreshToken(restaurantId: string): Promise<string | null> {
+    const id = (restaurantId ?? '').trim();
+    if (!id) return null;
+    const credential = await this.prisma.mercadoPagoCredential.findUnique({
+      where: { restaurantId: id },
+      select: { refreshTokenCiphertext: true },
+    });
+    if (!credential?.refreshTokenCiphertext) return null;
+    try {
+      return this.encryptionService.decrypt(credential.refreshTokenCiphertext);
+    } catch {
+      return null;
+    }
   }
 
   async clearToken(restaurantId: string): Promise<void> {

@@ -103,6 +103,41 @@ export function validateEnvironment(config: Record<string, unknown>) {
     );
   }
 
+  // MercadoPago OAuth: si se define alguna, validar coherencia mínima
+  const mpOauthFields = {
+    MERCADOPAGO_OAUTH_CLIENT_ID: env.MERCADOPAGO_OAUTH_CLIENT_ID?.trim(),
+    MERCADOPAGO_OAUTH_CLIENT_SECRET:
+      env.MERCADOPAGO_OAUTH_CLIENT_SECRET?.trim(),
+    MERCADOPAGO_OAUTH_REDIRECT_URI: env.MERCADOPAGO_OAUTH_REDIRECT_URI?.trim(),
+    MERCADOPAGO_OAUTH_STATE_SECRET: env.MERCADOPAGO_OAUTH_STATE_SECRET?.trim(),
+  };
+  const mpOauthDefined = Object.values(mpOauthFields).some(Boolean);
+  if (mpOauthDefined) {
+    for (const [key, value] of Object.entries(mpOauthFields)) {
+      if (!value) {
+        errors.push(
+          `${key} es requerido cuando OAuth de Mercado Pago está parcialmente configurado`,
+        );
+      }
+    }
+    if (
+      mpOauthFields.MERCADOPAGO_OAUTH_REDIRECT_URI &&
+      !isValidUrl(mpOauthFields.MERCADOPAGO_OAUTH_REDIRECT_URI)
+    ) {
+      errors.push(
+        'MERCADOPAGO_OAUTH_REDIRECT_URI must be a valid absolute URL',
+      );
+    }
+    if (
+      mpOauthFields.MERCADOPAGO_OAUTH_STATE_SECRET &&
+      mpOauthFields.MERCADOPAGO_OAUTH_STATE_SECRET.length < 16
+    ) {
+      errors.push(
+        'MERCADOPAGO_OAUTH_STATE_SECRET must be at least 16 characters long',
+      );
+    }
+  }
+
   if (errors.length > 0) {
     throw new Error(`Invalid environment configuration: ${errors.join('; ')}`);
   }

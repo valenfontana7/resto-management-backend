@@ -325,14 +325,21 @@ model OrderStatusHistory {
 }
 
 model MercadoPagoCredential {
-  restaurantId          String     @id
-  accessTokenCiphertext String
-  accessTokenLast4      String?
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
-  isSandbox             Boolean    @default(false)
-  publishableKey        String?
-  restaurant            Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  restaurantId           String     @id
+  accessTokenCiphertext  String
+  accessTokenLast4       String?
+  refreshTokenCiphertext String?
+  refreshTokenLast4      String?
+  mpUserId               String?
+  scope                  String?
+  expiresAt              DateTime?
+  livemode               Boolean?
+  connectedVia           String     @default("manual") // "manual" | "oauth"
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+  isSandbox              Boolean    @default(false)
+  publishableKey         String?
+  restaurant             Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
   @@index([restaurantId])
 }
