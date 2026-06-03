@@ -43,6 +43,7 @@ function validateStatusTransition(
     [OrderStatus.PAID]: [
       OrderStatus.PENDING,
       OrderStatus.CONFIRMED,
+      OrderStatus.PREPARING,
       OrderStatus.CANCELLED,
     ],
     [OrderStatus.CONFIRMED]: [
@@ -121,6 +122,7 @@ describe('validateStatusTransition', () => {
     [OrderStatus.PENDING, OrderStatus.CONFIRMED],
     [OrderStatus.PENDING, OrderStatus.PAID],
     [OrderStatus.PENDING, OrderStatus.CANCELLED],
+    [OrderStatus.PAID, OrderStatus.PREPARING],
     [OrderStatus.CONFIRMED, OrderStatus.PREPARING],
     [OrderStatus.PREPARING, OrderStatus.READY],
     [OrderStatus.READY, OrderStatus.DELIVERED],

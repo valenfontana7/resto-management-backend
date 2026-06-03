@@ -1178,6 +1178,7 @@ export class OrdersService {
       [OrderStatus.PAID]: [
         OrderStatus.PENDING,
         OrderStatus.CONFIRMED,
+        OrderStatus.PREPARING,
         OrderStatus.CANCELLED,
       ],
       [OrderStatus.CONFIRMED]: [
