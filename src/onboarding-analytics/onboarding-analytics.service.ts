@@ -3,6 +3,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TrackOnboardingEventDto } from './dto/track-event.dto';
 
 export const FUNNEL_STEPS = [
+  'landing_viewed',
+  'landing_cta_clicked',
+  'landing_demo_clicked',
+  'landing_whatsapp_clicked',
   'register_started',
   'register_completed',
   'magic_link_consumed',
@@ -14,6 +18,10 @@ export const FUNNEL_STEPS = [
   'celebrate_viewed',
   'whatsapp_shared',
   'first_dashboard_visit',
+  'trial_banner_viewed',
+  'trial_banner_cta_clicked',
+  'trial_help_whatsapp_clicked',
+  'customer_whatsapp_notified',
 ] as const;
 
 export type FunnelStep = (typeof FUNNEL_STEPS)[number];
@@ -70,6 +78,20 @@ export class OnboardingAnalyticsService {
       GROUP BY "event"
     `;
 
+    const sourceRows = await this.prisma.$queryRaw<
+      Array<{ event: string; source: string | null; sessions: bigint }>
+    >`
+      SELECT
+        "event",
+        COALESCE("props"->>'source', 'unknown') AS source,
+        COUNT(DISTINCT "sessionId")::bigint AS sessions
+      FROM "OnboardingEvent"
+      WHERE "createdAt" >= ${since}
+        AND "event" IN ('landing_cta_clicked', 'landing_demo_clicked', 'landing_whatsapp_clicked', 'trial_banner_cta_clicked', 'trial_help_whatsapp_clicked')
+      GROUP BY "event", COALESCE("props"->>'source', 'unknown')
+      ORDER BY "event", sessions DESC
+    `;
+
     const totals = new Map<string, number>();
     grouped.forEach((g) => totals.set(g.event, g._count._all));
     const sessions = new Map<string, number>();
@@ -98,11 +120,70 @@ export class OnboardingAnalyticsService {
         ? Math.round((lastSessions / firstSessions) * 1000) / 10
         : null;
 
+    const conversion = (from: string, to: string): number | null => {
+      const fromCount = sessions.get(from) ?? 0;
+      const toCount = sessions.get(to) ?? 0;
+      if (fromCount <= 0) return null;
+      return Math.round((toCount / fromCount) * 1000) / 10;
+    };
+
+    const sourceByEvent = new Map<
+      string,
+      Array<{ source: string; sessions: number }>
+    >();
+    sourceRows.forEach((row) => {
+      const key = row.event;
+      const list = sourceByEvent.get(key) ?? [];
+      list.push({
+        source: row.source || 'unknown',
+        sessions: Number(row.sessions),
+      });
+      sourceByEvent.set(key, list);
+    });
+
+    const topSources = (event: string, limit = 5) =>
+      (sourceByEvent.get(event) ?? [])
+        .sort((a, b) => b.sessions - a.sessions)
+        .slice(0, limit);
+
     return {
       sinceDays: days,
       since: since.toISOString(),
       steps,
       overallConversion,
+      highlights: {
+        landingToRegisterConversion: conversion(
+          'landing_viewed',
+          'register_started',
+        ),
+        registerToPublishConversion: conversion(
+          'register_started',
+          'preview_published',
+        ),
+        publishToDashboardConversion: conversion(
+          'preview_published',
+          'first_dashboard_visit',
+        ),
+        trialBannerToPaymentIntentConversion: conversion(
+          'trial_banner_viewed',
+          'trial_banner_cta_clicked',
+        ),
+        trialBannerSessions: sessions.get('trial_banner_viewed') ?? 0,
+        trialPaymentIntentSessions:
+          sessions.get('trial_banner_cta_clicked') ?? 0,
+        trialHelpSessions: sessions.get('trial_help_whatsapp_clicked') ?? 0,
+        customerWhatsappNotifiedSessions:
+          sessions.get('customer_whatsapp_notified') ?? 0,
+        customerWhatsappNotificationsTotal:
+          totals.get('customer_whatsapp_notified') ?? 0,
+      },
+      topSources: {
+        landingCta: topSources('landing_cta_clicked'),
+        landingDemo: topSources('landing_demo_clicked'),
+        landingWhatsapp: topSources('landing_whatsapp_clicked'),
+        trialPaymentIntent: topSources('trial_banner_cta_clicked'),
+        trialHelp: topSources('trial_help_whatsapp_clicked'),
+      },
     };
   }
 
