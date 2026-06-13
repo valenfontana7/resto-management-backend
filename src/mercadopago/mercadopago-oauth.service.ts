@@ -13,6 +13,7 @@ interface OAuthStatePayload {
   returnTo?: string;
   iat: number;
   nonce: string;
+  codeVerifier: string;
 }
 
 interface MercadoPagoTokenResponse {
@@ -93,13 +94,17 @@ export class MercadoPagoOAuthService {
   buildAuthorizationUrl(restaurantId: string, returnTo?: string): string {
     const clientId = this.getClientId();
     const redirectUri = this.getRedirectUri();
+    const codeVerifier = crypto.randomBytes(32).toString('base64url');
 
     const state = this.signState({
       restaurantId,
       returnTo: returnTo || undefined,
       iat: Date.now(),
       nonce: crypto.randomBytes(12).toString('hex'),
+      codeVerifier,
     });
+
+    const codeChallenge = this.toCodeChallenge(codeVerifier);
 
     const url = new URL(MP_OAUTH_AUTHORIZE_URL);
     url.searchParams.set('client_id', clientId);
@@ -107,6 +112,8 @@ export class MercadoPagoOAuthService {
     url.searchParams.set('platform_id', 'mp');
     url.searchParams.set('redirect_uri', redirectUri);
     url.searchParams.set('state', state);
+    url.searchParams.set('code_challenge_method', 'S256');
+    url.searchParams.set('code_challenge', codeChallenge);
     return url.toString();
   }
 
@@ -129,7 +136,11 @@ export class MercadoPagoOAuthService {
       throw new BadRequestException('state no parseable');
     }
 
-    if (!payload?.restaurantId || typeof payload.iat !== 'number') {
+    if (
+      !payload?.restaurantId ||
+      typeof payload.iat !== 'number' ||
+      !payload.codeVerifier
+    ) {
       throw new BadRequestException('state incompleto');
     }
     if (Date.now() - payload.iat > STATE_TTL_MS) {
@@ -139,13 +150,17 @@ export class MercadoPagoOAuthService {
     return payload;
   }
 
-  async exchangeCodeForToken(code: string): Promise<MercadoPagoTokenResponse> {
+  async exchangeCodeForToken(
+    code: string,
+    codeVerifier: string,
+  ): Promise<MercadoPagoTokenResponse> {
     const form = new URLSearchParams();
     form.set('grant_type', 'authorization_code');
     form.set('client_id', this.getClientId());
     form.set('client_secret', this.getClientSecret());
     form.set('code', code);
     form.set('redirect_uri', this.getRedirectUri());
+    form.set('code_verifier', codeVerifier);
 
     return this.callTokenEndpoint(form);
   }
@@ -167,7 +182,10 @@ export class MercadoPagoOAuthService {
     state: string;
   }): Promise<{ restaurantId: string; returnTo?: string }> {
     const statePayload = this.verifyState(params.state);
-    const token = await this.exchangeCodeForToken(params.code);
+    const token = await this.exchangeCodeForToken(
+      params.code,
+      statePayload.codeVerifier,
+    );
 
     if (!token.access_token) {
       throw new BadRequestException('Mercado Pago no devolvió access_token');
@@ -226,6 +244,10 @@ export class MercadoPagoOAuthService {
     );
     const sig = this.hmac(payloadB64);
     return `${payloadB64}.${sig}`;
+  }
+
+  private toCodeChallenge(codeVerifier: string): string {
+    return crypto.createHash('sha256').update(codeVerifier).digest('base64url');
   }
 
   private hmac(data: string): string {
