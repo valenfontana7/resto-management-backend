@@ -72,6 +72,7 @@ model Restaurant {
   digestPreferences     DigestPreference[]
   customerProfiles      RestaurantCustomerProfile[]
   pushSubscriptions     PushSubscription[]
+  memberships           RestaurantMembership[]
 
   @@index([slug])
   @@index([status])
@@ -612,6 +613,7 @@ model Role {
   updatedAt    DateTime    @updatedAt
   restaurant   Restaurant? @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   users        User[]
+  memberships  RestaurantMembership[]
 
   @@unique([restaurantId, name])
   @@index([restaurantId])
@@ -641,11 +643,33 @@ model User {
   role               Role?               @relation(fields: [roleId], references: [id])
   paymentMethods     UserPaymentMethod[]
   loginLinks         AuthLoginLink[]
+  memberships        RestaurantMembership[]
 
   @@index([email])
   @@index([restaurantId])
   @@index([restaurantId, roleId])
   @@index([isActive])
+}
+
+/// Acceso de un usuario a un restaurante (multi-cuenta por usuario).
+/// Permite que una misma identidad opere varios restaurantes y cambie entre ellos.
+/// El restaurante "activo" sigue viviendo en User.restaurantId/roleId; esta tabla
+/// es la fuente de verdad de a qué restaurantes PUEDE cambiar el usuario.
+model RestaurantMembership {
+  id           String     @id @default(cuid())
+  userId       String
+  restaurantId String
+  roleId       String?
+  isDefault    Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  role         Role?      @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, restaurantId])
+  @@index([userId])
+  @@index([restaurantId])
 }
 
 model AuthLoginLink {

@@ -41,22 +41,41 @@ export class RestaurantUsersService {
   }
 
   /**
-   * Obtener todos los usuarios de un restaurante
+   * Obtener todos los usuarios de un restaurante.
+   * Incluye tanto a quienes lo tienen como restaurante activo como a quienes
+   * fueron vinculados vía membership (multi-cuenta por usuario).
    */
   async getRestaurantUsers(restaurantId: string) {
     const users = await this.prisma.user.findMany({
-      where: { restaurantId },
+      where: {
+        deletedAt: null,
+        OR: [{ restaurantId }, { memberships: { some: { restaurantId } } }],
+      },
       select: {
         id: true,
         email: true,
         name: true,
         lastLogin: true,
         roleId: true,
+        restaurantId: true,
         role: {
           select: {
             id: true,
             name: true,
             color: true,
+          },
+        },
+        memberships: {
+          where: { restaurantId },
+          select: {
+            roleId: true,
+            role: {
+              select: {
+                id: true,
+                name: true,
+                color: true,
+              },
+            },
           },
         },
         isActive: true,
@@ -65,11 +84,24 @@ export class RestaurantUsersService {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Aplanar roleName para el frontend
-    return users.map((user) => ({
-      ...user,
-      roleName: user.role?.name || null,
-    }));
+    // Para usuarios cuyo restaurante activo es este, usar su rol directo;
+    // para los vinculados vía membership, usar el rol del membership.
+    return users.map((user) => {
+      const membershipRole = user.memberships[0]?.role ?? null;
+      const effectiveRole =
+        user.restaurantId === restaurantId ? user.role : membershipRole;
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        lastLogin: user.lastLogin,
+        roleId: effectiveRole?.id ?? null,
+        role: effectiveRole,
+        isActive: user.isActive,
+        createdAt: user.createdAt,
+        roleName: effectiveRole?.name || null,
+      };
+    });
   }
 
   /**
@@ -106,7 +138,9 @@ export class RestaurantUsersService {
       throw new BadRequestException('Invalid role for this restaurant');
     }
 
-    // El login usa email como identificador global. No permitir duplicados.
+    // El login usa email como identificador global. Un email ya registrado se
+    // vincula al restaurante vía membership (multi-cuenta por usuario) en lugar
+    // de bloquearse o duplicar la identidad.
     const existingUser = await this.prisma.user.findFirst({
       where: {
         email: { equals: normalizedEmail, mode: 'insensitive' },
@@ -114,16 +148,57 @@ export class RestaurantUsersService {
       },
       select: {
         id: true,
+        name: true,
         restaurantId: true,
       },
     });
 
     if (existingUser) {
-      if (existingUser.restaurantId === restaurantId) {
+      const alreadyMember =
+        existingUser.restaurantId === restaurantId ||
+        (await this.prisma.restaurantMembership.findUnique({
+          where: {
+            userId_restaurantId: { userId: existingUser.id, restaurantId },
+          },
+          select: { id: true },
+        })) !== null;
+
+      if (alreadyMember) {
         throw new ConflictException('User already exists in this restaurant');
       }
 
-      throw new ConflictException('Email already registered');
+      // Vincular el usuario existente a este restaurante. No se crea un usuario
+      // nuevo ni se pide activación: ya tiene credenciales. Podrá cambiar a este
+      // restaurante desde su selector de cuentas.
+      await this.prisma.restaurantMembership.create({
+        data: {
+          userId: existingUser.id,
+          restaurantId,
+          roleId: role.id,
+          isDefault: false,
+        },
+      });
+
+      void this.adminAlerts?.notifyUserRegistered({
+        source: 'restaurants.invite-user.link-existing',
+        userId: existingUser.id,
+        name: existingUser.name ?? normalizedEmail,
+        email: normalizedEmail,
+        restaurantId,
+        restaurantName: null,
+      });
+
+      return {
+        id: existingUser.id,
+        name: existingUser.name ?? normalizedEmail.split('@')[0],
+        email: normalizedEmail,
+        isActive: true,
+        createdAt: new Date(),
+        linkedExisting: true,
+        activationCode: null,
+        activationCodeExpiresAt: null,
+        activationCodeEmailSent: false,
+      };
     }
 
     const restaurant = await this.prisma.restaurant.findUnique({
@@ -194,9 +269,13 @@ export class RestaurantUsersService {
     userId: string,
     updateDto: { roleId?: string; isActive?: boolean },
   ) {
-    // Verificar que el usuario pertenece al restaurante
+    // El usuario debe tener acceso a este restaurante (activo o vía membership)
     const user = await this.prisma.user.findFirst({
-      where: { id: userId, restaurantId },
+      where: {
+        id: userId,
+        OR: [{ restaurantId }, { memberships: { some: { restaurantId } } }],
+      },
+      select: { id: true, restaurantId: true },
     });
 
     if (!user) {
@@ -212,6 +291,42 @@ export class RestaurantUsersService {
       if (!role || role.restaurantId !== restaurantId) {
         throw new BadRequestException('Invalid role for this restaurant');
       }
+    }
+
+    // Usuario vinculado (su restaurante activo es otro): el rol vive en el
+    // membership y no se toca su estado global ni su identidad.
+    if (user.restaurantId !== restaurantId) {
+      const membership = await this.prisma.restaurantMembership.update({
+        where: { userId_restaurantId: { userId, restaurantId } },
+        data: {
+          ...(updateDto.roleId ? { roleId: updateDto.roleId } : {}),
+        },
+        select: {
+          roleId: true,
+          role: { select: { id: true, name: true, color: true } },
+        },
+      });
+
+      const linkedUser = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          isActive: true,
+          createdAt: true,
+        },
+      });
+
+      return {
+        id: userId,
+        email: linkedUser?.email ?? '',
+        name: linkedUser?.name ?? '',
+        roleId: membership.roleId,
+        role: membership.role,
+        isActive: linkedUser?.isActive ?? true,
+        createdAt: linkedUser?.createdAt ?? new Date(),
+      };
     }
 
     return this.prisma.user.update({
@@ -239,18 +354,61 @@ export class RestaurantUsersService {
   }
 
   /**
-   * Eliminar usuario del restaurante (hard delete)
+   * Eliminar usuario del restaurante.
+   * En multi-cuenta: si el usuario tiene acceso a otros restaurantes, solo se
+   * desvincula de este (no se borra su identidad); si es su único restaurante,
+   * se elimina por completo (comportamiento histórico).
    */
   async removeUser(restaurantId: string, userId: string) {
-    // Verificar que el usuario pertenece al restaurante
-    const user = await this.prisma.user.findFirst({
-      where: { id: userId, restaurantId },
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, restaurantId: true },
     });
 
     if (!user) {
       throw new NotFoundException('User not found in this restaurant');
     }
 
+    const membership = await this.prisma.restaurantMembership.findUnique({
+      where: { userId_restaurantId: { userId, restaurantId } },
+      select: { id: true },
+    });
+    const isActiveHere = user.restaurantId === restaurantId;
+
+    if (!membership && !isActiveHere) {
+      throw new NotFoundException('User not found in this restaurant');
+    }
+
+    const otherMemberships = await this.prisma.restaurantMembership.findMany({
+      where: { userId, NOT: { restaurantId } },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+      select: { restaurantId: true, roleId: true },
+    });
+
+    // Tiene otras cuentas: solo desvincular de este restaurante.
+    if (otherMemberships.length > 0) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.restaurantMembership.deleteMany({
+          where: { userId, restaurantId },
+        });
+
+        // Si su restaurante activo era este, mover el activo a otra cuenta.
+        if (isActiveHere) {
+          const next = otherMemberships[0];
+          await tx.user.update({
+            where: { id: userId },
+            data: {
+              restaurantId: next.restaurantId,
+              roleId: next.roleId ?? null,
+            },
+          });
+        }
+      });
+
+      return { success: true, message: 'User unlinked successfully' };
+    }
+
+    // Único restaurante del usuario: borrado físico (histórico).
     await this.prisma.$transaction(async (tx) => {
       // AdminAuditLog no tiene onDelete: Cascade para User.
       await tx.adminAuditLog.deleteMany({

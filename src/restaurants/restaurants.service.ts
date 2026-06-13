@@ -641,12 +641,53 @@ export class RestaurantsService {
       throw new NotFoundException('Admin role not found for this restaurant');
     }
 
-    // Update user to associate with restaurant and Admin role
+    // Multi-cuenta por usuario: preservar el acceso al restaurante actualmente
+    // activo (si existe) como membership antes de mover el restaurante activo.
+    const currentUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { restaurantId: true, roleId: true },
+    });
+
+    const existingMemberships = await this.prisma.restaurantMembership.count({
+      where: { userId },
+    });
+
+    if (currentUser?.restaurantId) {
+      await this.prisma.restaurantMembership.upsert({
+        where: {
+          userId_restaurantId: {
+            userId,
+            restaurantId: currentUser.restaurantId,
+          },
+        },
+        update: currentUser.roleId ? { roleId: currentUser.roleId } : {},
+        create: {
+          userId,
+          restaurantId: currentUser.restaurantId,
+          roleId: currentUser.roleId ?? undefined,
+          isDefault: existingMemberships === 0,
+        },
+      });
+    }
+
+    // Update user to associate with restaurant and Admin role (nuevo activo)
     await this.prisma.user.update({
       where: { id: userId },
       data: {
         restaurantId,
         roleId: adminRole.id,
+      },
+    });
+
+    // Registrar el membership del nuevo restaurante.
+    await this.prisma.restaurantMembership.upsert({
+      where: { userId_restaurantId: { userId, restaurantId } },
+      update: { roleId: adminRole.id },
+      create: {
+        userId,
+        restaurantId,
+        roleId: adminRole.id,
+        isDefault: existingMemberships === 0 && !currentUser?.restaurantId,
       },
     });
   }
@@ -1407,7 +1448,9 @@ export class RestaurantsService {
 
     // Transaction: mark restaurant INACTIVE, rename slug
     // - Deactivate and disassociate other users
-    // - Keep the performing user active but disassociate their restaurant and role
+    // - Keep the performing user active and move them to another restaurant if available
+    let redirect = '/onboarding';
+
     await this.prisma.$transaction(async (tx) => {
       await tx.restaurant.update({
         where: { id },
@@ -1423,18 +1466,36 @@ export class RestaurantsService {
         data: { isActive: false, restaurantId: null, roleId: null },
       });
 
-      // For the performing user: keep account active, remove restaurant association and role
+      const nextMembership = await tx.restaurantMembership.findFirst({
+        where: {
+          userId: performedByUserId,
+          restaurantId: { not: id },
+          restaurant: { status: 'ACTIVE' },
+        },
+        orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+      });
+
+      const nextUserData = nextMembership
+        ? {
+            restaurantId: nextMembership.restaurantId,
+            roleId: nextMembership.roleId ?? null,
+          }
+        : { restaurantId: null, roleId: null };
+
       await tx.user.update({
         where: { id: performedByUserId },
-        data: { restaurantId: null, roleId: null },
+        data: nextUserData,
       });
+
+      if (nextMembership) {
+        redirect = '/admin';
+      }
     });
 
-    // Return minimal info so frontend can refresh session and redirect to onboarding
     return {
       message: 'Restaurant deleted (soft) successfully',
       id,
-      redirect: '/onboarding',
+      redirect,
     };
   }
 

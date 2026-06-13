@@ -17,6 +17,7 @@ import {
   ConsumeMagicLinkDto,
 } from './dto/auth.dto';
 import { ImpersonateDto } from './dto/impersonate.dto';
+import { SwitchRestaurantDto } from './dto/switch-restaurant.dto';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { Roles } from './decorators/roles.decorator';
@@ -158,6 +159,54 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getMe(@CurrentUser() user: RequestUser) {
     return this.authService.getMe(user.userId);
+  }
+
+  @Get('restaurants')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'List restaurants the current user can access/switch to',
+  })
+  @ApiResponse({ status: 200, description: 'Accessible restaurants retrieved' })
+  async getAccessibleRestaurants(@CurrentUser() user: RequestUser) {
+    return this.authService.listAccessibleRestaurants(user.userId);
+  }
+
+  @Post('switch-restaurant')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Switch the active restaurant for the current user',
+  })
+  @ApiResponse({ status: 200, description: 'Active restaurant switched' })
+  @ApiResponse({ status: 403, description: 'No access to that restaurant' })
+  async switchRestaurant(
+    @Body() dto: SwitchRestaurantDto,
+    @CurrentUser() user: RequestUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.switchRestaurant(
+      user.userId,
+      dto.restaurantId,
+    );
+    this.setAuthCookie(res, result.token);
+    return result;
+  }
+
+  @Post('refresh')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Refresh the session token (sliding expiration)',
+  })
+  @ApiResponse({ status: 200, description: 'Session token refreshed' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  async refresh(
+    @CurrentUser() user: RequestUser,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.createAuthResponseForUserId(
+      user.userId,
+    );
+    this.setAuthCookie(res, result.token);
+    return result;
   }
 
   @Post('logout')

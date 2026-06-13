@@ -22,6 +22,7 @@ export const FUNNEL_STEPS = [
   'trial_banner_cta_clicked',
   'trial_help_whatsapp_clicked',
   'customer_whatsapp_notified',
+  'go_live_completed',
 ] as const;
 
 export type FunnelStep = (typeof FUNNEL_STEPS)[number];

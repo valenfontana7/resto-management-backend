@@ -4,6 +4,7 @@ import {
   ConflictException,
   UnauthorizedException,
   NotFoundException,
+  ForbiddenException,
   Optional,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -927,6 +928,17 @@ export class AuthService {
       }
     }
 
+    // Backfill perezoso: registrar el restaurante activo como membership para
+    // que el usuario pueda cambiar entre cuentas sin migraciones adicionales.
+    if (fullUser.restaurantId) {
+      await this.ensureMembership(
+        fullUser.id,
+        fullUser.restaurantId,
+        fullUser.roleId ?? null,
+        true,
+      ).catch(() => undefined);
+    }
+
     const payload: JwtPayload = {
       sub: fullUser.id,
       email: fullUser.email,
@@ -969,9 +981,48 @@ export class AuthService {
             hours: true,
           },
         },
+        memberships: {
+          include: {
+            restaurant: {
+              select: {
+                id: true,
+                status: true,
+              },
+            },
+            role: true,
+          },
+          orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+        },
       },
     });
     if (!user) throw new UnauthorizedException('User not found');
+
+    if (!user.restaurantId && user.memberships?.length > 0) {
+      const nextMembership =
+        user.memberships.find(
+          (membership) => membership.restaurant?.status === 'ACTIVE',
+        ) ?? user.memberships[0];
+
+      if (nextMembership?.restaurantId) {
+        const updatedUser = await this.prisma.user.update({
+          where: { id: userId },
+          data: {
+            restaurantId: nextMembership.restaurantId,
+            roleId: nextMembership.roleId ?? null,
+          },
+          include: {
+            role: true,
+            restaurant: {
+              include: {
+                hours: true,
+              },
+            },
+          },
+        });
+        return await this.generateAuthResponse(updatedUser as User);
+      }
+    }
+
     return await this.generateAuthResponse(user as any);
   }
 
@@ -1094,6 +1145,134 @@ export class AuthService {
     });
 
     return authResponse;
+  }
+
+  /**
+   * Asegura (idempotente) que exista un membership del usuario para el
+   * restaurante dado. Sirve como backfill perezoso para usuarios creados por
+   * flujos que todavía no registran memberships explícitamente.
+   */
+  async ensureMembership(
+    userId: string,
+    restaurantId: string,
+    roleId: string | null,
+    isDefault = false,
+  ): Promise<void> {
+    await this.prisma.restaurantMembership.upsert({
+      where: { userId_restaurantId: { userId, restaurantId } },
+      update: roleId ? { roleId } : {},
+      create: {
+        userId,
+        restaurantId,
+        roleId: roleId ?? undefined,
+        isDefault,
+      },
+    });
+  }
+
+  /**
+   * Lista los restaurantes a los que el usuario puede acceder/cambiar.
+   * Marca el restaurante activo actual.
+   */
+  async listAccessibleRestaurants(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, restaurantId: true, roleId: true },
+    });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    if (user.restaurantId) {
+      await this.ensureMembership(
+        userId,
+        user.restaurantId,
+        user.roleId ?? null,
+        true,
+      ).catch(() => undefined);
+    }
+
+    const memberships = await this.prisma.restaurantMembership.findMany({
+      where: {
+        userId,
+        restaurant: { status: 'ACTIVE' },
+      },
+      include: {
+        restaurant: {
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+            status: true,
+            logo: true,
+          },
+        },
+        role: { select: { id: true, name: true } },
+      },
+      orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+    });
+
+    const activeRestaurantId = memberships.some(
+      (m) => m.restaurantId === user.restaurantId,
+    )
+      ? user.restaurantId
+      : (memberships[0]?.restaurantId ?? null);
+
+    return {
+      activeRestaurantId,
+      restaurants: memberships.map((m) => ({
+        restaurantId: m.restaurantId,
+        slug: m.restaurant.slug,
+        name: m.restaurant.name,
+        status: m.restaurant.status,
+        logo: m.restaurant.logo ?? null,
+        roleId: m.roleId ?? null,
+        roleName: m.role?.name ?? null,
+        isActive: m.restaurantId === activeRestaurantId,
+        isDefault: m.isDefault,
+      })),
+    };
+  }
+
+  /**
+   * Cambia el restaurante activo del usuario a otro al que tenga acceso.
+   * Actualiza User.restaurantId/roleId y emite un nuevo token de sesión.
+   */
+  async switchRestaurant(
+    userId: string,
+    restaurantId: string,
+  ): Promise<AuthResponse> {
+    const membership = await this.prisma.restaurantMembership.findUnique({
+      where: { userId_restaurantId: { userId, restaurantId } },
+    });
+
+    if (!membership) {
+      // Tolerar SUPER_ADMIN o el propio restaurante activo aunque el registro
+      // de membership todavía no exista (se creará al regenerar la sesión).
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        include: { role: { select: { name: true } } },
+      });
+      const isSuperAdmin = user?.role?.name === 'SUPER_ADMIN';
+      const isCurrent = user?.restaurantId === restaurantId;
+      if (!isSuperAdmin && !isCurrent) {
+        throw new ForbiddenException('No tenés acceso a este restaurante');
+      }
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        restaurantId,
+        ...(membership?.roleId ? { roleId: membership.roleId } : {}),
+      },
+      include: {
+        role: true,
+        restaurant: { include: { hours: true } },
+      },
+    });
+
+    return await this.generateAuthResponse(updatedUser as User);
   }
 
   private generateSlug(name: string): string {

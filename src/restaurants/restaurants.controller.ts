@@ -138,11 +138,26 @@ export class RestaurantsController {
   async getMyRestaurant(@CurrentUser() user: RequestUser) {
     // Always fetch fresh user data from DB to ensure restaurantId is up-to-date
     const freshUser = await this.authService.validateUser(user.userId);
-    if (!freshUser.restaurantId) {
+    if (freshUser.restaurantId) {
+      const restaurant = await this.restaurantsService.findById(
+        freshUser.restaurantId,
+      );
+      return { restaurant };
+    }
+
+    const accessible = await this.authService.listAccessibleRestaurants(
+      user.userId,
+    );
+    const fallback = accessible.restaurants.find(
+      (restaurant) => restaurant.status === 'ACTIVE',
+    );
+
+    if (!fallback) {
       throw new ForbiddenException('User does not have a restaurant');
     }
+
     const restaurant = await this.restaurantsService.findById(
-      freshUser.restaurantId,
+      fallback.restaurantId,
     );
     return { restaurant };
   }
