@@ -446,7 +446,7 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
     update: {
       displayName: 'Directo',
       description: 'Para empezar a vender por link y QR.',
-      price: 2500000,
+      price: 1500000,
       interval: 'monthly',
       trialDays: 14,
       color: 'from-stone-500 to-stone-700',
@@ -457,7 +457,7 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
     create: {
       displayName: 'Directo',
       description: 'Para empezar a vender por link y QR.',
-      price: 2500000,
+      price: 1500000,
       interval: 'monthly',
       trialDays: 14,
       color: 'from-slate-500 to-slate-600',
@@ -472,7 +472,7 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
     update: {
       displayName: 'Operación',
       description: 'Para ordenar pedidos, cocina y reservas.',
-      price: 4500000,
+      price: 3500000,
       interval: 'monthly',
       trialDays: 14,
       color: 'from-teal-500 to-emerald-600',
@@ -483,7 +483,7 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
     create: {
       displayName: 'Operación',
       description: 'Para ordenar pedidos, cocina y reservas.',
-      price: 4500000,
+      price: 3500000,
       interval: 'monthly',
       trialDays: 14,
       color: 'from-purple-400 to-purple-600',
@@ -498,7 +498,7 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
     update: {
       displayName: 'Full',
       description: 'Para locales con necesidades puntuales.',
-      price: 7000000,
+      price: 5000000,
       interval: 'monthly',
       trialDays: 14,
       color: 'from-amber-500 to-orange-600',
@@ -509,7 +509,7 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
     create: {
       displayName: 'Full',
       description: 'Para locales con necesidades puntuales.',
-      price: 7000000,
+      price: 5000000,
       interval: 'monthly',
       trialDays: 14,
       color: 'from-amber-500 to-orange-600',
