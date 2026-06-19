@@ -3,6 +3,11 @@ import {
   ExecutionContext,
   ForbiddenException,
 } from '@nestjs/common';
+import {
+  isPrivilegedRole,
+  roleMeetsRequirement,
+  normalizeRoleCode,
+} from '../utils/role.utils';
 
 /**
  * Decorador que verifica automáticamente que el usuario pertenece
@@ -36,7 +41,10 @@ export const VerifyRestaurantAccess = createParamDecorator(
     }
 
     // Allow SUPER_ADMIN to access any restaurant
-    if (user.role === 'SUPER_ADMIN') {
+    if (
+      isPrivilegedRole(user.role) &&
+      normalizeRoleCode(user.role) === 'SUPER_ADMIN'
+    ) {
       return restaurantId;
     }
 
@@ -84,8 +92,7 @@ export const VerifyRestaurantRole = createParamDecorator(
       throw new ForbiddenException('Restaurant ID not provided');
     }
 
-    // Allow SUPER_ADMIN to bypass all checks
-    if (user.role === 'SUPER_ADMIN') {
+    if (normalizeRoleCode(user.role) === 'SUPER_ADMIN') {
       return restaurantId;
     }
 
@@ -93,7 +100,7 @@ export const VerifyRestaurantRole = createParamDecorator(
       throw new ForbiddenException('You can only access your own restaurant');
     }
 
-    if (user.role !== requiredRole) {
+    if (!roleMeetsRequirement(user.role, requiredRole)) {
       throw new ForbiddenException(
         `Only ${requiredRole} can perform this action`,
       );
@@ -129,8 +136,7 @@ export function assertRestaurantAccess(
     throw new ForbiddenException('Unauthorized');
   }
 
-  // Allow SUPER_ADMIN to access any restaurant
-  if (user.role === 'SUPER_ADMIN') {
+  if (normalizeRoleCode(user.role) === 'SUPER_ADMIN') {
     return;
   }
 

@@ -2,6 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
 import { GenerateOnboardingDraftDto } from './dto/generate-onboarding-draft.dto';
+import { GenerateMenuDraftDto } from './dto/generate-menu-draft.dto';
+import {
+  buildHeuristicMenuDishes,
+  buildMenuGeminiPrompt,
+  MENU_AI_RESPONSE_JSON_SCHEMA,
+  normalizeMenuDraft,
+} from './menu-ai-draft.helpers';
+import type { MenuAiDraft } from './types/menu-ai.types';
 import {
   OnboardingAiBuilderDraft,
   OnboardingAiBusinessType,
@@ -510,6 +518,77 @@ export class OnboardingAiService {
       );
       return fallbackDraft;
     }
+  }
+
+  async generateMenuDraft({
+    prompt,
+    restaurantName,
+  }: GenerateMenuDraftDto): Promise<MenuAiDraft> {
+    const fallbackDraft = this.buildHeuristicMenuDraft(prompt, restaurantName);
+
+    if (!this.gemini) {
+      return fallbackDraft;
+    }
+
+    try {
+      const response = await this.gemini.models.generateContent({
+        model: this.geminiModel,
+        contents: buildMenuGeminiPrompt(prompt, restaurantName),
+        config: {
+          systemInstruction:
+            'Sos un asistente gastronomico. Devolve exclusivamente JSON valido segun el esquema, sin markdown. Usa espanol rioplatense claro. Los precios son enteros en pesos argentinos.',
+          temperature: 0.35,
+          maxOutputTokens: 4096,
+          responseMimeType: 'application/json',
+          responseJsonSchema: MENU_AI_RESPONSE_JSON_SCHEMA,
+        },
+      });
+
+      const rawDraft = response.text?.trim();
+      if (!rawDraft) {
+        throw new Error('Gemini returned an empty response');
+      }
+
+      const parsedDraft = JSON.parse(rawDraft) as Partial<MenuAiDraft>;
+      return normalizeMenuDraft(parsedDraft, fallbackDraft);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Gemini menu draft generation failed: ${message}`);
+      return fallbackDraft;
+    }
+  }
+
+  private buildHeuristicMenuDraft(
+    prompt: string,
+    restaurantName?: string,
+  ): MenuAiDraft {
+    const combinedPrompt = restaurantName
+      ? `${restaurantName}. ${prompt}`
+      : prompt;
+    const onboardingDraft = this.buildHeuristicDraft(combinedPrompt);
+    const categories = onboardingDraft.menuSetup.categories.map((category) => ({
+      id: category.id,
+      name: category.name,
+      description: category.description,
+    }));
+
+    return normalizeMenuDraft(
+      {
+        categories,
+        dishes: buildHeuristicMenuDishes(categories),
+        assumptions: [
+          ...onboardingDraft.assumptions,
+          'Los precios son estimados. Revisalos antes de publicar.',
+        ],
+      },
+      {
+        categories,
+        dishes: buildHeuristicMenuDishes(categories),
+        assumptions: [
+          'Los precios son estimados. Revisalos antes de publicar.',
+        ],
+      },
+    );
   }
 
   private buildHeuristicDraft(prompt: string): OnboardingAiDraft {

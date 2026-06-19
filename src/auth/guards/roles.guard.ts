@@ -1,6 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/roles.decorator';
+import { normalizeRoleCode } from '../../common/utils/role.utils';
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -21,11 +22,11 @@ export class RolesGuard implements CanActivate {
       return false;
     }
 
-    // Super Admin bypass
-    if (user.role === 'SUPER_ADMIN') {
+    if (normalizeRoleCode(user.role) === 'SUPER_ADMIN') {
       return true;
     }
 
-    return requiredRoles.some((role) => user.role === role);
+    const userCode = normalizeRoleCode(user.role);
+    return requiredRoles.some((role) => userCode === normalizeRoleCode(role));
   }
 }

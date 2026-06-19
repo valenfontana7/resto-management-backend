@@ -9,10 +9,14 @@ import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { CreateRestrictionDto } from './dto/create-restriction.dto';
 import { UpdateRestrictionDto } from './dto/update-restriction.dto';
+import { PlanEntitlementsService } from './plan-entitlements.service';
 
 @Injectable()
 export class PlansService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly planEntitlements: PlanEntitlementsService,
+  ) {}
 
   // ============================================
   // PLANS CRUD
@@ -224,12 +228,14 @@ export class PlansService {
       );
     }
 
-    return this.prisma.planRestriction.create({
-      data: {
-        ...createRestrictionDto,
-        planId,
-      },
-    });
+    return this.prisma.planRestriction
+      .create({
+        data: {
+          ...createRestrictionDto,
+          planId,
+        },
+      })
+      .finally(() => this.planEntitlements.invalidateCache(planId));
   }
 
   /**
@@ -242,10 +248,12 @@ export class PlansService {
   ) {
     await this.findRestriction(planId, restrictionId); // Verificar que existe
 
-    return this.prisma.planRestriction.update({
-      where: { id: restrictionId },
-      data: updateRestrictionDto,
-    });
+    return this.prisma.planRestriction
+      .update({
+        where: { id: restrictionId },
+        data: updateRestrictionDto,
+      })
+      .finally(() => this.planEntitlements.invalidateCache(planId));
   }
 
   /**
@@ -254,9 +262,11 @@ export class PlansService {
   async removeRestriction(planId: string, restrictionId: string) {
     await this.findRestriction(planId, restrictionId); // Verificar que existe
 
-    return this.prisma.planRestriction.delete({
-      where: { id: restrictionId },
-    });
+    return this.prisma.planRestriction
+      .delete({
+        where: { id: restrictionId },
+      })
+      .finally(() => this.planEntitlements.invalidateCache(planId));
   }
 
   // ============================================

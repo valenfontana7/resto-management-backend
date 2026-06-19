@@ -14,7 +14,15 @@ import {
   UpdateTableStatusDto,
   CreateTableAreaDto,
   UpdateTableAreaDto,
+  BulkCreateTablesDto,
+  BulkDeleteTablesDto,
 } from './dto/table.dto';
+
+type TableDeleteBlockReason = 'not_found' | 'busy' | 'open_session';
+
+type TableDeletableCheck =
+  | { ok: true }
+  | { ok: false; reason: TableDeleteBlockReason };
 
 @Injectable()
 export class TablesService {
@@ -95,6 +103,92 @@ export class TablesService {
         area: true,
       },
     });
+  }
+
+  async createBulk(
+    restaurantId: string,
+    userId: string,
+    createDto: BulkCreateTablesDto,
+  ) {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    const area = await this.prisma.tableArea.findFirst({
+      where: { id: createDto.areaId, restaurantId },
+    });
+    if (!area) {
+      throw new NotFoundException(`Area with ID ${createDto.areaId} not found`);
+    }
+
+    const allowedShapes = ['SQUARE', 'ROUND', 'RECTANGLE'];
+    const batchNumbers = createDto.tables.map((table) => table.number);
+    const uniqueBatch = new Set(batchNumbers);
+    if (uniqueBatch.size !== batchNumbers.length) {
+      throw new BadRequestException('Duplicate table numbers in batch');
+    }
+
+    const existingTables = await this.prisma.table.findMany({
+      where: { restaurantId },
+      select: { number: true },
+    });
+    const existingNumbers = new Set(
+      existingTables.map((table) => table.number),
+    );
+
+    const skipExisting = createDto.skipExisting !== false;
+    const toCreate = skipExisting
+      ? createDto.tables.filter((table) => !existingNumbers.has(table.number))
+      : createDto.tables;
+
+    if (!skipExisting) {
+      const conflicts = createDto.tables.filter((table) =>
+        existingNumbers.has(table.number),
+      );
+      if (conflicts.length > 0) {
+        throw new ConflictException(
+          `Table numbers already exist: ${conflicts.map((t) => t.number).join(', ')}`,
+        );
+      }
+    }
+
+    if (toCreate.length === 0) {
+      return {
+        created: 0,
+        skipped: createDto.tables.length,
+        skippedNumbers: createDto.tables.map((table) => table.number),
+      };
+    }
+
+    const data = toCreate.map((table) => {
+      let shapeValue = 'SQUARE';
+      if (table.shape) {
+        shapeValue = String(table.shape).toUpperCase();
+        if (!allowedShapes.includes(shapeValue)) {
+          throw new BadRequestException(`Invalid table shape: ${table.shape}`);
+        }
+      }
+
+      return {
+        restaurantId,
+        areaId: createDto.areaId,
+        number: table.number,
+        capacity: table.capacity,
+        shape: shapeValue as 'SQUARE' | 'ROUND' | 'RECTANGLE',
+        positionX: table.position?.x ?? 0,
+        positionY: table.position?.y ?? 0,
+      };
+    });
+
+    await this.prisma.table.createMany({ data });
+
+    const skippedNumbers = createDto.tables
+      .filter((table) => existingNumbers.has(table.number))
+      .map((table) => table.number);
+
+    return {
+      created: toCreate.length,
+      skipped: skippedNumbers.length,
+      skippedNumbers,
+    };
   }
 
   async findAll(restaurantId: string, userId: string) {
@@ -279,32 +373,184 @@ export class TablesService {
     });
   }
 
-  async delete(id: string, restaurantId: string, userId: string) {
-    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
-
+  private async checkTableDeletable(
+    tableId: string,
+    restaurantId: string,
+  ): Promise<TableDeletableCheck> {
     const table = await this.prisma.table.findFirst({
-      where: {
-        id,
-        restaurantId,
-      },
+      where: { id: tableId, restaurantId },
     });
 
     if (!table) {
-      throw new NotFoundException(`Table with ID ${id} not found`);
+      return { ok: false, reason: 'not_found' };
     }
 
-    // Solo permitir eliminar si está disponible
     if (table.status !== PrismaTableStatus.AVAILABLE) {
-      throw new BadRequestException(
-        'Cannot delete table that is occupied, reserved, or being cleaned',
-      );
+      return { ok: false, reason: 'busy' };
     }
 
-    await this.prisma.table.delete({
-      where: { id },
+    if (table.currentSessionId) {
+      return { ok: false, reason: 'open_session' };
+    }
+
+    const openSession = await this.prisma.tableSession.findFirst({
+      where: {
+        tableId: table.id,
+        status: { in: ['OPEN', 'CLOSING'] },
+      },
     });
+    if (openSession) {
+      return { ok: false, reason: 'open_session' };
+    }
+
+    return { ok: true };
+  }
+
+  private deletableErrorMessage(reason: TableDeleteBlockReason): string {
+    switch (reason) {
+      case 'busy':
+        return 'No se puede eliminar una mesa ocupada, reservada o en limpieza';
+      case 'open_session':
+        return 'No se puede eliminar una mesa con cuenta abierta';
+      default:
+        return 'Mesa no encontrada';
+    }
+  }
+
+  private async removeTableRecord(tableId: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const sessions = await tx.tableSession.findMany({
+        where: { tableId },
+        select: { id: true },
+      });
+      const sessionIds = sessions.map((session) => session.id);
+
+      if (sessionIds.length > 0) {
+        await tx.fiscalDocument.updateMany({
+          where: { tableSessionId: { in: sessionIds } },
+          data: { tableSessionId: null },
+        });
+        await tx.cashMovement.updateMany({
+          where: { tableSessionId: { in: sessionIds } },
+          data: { tableSessionId: null },
+        });
+        await tx.order.updateMany({
+          where: { tableSessionId: { in: sessionIds } },
+          data: { tableSessionId: null },
+        });
+        await tx.tableSession.updateMany({
+          where: { id: { in: sessionIds } },
+          data: { orderId: null },
+        });
+        await tx.table.updateMany({
+          where: { currentSessionId: { in: sessionIds } },
+          data: { currentSessionId: null },
+        });
+        await tx.tableSession.deleteMany({ where: { tableId } });
+      }
+
+      await tx.order.updateMany({
+        where: { tableId },
+        data: { tableId: null },
+      });
+      await tx.checkoutSession.updateMany({
+        where: { tableId },
+        data: { tableId: null },
+      });
+      await tx.reservation.updateMany({
+        where: { tableId },
+        data: { tableId: null },
+      });
+      await tx.table.update({
+        where: { id: tableId },
+        data: {
+          currentOrderId: null,
+          currentReservationId: null,
+          currentSessionId: null,
+        },
+      });
+      await tx.table.delete({ where: { id: tableId } });
+    });
+  }
+
+  async delete(id: string, restaurantId: string, userId: string) {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    const check = await this.checkTableDeletable(id, restaurantId);
+    if (!check.ok) {
+      if (check.reason === 'not_found') {
+        throw new NotFoundException(`Table with ID ${id} not found`);
+      }
+      throw new BadRequestException(this.deletableErrorMessage(check.reason));
+    }
+
+    await this.removeTableRecord(id);
 
     return { message: 'Table deleted successfully' };
+  }
+
+  async deleteBulk(
+    restaurantId: string,
+    userId: string,
+    deleteDto: BulkDeleteTablesDto,
+  ) {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    if (deleteDto.areaId) {
+      const area = await this.prisma.tableArea.findFirst({
+        where: { id: deleteDto.areaId, restaurantId },
+      });
+      if (!area) {
+        throw new NotFoundException(
+          `Area with ID ${deleteDto.areaId} not found`,
+        );
+      }
+    }
+
+    const where: {
+      restaurantId: string;
+      areaId?: string;
+      id?: { in: string[] };
+    } = { restaurantId };
+
+    if (deleteDto.areaId) {
+      where.areaId = deleteDto.areaId;
+    }
+    if (deleteDto.tableIds?.length) {
+      where.id = { in: deleteDto.tableIds };
+    }
+
+    return this.deleteTablesMatching(restaurantId, where);
+  }
+
+  private async deleteTablesMatching(
+    restaurantId: string,
+    where: { areaId?: string; id?: { in: string[] } },
+  ) {
+    const tables = await this.prisma.table.findMany({
+      where: { restaurantId, ...where },
+      select: { id: true, number: true },
+      orderBy: { number: 'asc' },
+    });
+
+    let deleted = 0;
+    const skippedNumbers: string[] = [];
+
+    for (const table of tables) {
+      const check = await this.checkTableDeletable(table.id, restaurantId);
+      if (!check.ok) {
+        skippedNumbers.push(table.number);
+        continue;
+      }
+      await this.removeTableRecord(table.id);
+      deleted++;
+    }
+
+    return {
+      deleted,
+      skipped: skippedNumbers.length,
+      skippedNumbers,
+    };
   }
 
   async changeStatus(
@@ -442,7 +688,7 @@ export class TablesService {
         restaurantId,
       },
       include: {
-        tables: true,
+        tables: { select: { id: true, number: true } },
       },
     });
 
@@ -450,9 +696,22 @@ export class TablesService {
       throw new NotFoundException(`Area with ID ${id} not found`);
     }
 
-    if (area.tables.length > 0) {
+    const tableResult = await this.deleteTablesMatching(restaurantId, {
+      areaId: id,
+    });
+
+    const remaining = await this.prisma.table.count({
+      where: { restaurantId, areaId: id },
+    });
+
+    if (remaining > 0) {
+      const blocked = await this.prisma.table.findMany({
+        where: { restaurantId, areaId: id },
+        select: { number: true },
+        orderBy: { number: 'asc' },
+      });
       throw new BadRequestException(
-        'Cannot delete area that contains tables. Move or delete tables first.',
+        `No se puede eliminar el área «${area.name}»: ${remaining} mesa(s) ocupada(s), en limpieza o con cuenta abierta (${blocked.map((t) => t.number).join(', ')}). Liberá esas mesas primero.`,
       );
     }
 
@@ -460,7 +719,13 @@ export class TablesService {
       where: { id },
     });
 
-    return { message: 'Area deleted successfully' };
+    return {
+      message: 'Area deleted successfully',
+      areaName: area.name,
+      deletedTables: tableResult.deleted,
+      skippedTables: tableResult.skipped,
+      skippedNumbers: tableResult.skippedNumbers,
+    };
   }
 
   // Estadísticas

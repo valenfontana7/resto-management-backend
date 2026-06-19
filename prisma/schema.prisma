@@ -73,6 +73,12 @@ model Restaurant {
   customerProfiles      RestaurantCustomerProfile[]
   pushSubscriptions     PushSubscription[]
   memberships           RestaurantMembership[]
+  tableSessions         TableSession[]
+  cashRegisterSessions  CashRegisterSession[]
+  fiscalDocuments       FiscalDocument[]
+  terminals             RestaurantTerminal[]
+  dailyOperations       DailyOperation[]
+  inventoryItems        InventoryItem[]
 
   @@index([slug])
   @@index([status])
@@ -131,8 +137,11 @@ model Dish {
   name            String
   description     String?
   price           Int
+  costPrice       Int?
+  salonPrice      Int?
   image           String?
   isAvailable     Boolean     @default(true)
+  isAvailableInSalon Boolean  @default(true)
   isFeatured      Boolean     @default(false)
   preparationTime Int?
   calories        Int?
@@ -145,13 +154,30 @@ model Dish {
   reviewCount     Int         @default(0)
   category        Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   restaurant      Restaurant  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  orderItems      OrderItem[]
-  reviews         Review[]
-  modifierGroups  ModifierGroup[]
+  orderItems          OrderItem[]
+  tableSessionItems   TableSessionItem[]
+  reviews             Review[]
+  modifierGroups      ModifierGroup[]
 
   @@index([restaurantId])
   @@index([categoryId])
   @@index([restaurantId, isAvailable])
+}
+
+model InventoryItem {
+  id             String     @id @default(cuid())
+  restaurantId   String
+  name           String
+  unit           String     @default("unidad")
+  currentStock   Float      @default(0)
+  minStock       Float      @default(0)
+  linkedDishIds  String[]   @default([])
+  notes          String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
 }
 
 model ModifierGroup {
@@ -206,6 +232,8 @@ model Order {
   deliveryZoneId      String?
   estimatedTime       String?
   tableId             String?
+  tableSessionId      String?
+  orderSource         OrderSource          @default(ONLINE)
   scheduledFor        DateTime?
   preparedAt          DateTime?
   deliveredAt         DateTime?
@@ -228,6 +256,8 @@ model Order {
   customerProfile     RestaurantCustomerProfile? @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
   restaurant          Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   table               Table?               @relation("TableOrders", fields: [tableId], references: [id])
+  tableSession        TableSession?        @relation("SessionComandas", fields: [tableSessionId], references: [id])
+  closedSession       TableSession?        @relation("SessionFinalOrder")
   items               OrderItem[]
   statusHistory       OrderStatusHistory[]
   currentTable        Table?               @relation("CurrentTableOrder")
@@ -240,6 +270,7 @@ model Order {
   @@index([restaurantId, status])
   @@index([restaurantId, createdAt])
   @@index([orderNumber])
+  @@index([tableSessionId])
 }
 
 model CheckoutSession {
@@ -449,6 +480,9 @@ model Table {
   area                 TableArea?        @relation(fields: [areaId], references: [id])
   currentOrder         Order?            @relation("CurrentTableOrder", fields: [currentOrderId], references: [id])
   currentReservation   Reservation?      @relation("CurrentTableReservation", fields: [currentReservationId], references: [id])
+  currentSessionId     String?           @unique
+  currentSession       TableSession?     @relation("CurrentTableSession", fields: [currentSessionId], references: [id])
+  tableSessions        TableSession[]    @relation("TableSessions")
   restaurant           Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
   @@unique([restaurantId, number])
@@ -1302,4 +1336,262 @@ enum DigestFrequency {
   DAILY
   WEEKLY
   MONTHLY
+}
+
+// ─── Operación de salón (POS / mesas / caja / fiscal) ───────────────────────
+
+enum OrderSource {
+  ONLINE
+  FLOOR_COMANDA
+  FLOOR_FINAL
+}
+
+enum TableSessionStatus {
+  OPEN
+  CLOSING
+  CLOSED
+  CANCELLED
+}
+
+enum ComandaItemStatus {
+  PENDING
+  SENT
+  PREPARING
+  READY
+  SERVED
+  CANCELLED
+}
+
+enum CashRegisterSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum CashRegisterLevel {
+  PARTIAL
+  MAIN
+}
+
+enum CashMovementType {
+  SALE
+  REFUND
+  WITHDRAWAL
+  DEPOSIT
+  ADJUSTMENT
+  OPENING_FLOAT
+}
+
+enum FiscalDocumentType {
+  INTERNAL_TICKET
+  FACTURA_A
+  FACTURA_B
+  FACTURA_C
+  NOTA_CREDITO
+}
+
+enum FiscalDocumentStatus {
+  DRAFT
+  PENDING_AFIP
+  AUTHORIZED
+  REJECTED
+}
+
+model RestaurantTerminal {
+  id           String       @id @default(cuid())
+  restaurantId String
+  name         String
+  isActive     Boolean      @default(true)
+  lastSeenAt   DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  cashSessions CashRegisterSession[]
+
+  @@unique([restaurantId, name])
+}
+
+model TableSession {
+  id                    String             @id @default(cuid())
+  restaurantId          String
+  tableId               String
+  sessionNumber         String
+  status                TableSessionStatus @default(OPEN)
+  waiterId              String?
+  waiterName            String?
+  guestCount            Int                @default(1)
+  customerName          String?
+  notes                 String?
+  subtotal              Int                @default(0)
+  discount              Int                @default(0)
+  discountReason        String?
+  paymentMethodDiscount Int                @default(0)
+  tip                   Int                @default(0)
+  total                 Int                @default(0)
+  openedAt              DateTime           @default(now())
+  closedAt              DateTime?
+  orderId               String?            @unique
+  cashRegisterSessionId String?
+  comandaRound          Int                @default(0)
+  restaurant            Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  table                 Table              @relation("TableSessions", fields: [tableId], references: [id])
+  activeOnTable         Table?             @relation("CurrentTableSession")
+  finalOrder            Order?             @relation("SessionFinalOrder", fields: [orderId], references: [id])
+  cashRegisterSession   CashRegisterSession? @relation(fields: [cashRegisterSessionId], references: [id])
+  items                 TableSessionItem[]
+  comandaOrders         Order[]            @relation("SessionComandas")
+  fiscalDocuments       FiscalDocument[]
+  cashMovements         CashMovement[]
+
+  @@index([restaurantId, status])
+  @@index([tableId])
+  @@index([restaurantId, openedAt])
+}
+
+model TableSessionItem {
+  id              String            @id @default(cuid())
+  sessionId       String
+  dishId          String
+  name            String
+  quantity        Int
+  unitPrice       Int
+  subtotal        Int
+  notes           String?
+  roundNumber     Int               @default(1)
+  kitchenStatus   ComandaItemStatus @default(PENDING)
+  comandaOrderId  String?
+  paidInOrderId   String?
+  sentToKitchenAt DateTime?
+  createdAt       DateTime          @default(now())
+  session         TableSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  dish            Dish              @relation(fields: [dishId], references: [id])
+  modifiers       TableSessionItemModifier[]
+
+  @@index([sessionId])
+  @@index([sessionId, kitchenStatus])
+}
+
+model TableSessionItemModifier {
+  id              String           @id @default(cuid())
+  sessionItemId   String
+  modifierId      String
+  name            String
+  priceAdjustment Int              @default(0)
+  sessionItem     TableSessionItem @relation(fields: [sessionItemId], references: [id], onDelete: Cascade)
+
+  @@index([sessionItemId])
+}
+
+model CashRegisterSession {
+  id             String                    @id @default(cuid())
+  restaurantId   String
+  terminalId     String?
+  level          CashRegisterLevel         @default(PARTIAL)
+  openedByUserId String
+  openedByName   String
+  openingFloat   Int                       @default(0)
+  expectedCash   Int                       @default(0)
+  countedCash    Int?
+  difference     Int?
+  status         CashRegisterSessionStatus @default(OPEN)
+  openedAt       DateTime                  @default(now())
+  closedAt       DateTime?
+  notes          String?
+  closeReport    Json?
+  restaurant     Restaurant                @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  terminal       RestaurantTerminal?       @relation(fields: [terminalId], references: [id])
+  movements      CashMovement[]
+  tableSessions  TableSession[]
+  sourcedDeposits CashMovement[]           @relation("PartialToMainDeposit")
+
+  @@index([restaurantId, status])
+  @@index([restaurantId, status, level])
+}
+
+model CashMovement {
+  id              String           @id @default(cuid())
+  sessionId       String
+  tableSessionId  String?
+  sourceSessionId String?
+  type            CashMovementType
+  amount          Int
+  paymentMethod   String?
+  orderId         String?
+  description     String?
+  createdByUserId String?
+  createdByName   String?
+  createdAt       DateTime         @default(now())
+  cashSession     CashRegisterSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  tableSession    TableSession?    @relation(fields: [tableSessionId], references: [id])
+  sourceSession   CashRegisterSession? @relation("PartialToMainDeposit", fields: [sourceSessionId], references: [id])
+
+  @@index([sessionId])
+  @@index([tableSessionId])
+  @@index([sourceSessionId])
+}
+
+model FiscalDocument {
+  id                String               @id @default(cuid())
+  restaurantId      String
+  tableSessionId    String?
+  orderId           String?
+  type              FiscalDocumentType
+  status            FiscalDocumentStatus @default(DRAFT)
+  puntoVenta        Int?
+  numero            Int?
+  cae               String?
+  caeExpiresAt      DateTime?
+  customerDocType         String?
+  customerDocNumber       String?
+  customerName            String?
+  customerIvaCondition    Int?
+  relatedFiscalDocumentId String?
+  subtotal                Int
+  ivaAmount               Int                  @default(0)
+  total                   Int
+  payload                 Json?
+  pdfUrl                  String?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  restaurant              Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  tableSession            TableSession?        @relation(fields: [tableSessionId], references: [id])
+  relatedFiscalDocument   FiscalDocument?      @relation("FiscalCreditNote", fields: [relatedFiscalDocumentId], references: [id])
+  creditNotes             FiscalDocument[]     @relation("FiscalCreditNote")
+
+  @@index([restaurantId])
+  @@index([tableSessionId])
+  @@index([restaurantId, type, status])
+}
+
+model DailyOperation {
+  id                 String    @id @default(cuid())
+  restaurantId       String
+  businessDate       DateTime  @db.Date
+  dailyGoal          String?
+  openingChecklist   Json?
+  openingCompletedAt DateTime?
+  openingNotes       String?
+  closingChecklist   Json?
+  closingCompletedAt DateTime?
+  closingNotes       String?
+  dailyCloseReport   Json?
+  dailyClosedAt      DateTime?
+  dailyClosedByName  String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  restaurant         Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, businessDate])
+  @@index([restaurantId, businessDate])
+}
+
+model FloorClientMutation {
+  id               String   @id @default(cuid())
+  restaurantId     String
+  clientMutationId String
+  mutationType     String
+  response         Json
+  createdAt        DateTime @default(now())
+
+  @@unique([restaurantId, clientMutationId])
+  @@index([restaurantId, createdAt])
 }

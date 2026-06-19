@@ -12,6 +12,8 @@ import {
 } from '../../common/services/image-processing.service';
 import { PLAN_LIMITS } from '../../subscriptions/constants';
 import { PlanType } from '../../subscriptions/dto';
+import { PlanEntitlementsService } from '../../subscriptions/plans/plan-entitlements.service';
+import { isUnlimitedLimit } from '../../subscriptions/constants/plan-restrictions.fallback';
 
 export interface DishFilters {
   categoryId?: string;
@@ -32,6 +34,7 @@ export class DishesService {
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
     private readonly imageProcessing: ImageProcessingService,
+    private readonly planEntitlements: PlanEntitlementsService,
   ) {}
 
   async findAllPublic(restaurantId: string, filters?: DishFilters) {
@@ -98,21 +101,30 @@ export class DishesService {
 
     const subscription = await this.prisma.subscription.findUnique({
       where: { restaurantId },
-      select: { planType: true },
+      select: { planId: true, planType: true },
     });
-    const planType = (subscription?.planType as PlanType) || PlanType.STARTER;
-    const maxProducts =
-      PLAN_LIMITS[planType]?.maxProducts ??
-      PLAN_LIMITS[PlanType.STARTER].maxProducts;
+    const planId =
+      subscription?.planId ||
+      (subscription?.planType as PlanType) ||
+      PlanType.STARTER;
+    const maxProducts = await this.planEntitlements.getLimit(
+      planId,
+      'products',
+    );
+    const fallbackMaxProducts =
+      PLAN_LIMITS[(subscription?.planType as PlanType) || PlanType.STARTER]
+        ?.maxProducts ?? PLAN_LIMITS[PlanType.STARTER].maxProducts;
+    const effectiveMaxProducts =
+      maxProducts === 0 ? fallbackMaxProducts : maxProducts;
 
-    if (maxProducts >= 0) {
+    if (!isUnlimitedLimit(effectiveMaxProducts)) {
       const currentProducts = await this.prisma.dish.count({
         where: { restaurantId, deletedAt: null },
       });
 
-      if (currentProducts >= maxProducts) {
+      if (currentProducts >= effectiveMaxProducts) {
         throw new BadRequestException(
-          `Tu plan actual permite hasta ${maxProducts} productos. Actualiza tu plan para agregar más.`,
+          `Tu plan actual permite hasta ${effectiveMaxProducts} productos. Actualiza tu plan para agregar más.`,
         );
       }
     }
@@ -139,6 +151,9 @@ export class DishesService {
         name: dto.name,
         description: dto.description,
         price: dto.price,
+        costPrice: dto.costPrice ?? null,
+        salonPrice: dto.salonPrice ?? null,
+        isAvailableInSalon: dto.isAvailableInSalon ?? true,
         image: imagePath,
         preparationTime: dto.preparationTime,
         isFeatured: dto.isFeatured ?? false,
@@ -207,6 +222,9 @@ export class DishesService {
         name: dto.name,
         description: dto.description,
         price: dto.price,
+        costPrice: dto.costPrice !== undefined ? dto.costPrice : undefined,
+        salonPrice: dto.salonPrice !== undefined ? dto.salonPrice : undefined,
+        isAvailableInSalon: dto.isAvailableInSalon,
         categoryId: dto.categoryId,
         image: imagePath !== undefined ? imagePath : undefined,
         preparationTime: dto.preparationTime,

@@ -8,6 +8,10 @@ import {
   IsNotEmpty,
   IsNumber,
   ValidateNested,
+  IsArray,
+  ArrayMinSize,
+  ArrayMaxSize,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -111,4 +115,52 @@ export class UpdateTableAreaDto {
   @IsOptional()
   @IsString()
   name?: string;
+}
+
+export class BulkCreateTableItemDto {
+  @IsString()
+  @IsNotEmpty()
+  number: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  capacity: number;
+
+  @IsOptional()
+  @IsEnum(TableShape)
+  shape?: TableShape;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PositionDto)
+  position?: PositionDto;
+}
+
+export class BulkCreateTablesDto {
+  @IsString()
+  @IsNotEmpty()
+  areaId: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => BulkCreateTableItemDto)
+  tables: BulkCreateTableItemDto[];
+
+  @IsOptional()
+  @IsBoolean()
+  skipExisting?: boolean;
+}
+
+export class BulkDeleteTablesDto {
+  @IsOptional()
+  @IsString()
+  areaId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tableIds?: string[];
 }

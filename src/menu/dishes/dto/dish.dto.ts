@@ -23,10 +23,35 @@ export class CreateDishDto {
   @MaxLength(500)
   description?: string;
 
-  @ApiProperty({ example: 4200, description: 'Price in cents' })
+  @ApiProperty({ example: 4200, description: 'Online / delivery price' })
   @IsInt()
   @Min(0)
   price: number;
+
+  @ApiProperty({
+    example: 3800,
+    required: false,
+    description: 'Salon price; omit to use the same as online',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  salonPrice?: number | null;
+
+  @ApiProperty({ example: true, required: false, default: true })
+  @IsOptional()
+  @IsBoolean()
+  isAvailableInSalon?: boolean;
+
+  @ApiProperty({
+    example: 1800,
+    required: false,
+    description: 'Estimated cost (same unit as price)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  costPrice?: number | null;
 
   @ApiProperty({ example: 'clxxxx' })
   @IsString()
@@ -80,6 +105,23 @@ export class UpdateDishDto {
   @IsInt()
   @Min(0)
   price?: number;
+
+  @ApiProperty({ example: 4800, required: false })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  salonPrice?: number | null;
+
+  @ApiProperty({ example: true, required: false })
+  @IsOptional()
+  @IsBoolean()
+  isAvailableInSalon?: boolean;
+
+  @ApiProperty({ example: 2200, required: false })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  costPrice?: number | null;
 
   @ApiProperty({ example: 'clxxxx', required: false })
   @IsOptional()

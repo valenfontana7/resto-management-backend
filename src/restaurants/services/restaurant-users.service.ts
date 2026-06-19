@@ -10,6 +10,9 @@ import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AdminAlertsService } from '../../admin-alerts/admin-alerts.service';
 import { EmailService } from '../../email/email.service';
+import { renderActivationCodeEmail } from '../../email/email-templates';
+import { RolesCatalogService } from '../../common/services/roles-catalog.service';
+import { findSystemRoleByLegacyName } from '../../common/utils/role.utils';
 
 /**
  * Servicio para gestión de usuarios de restaurante.
@@ -19,6 +22,7 @@ import { EmailService } from '../../email/email.service';
 export class RestaurantUsersService {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly rolesCatalog: RolesCatalogService,
     @Optional() private readonly adminAlerts?: AdminAlertsService,
     @Optional() private readonly emailService?: EmailService,
   ) {}
@@ -27,6 +31,7 @@ export class RestaurantUsersService {
    * Obtener roles con permisos para un restaurante
    */
   async getRoles(restaurantId: string) {
+    await this.rolesCatalog.ensureSystemRoles(restaurantId);
     return this.prisma.role.findMany({
       where: { restaurantId },
       select: {
@@ -465,35 +470,31 @@ export class RestaurantUsersService {
   // ─── Métodos privados ───────────────────────────────────────────────
 
   private async findRole(restaurantId: string, roleIdentifier: string) {
-    // Intentar buscar por ID primero
     let role = await this.prisma.role.findUnique({
       where: { id: roleIdentifier },
     });
 
-    // Si no se encuentra por ID, buscar por nombre (case-insensitive)
+    if (role && role.restaurantId !== restaurantId) {
+      role = null;
+    }
+
     if (!role) {
+      const def = findSystemRoleByLegacyName(roleIdentifier);
+      const namesToTry = def
+        ? [def.code, ...def.legacyNames]
+        : [
+            roleIdentifier,
+            roleIdentifier.toUpperCase(),
+            roleIdentifier.charAt(0).toUpperCase() +
+              roleIdentifier.slice(1).toLowerCase(),
+          ];
+
       role = await this.prisma.role.findFirst({
         where: {
           restaurantId,
-          name: {
-            equals: roleIdentifier,
-            mode: 'insensitive',
-          },
+          name: { in: namesToTry, mode: 'insensitive' },
         },
       });
-
-      // Si aún no se encuentra, probar versión capitalizada
-      if (!role && roleIdentifier.length > 0) {
-        const capitalizedName =
-          roleIdentifier.charAt(0).toUpperCase() +
-          roleIdentifier.slice(1).toLowerCase();
-        role = await this.prisma.role.findFirst({
-          where: {
-            restaurantId,
-            name: capitalizedName,
-          },
-        });
-      }
     }
 
     return role;
@@ -524,24 +525,17 @@ export class RestaurantUsersService {
       minute: '2-digit',
       timeZone: 'America/Argentina/Buenos_Aires',
     });
-    const safeName = this.escapeHtml(params.name);
     const safeRestaurantName = this.escapeHtml(params.restaurantName);
 
     return this.emailService.sendGenericEmail(
       params.to,
-      `Tu codigo de activacion para ${safeRestaurantName}`,
-      `
-        <div style="font-family: Arial, sans-serif; color: #0f172a; line-height: 1.5;">
-          <h2 style="margin: 0 0 12px;">Hola ${safeName}</h2>
-          <p>Te crearon un acceso al panel de <strong>${safeRestaurantName}</strong>.</p>
-          <p>Usa este codigo en el primer ingreso para crear tu contrasena:</p>
-          <div style="font-size: 30px; font-weight: 700; letter-spacing: 6px; padding: 16px 20px; background: #f1f5f9; border-radius: 8px; display: inline-block;">
-            ${formattedCode}
-          </div>
-          <p style="margin-top: 18px; color: #475569;">El codigo vence el ${expiresAt} y solo puede usarse una vez.</p>
-          <p style="color: #64748b; font-size: 13px;">Si no esperabas este acceso, ignora este email.</p>
-        </div>
-      `,
+      `Tu código de activación · ${safeRestaurantName}`,
+      renderActivationCodeEmail({
+        name: params.name,
+        restaurantName: params.restaurantName,
+        formattedCode,
+        expiresAt,
+      }),
       'Bentoo',
     );
   }

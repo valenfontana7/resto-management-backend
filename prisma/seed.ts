@@ -62,6 +62,14 @@ const STARTER_RESTRICTIONS: PlanRestrictionSeed[] = [
     category: 'limits',
   },
   {
+    key: 'categories',
+    type: 'limit',
+    value: '3',
+    displayName: 'Categorías',
+    description: 'Cantidad máxima de categorías del menú',
+    category: 'limits',
+  },
+  {
     key: 'orders_per_month',
     type: 'limit',
     value: '0',
@@ -118,6 +126,30 @@ const STARTER_RESTRICTIONS: PlanRestrictionSeed[] = [
     category: 'features',
   },
   {
+    key: 'kitchen_display',
+    type: 'boolean',
+    value: 'false',
+    displayName: 'Monitor de cocina',
+    description: 'Pantalla de cocina (KDS)',
+    category: 'features',
+  },
+  {
+    key: 'loyalty',
+    type: 'boolean',
+    value: 'false',
+    displayName: 'Fidelización',
+    description: 'Programa de puntos y promociones',
+    category: 'features',
+  },
+  {
+    key: 'reviews',
+    type: 'boolean',
+    value: 'false',
+    displayName: 'Reseñas',
+    description: 'Sistema de reseñas de clientes',
+    category: 'features',
+  },
+  {
     key: 'mercadopago',
     type: 'boolean',
     value: 'false',
@@ -169,6 +201,14 @@ const STARTER_RESTRICTION_UPDATES: PlanRestrictionSeed[] = [
     category: 'limits',
   },
   {
+    key: 'categories',
+    type: 'limit',
+    value: '3',
+    displayName: 'Categorías',
+    description: 'Cantidad maxima de categorias del menu',
+    category: 'limits',
+  },
+  {
     key: 'orders_per_month',
     type: 'limit',
     value: '0',
@@ -182,6 +222,30 @@ const STARTER_RESTRICTION_UPDATES: PlanRestrictionSeed[] = [
     value: 'false',
     displayName: 'Pedidos Online',
     description: 'Sistema de pedidos en linea',
+    category: 'features',
+  },
+  {
+    key: 'kitchen_display',
+    type: 'boolean',
+    value: 'false',
+    displayName: 'Monitor de cocina',
+    description: 'Pantalla de cocina (KDS)',
+    category: 'features',
+  },
+  {
+    key: 'loyalty',
+    type: 'boolean',
+    value: 'false',
+    displayName: 'Fidelizacion',
+    description: 'Programa de puntos y promociones',
+    category: 'features',
+  },
+  {
+    key: 'reviews',
+    type: 'boolean',
+    value: 'false',
+    displayName: 'Resenas',
+    description: 'Sistema de resenas de clientes',
     category: 'features',
   },
   {
@@ -225,6 +289,14 @@ const PROFESSIONAL_RESTRICTIONS: PlanRestrictionSeed[] = [
     value: '50',
     displayName: 'Mesas',
     description: 'Cantidad de mesas gestionables',
+    category: 'limits',
+  },
+  {
+    key: 'categories',
+    type: 'limit',
+    value: '9999',
+    displayName: 'Categorías',
+    description: 'Categorías ilimitadas',
     category: 'limits',
   },
   {
@@ -284,6 +356,30 @@ const PROFESSIONAL_RESTRICTIONS: PlanRestrictionSeed[] = [
     category: 'features',
   },
   {
+    key: 'kitchen_display',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Monitor de cocina',
+    description: 'Pantalla de cocina (KDS)',
+    category: 'features',
+  },
+  {
+    key: 'loyalty',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Fidelización',
+    description: 'Programa de puntos y promociones',
+    category: 'features',
+  },
+  {
+    key: 'reviews',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Reseñas',
+    description: 'Sistema de reseñas de clientes',
+    category: 'features',
+  },
+  {
     key: 'mercadopago',
     type: 'boolean',
     value: 'true',
@@ -332,6 +428,14 @@ const ENTERPRISE_RESTRICTIONS: PlanRestrictionSeed[] = [
     value: '9999',
     displayName: 'Mesas',
     description: 'Mesas ilimitadas',
+    category: 'limits',
+  },
+  {
+    key: 'categories',
+    type: 'limit',
+    value: '9999',
+    displayName: 'Categorías',
+    description: 'Categorías ilimitadas',
     category: 'limits',
   },
   {
@@ -391,6 +495,30 @@ const ENTERPRISE_RESTRICTIONS: PlanRestrictionSeed[] = [
     category: 'features',
   },
   {
+    key: 'kitchen_display',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Monitor de cocina',
+    description: 'Pantalla de cocina (KDS)',
+    category: 'features',
+  },
+  {
+    key: 'loyalty',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Fidelización',
+    description: 'Programa de puntos y promociones',
+    category: 'features',
+  },
+  {
+    key: 'reviews',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Reseñas',
+    description: 'Sistema de reseñas de clientes',
+    category: 'features',
+  },
+  {
     key: 'multi_location',
     type: 'boolean',
     value: 'true',
@@ -437,6 +565,92 @@ const ENTERPRISE_RESTRICTIONS: PlanRestrictionSeed[] = [
     displayName: 'Soporte',
     description: 'Soporte dedicado 24/7',
     category: 'support',
+  },
+];
+
+const PROFESSIONAL_RESTRICTION_UPDATES: PlanRestrictionSeed[] = [
+  {
+    key: 'products',
+    type: 'limit',
+    value: '200',
+    displayName: 'Productos',
+    description: 'Cantidad maxima de productos en el menu',
+    category: 'limits',
+  },
+  {
+    key: 'categories',
+    type: 'limit',
+    value: '9999',
+    displayName: 'Categorías',
+    description: 'Categorias ilimitadas',
+    category: 'limits',
+  },
+  {
+    key: 'delivery',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Delivery',
+    description: 'Gestion de entregas a domicilio',
+    category: 'features',
+  },
+  {
+    key: 'kitchen_display',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Monitor de cocina',
+    description: 'Pantalla de cocina (KDS)',
+    category: 'features',
+  },
+  {
+    key: 'loyalty',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Fidelizacion',
+    description: 'Programa de puntos y promociones',
+    category: 'features',
+  },
+  {
+    key: 'reviews',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Resenas',
+    description: 'Sistema de resenas de clientes',
+    category: 'features',
+  },
+];
+
+const ENTERPRISE_RESTRICTION_UPDATES: PlanRestrictionSeed[] = [
+  {
+    key: 'categories',
+    type: 'limit',
+    value: '9999',
+    displayName: 'Categorías',
+    description: 'Categorias ilimitadas',
+    category: 'limits',
+  },
+  {
+    key: 'kitchen_display',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Monitor de cocina',
+    description: 'Pantalla de cocina (KDS)',
+    category: 'features',
+  },
+  {
+    key: 'loyalty',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Fidelizacion',
+    description: 'Programa de puntos y promociones',
+    category: 'features',
+  },
+  {
+    key: 'reviews',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Resenas',
+    description: 'Sistema de resenas de clientes',
+    category: 'features',
   },
 ];
 
@@ -566,6 +780,8 @@ async function seedSubscriptionPlans() {
   );
 
   await syncPlanRestrictions('STARTER', STARTER_RESTRICTION_UPDATES);
+  await syncPlanRestrictions('PROFESSIONAL', PROFESSIONAL_RESTRICTION_UPDATES);
+  await syncPlanRestrictions('ENTERPRISE', ENTERPRISE_RESTRICTION_UPDATES);
 
   console.log('✅ Subscription plans created:', {
     starterPlan,

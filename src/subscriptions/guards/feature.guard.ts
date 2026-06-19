@@ -7,12 +7,9 @@ import {
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SubscriptionStatus } from '@prisma/client';
-import {
-  planHasFeature,
-  getMinimumPlanForFeature,
-  PLAN_NAMES,
-} from '../constants';
+import { PLAN_NAMES } from '../constants';
 import { PlanType } from '../dto';
+import { PlanEntitlementsService } from '../plans/plan-entitlements.service';
 
 export const REQUIRED_FEATURE_KEY = 'requiredFeature';
 
@@ -34,6 +31,7 @@ export class FeatureGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly prisma: PrismaService,
+    private readonly planEntitlements: PlanEntitlementsService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -92,11 +90,16 @@ export class FeatureGuard implements CanActivate {
       });
     }
 
-    // Verificar si el plan tiene la feature
     const planType = subscription.planType as PlanType;
+    const planId = subscription.planId || planType;
+    const hasFeature = await this.planEntitlements.hasFeature(
+      planId,
+      requiredFeature,
+    );
 
-    if (!planHasFeature(planType, requiredFeature)) {
-      const minimumPlan = getMinimumPlanForFeature(requiredFeature);
+    if (!hasFeature) {
+      const minimumPlan =
+        await this.planEntitlements.getMinimumPlanForFeature(requiredFeature);
       const minimumPlanName = minimumPlan
         ? PLAN_NAMES[minimumPlan]
         : 'desconocido';

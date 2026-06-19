@@ -9,6 +9,8 @@ import { JwtService } from '@nestjs/jwt';
 import { Prisma } from '@prisma/client';
 import { createHash, randomBytes } from 'crypto';
 import { EmailService } from '../email/email.service';
+import { renderCustomerMagicLinkEmail } from '../email/email-templates';
+import { ImageProcessingService } from '../common/services/image-processing.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 type CustomerProfileInput = {
@@ -97,6 +99,7 @@ type SessionProfileRecord = PublicProfileRecord & {
     id: string;
     slug: string;
     name: string;
+    logo: string | null;
   };
 };
 
@@ -123,6 +126,7 @@ export class CustomersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly images: ImageProcessingService,
     @Optional() private readonly emailService?: EmailService,
   ) {}
 
@@ -245,11 +249,12 @@ export class CustomersService {
       rawToken,
       input.redirect,
     );
-    const html = this.renderCustomerMagicLinkEmail({
+    const html = renderCustomerMagicLinkEmail({
       restaurantName: profile.restaurant.name,
       customerName: profile.displayName,
       link,
       expiresInMinutes: CUSTOMER_MAGIC_LINK_EXPIRY_MINUTES,
+      logoUrl: this.images.toEmailAssetUrl(profile.restaurant.logo),
     });
 
     await this.emailService?.sendGenericEmail(
@@ -760,6 +765,7 @@ export class CustomersService {
           id: true,
           slug: true,
           name: true,
+          logo: true,
         },
       },
     } as const;
@@ -856,60 +862,6 @@ export class CustomersService {
       this.normalizeCustomerRedirect(restaurantSlug, redirect),
     );
     return url.toString();
-  }
-
-  private renderCustomerMagicLinkEmail(params: {
-    restaurantName: string;
-    customerName: string;
-    link: string;
-    expiresInMinutes: number;
-  }) {
-    const safeName = params.customerName || 'Cliente';
-    const safeRestaurantName = params.restaurantName || 'Bentoo';
-    const safeLink = params.link;
-
-    return `
-      <html>
-        <body style="margin:0;padding:0;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a;">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="padding:24px 12px;background:#f8fafc;">
-            <tr>
-              <td align="center">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;overflow:hidden;">
-                  <tr>
-                    <td style="padding:32px;background:linear-gradient(135deg,#0f172a 0%,#0f766e 100%);color:#ffffff;">
-                      <p style="margin:0 0 12px;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;opacity:0.82;">Acceso a tu cuenta</p>
-                      <h1 style="margin:0 0 10px;font-size:28px;line-height:1.2;">${safeRestaurantName}</h1>
-                      <p style="margin:0;font-size:15px;line-height:1.6;opacity:0.92;">Hola ${safeName}, te enviamos un link seguro para entrar a tu cuenta sin contraseña.</p>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:32px;">
-                      <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#334155;">
-                        Este acceso es de un solo uso y vence en ${params.expiresInMinutes} minutos.
-                      </p>
-                      <p style="margin:0 0 24px;">
-                        <a href="${safeLink}" style="display:inline-block;padding:14px 22px;border-radius:999px;background:#14b8a6;color:#042f2e;text-decoration:none;font-weight:700;">Entrar a mi cuenta</a>
-                      </p>
-                      <p style="margin:0 0 8px;font-size:13px;line-height:1.6;color:#64748b;">
-                        Si el botón no funciona, copiá este enlace en tu navegador:
-                      </p>
-                      <p style="margin:0;word-break:break-all;font-size:12px;line-height:1.7;color:#0f766e;">${safeLink}</p>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:20px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;">
-                      <p style="margin:0;font-size:12px;line-height:1.6;color:#64748b;">
-                        Si no pediste este acceso, podés ignorar este email. Tu historial y tus datos siguen protegidos.
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
-    `;
   }
 
   private extractBearerToken(authorization?: string | null) {

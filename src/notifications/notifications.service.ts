@@ -10,6 +10,7 @@ import {
   NotificationChannel,
   Prisma,
 } from '@prisma/client';
+import { resolveOrderNotificationChannels } from './order-notification-channels.util';
 
 export interface CreateNotificationDto {
   userId: string;
@@ -66,6 +67,31 @@ export class NotificationsService {
 
     // Enviar por los canales especificados
     await this.sendNotification(notification);
+
+    // Tiempo real en panel admin (campana + listas conectadas).
+    // Pedidos ya emiten order_created por SSE; evitamos duplicar eventos.
+    if (
+      notification.restaurantId &&
+      !String(notification.type).startsWith('ORDER_')
+    ) {
+      this.kitchenNotifications.emitNotification(notification.restaurantId, {
+        type: 'in_app',
+        notificationId: notification.id,
+        data: {
+          id: notification.id,
+          type: notification.type,
+          title: notification.title,
+          message: notification.message,
+          priority: notification.priority,
+          isRead: notification.isRead,
+          createdAt: notification.createdAt,
+          ...(typeof notification.data === 'object' &&
+          notification.data !== null
+            ? (notification.data as Record<string, unknown>)
+            : {}),
+        },
+      });
+    }
 
     return notification;
   }
@@ -330,11 +356,7 @@ export class NotificationsService {
       title: titles[type],
       message: messages[type],
       data: orderData,
-      channels: [
-        NotificationChannel.IN_APP,
-        NotificationChannel.PUSH,
-        NotificationChannel.EMAIL,
-      ],
+      channels: resolveOrderNotificationChannels(type),
     });
   }
 }

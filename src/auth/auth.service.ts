@@ -23,6 +23,12 @@ import {
 import { User } from '@prisma/client';
 import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
 import { EmailService } from '../email/email.service';
+import { renderMagicLinkEmail } from '../email/email-templates';
+import { RolesCatalogService } from '../common/services/roles-catalog.service';
+import {
+  normalizeRoleCode,
+  normalizePermissionList,
+} from '../common/utils/role.utils';
 
 export interface JwtPayload {
   sub: string; // userId
@@ -67,6 +73,7 @@ export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private readonly rolesCatalog: RolesCatalogService,
     @Optional() private readonly adminAlerts?: AdminAlertsService,
     @Optional() private readonly emailService?: EmailService,
   ) {}
@@ -192,69 +199,21 @@ export class AuthService {
         },
       });
 
-      // 2. Crear roles del sistema
-      const adminRole = await tx.role.create({
-        data: {
-          restaurantId: restaurant.id,
-          name: 'Admin',
-          permissions: ['all'],
-          color: '#ef4444',
-          isSystemRole: true,
-        },
-      });
+      // 2. Roles de sistema (catálogo canónico)
+      await this.rolesCatalog.ensureSystemRoles(restaurant.id, tx);
+      const ownerRoleId = await this.rolesCatalog.getOwnerRoleId(
+        restaurant.id,
+        tx,
+      );
 
-      await tx.role.createMany({
-        data: [
-          {
-            restaurantId: restaurant.id,
-            name: 'Manager',
-            permissions: [
-              'dashboard',
-              'menu',
-              'orders',
-              'reservations',
-              'tables',
-              'reports',
-              'analytics',
-              'kitchen',
-              'delivery',
-              'settings',
-            ],
-            color: '#f59e0b',
-            isSystemRole: true,
-          },
-          {
-            restaurantId: restaurant.id,
-            name: 'Waiter',
-            permissions: ['orders', 'tables'],
-            color: '#3b82f6',
-            isSystemRole: true,
-          },
-          {
-            restaurantId: restaurant.id,
-            name: 'Kitchen',
-            permissions: ['orders', 'kitchen'],
-            color: '#8b5cf6',
-            isSystemRole: true,
-          },
-          {
-            restaurantId: restaurant.id,
-            name: 'Delivery',
-            permissions: ['orders', 'delivery'],
-            color: '#10b981',
-            isSystemRole: true,
-          },
-        ],
-      });
-
-      // 3. Crear usuario con rol Admin
+      // 3. Crear usuario dueño
       const user = await tx.user.create({
         data: {
           email: normalizedEmail,
           password: hashedPassword,
           name: dto.name,
           restaurantId: restaurant.id,
-          roleId: adminRole.id,
+          roleId: ownerRoleId,
         },
       });
 
@@ -429,7 +388,7 @@ export class AuthService {
     ]);
 
     const link = this.buildMagicLink(rawToken, dto.redirect);
-    const html = this.renderMagicLinkEmail({
+    const html = renderMagicLinkEmail({
       name: user.name,
       link,
       expiresInMinutes: MAGIC_LINK_EXPIRY_MINUTES,
@@ -767,82 +726,11 @@ export class AuthService {
   }
 
   private mapRoleNameToCode(roleName?: string | null): string | null {
-    if (!roleName) return null;
-    const normalized = roleName.trim().toUpperCase();
-
-    const map: Record<string, string> = {
-      SUPER_ADMIN: 'SUPER_ADMIN',
-      OWNER: 'OWNER',
-      ADMIN: 'ADMIN',
-      MANAGER: 'MANAGER',
-      WAITER: 'WAITER',
-      CHEF: 'CHEF',
-      KITCHEN: 'KITCHEN',
-      DELIVERY: 'DELIVERY',
-    };
-
-    if (map[normalized]) return map[normalized];
-
-    const friendlyMap: Record<string, string> = {
-      ADMINISTRATOR: 'ADMIN',
-      ADMINISTRADOR: 'ADMIN',
-      GERENTE: 'MANAGER',
-      MOZO: 'WAITER',
-      COCINA: 'KITCHEN',
-      REPARTO: 'DELIVERY',
-      REPARTIDOR: 'DELIVERY',
-    };
-
-    return friendlyMap[normalized] || null;
+    return normalizeRoleCode(roleName);
   }
 
   private normalizePermissions(permissions: string[]) {
-    if (permissions.includes('all')) return ['all'];
-
-    const mapping: Record<string, string[]> = {
-      manage_menu: ['menu'],
-      manage_orders: ['orders'],
-      view_orders: ['orders'],
-      update_order_status: ['orders', 'kitchen'],
-      view_reports: ['reports'],
-      manage_tables: ['tables'],
-      view_tables: ['tables'],
-      manage_reservations: ['reservations'],
-      take_orders: ['orders'],
-      view_delivery_orders: ['delivery', 'orders'],
-      update_delivery_status: ['delivery'],
-      manage_payments: ['billing'],
-    };
-
-    const allowed = new Set([
-      'orders',
-      'reservations',
-      'menu',
-      'reports',
-      'tables',
-      'kitchen',
-      'delivery',
-      'promotions',
-      'analytics',
-      'settings',
-      'billing',
-      'branding',
-      'dashboard',
-    ]);
-
-    const normalized = new Set<string>();
-    for (const perm of permissions) {
-      if (allowed.has(perm)) {
-        normalized.add(perm);
-        continue;
-      }
-      const mapped = mapping[perm] || [];
-      for (const p of mapped) {
-        if (allowed.has(p)) normalized.add(p);
-      }
-    }
-
-    return Array.from(normalized);
+    return normalizePermissionList(permissions);
   }
 
   private escapeHtml(value: string): string {
@@ -852,67 +740,6 @@ export class AuthService {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
-  }
-
-  private renderMagicLinkEmail(params: {
-    name: string;
-    link: string;
-    expiresInMinutes: number;
-  }): string {
-    const safeName = this.escapeHtml(params.name || 'Hola');
-    const safeLink = this.escapeHtml(params.link);
-
-    return `
-      <!doctype html>
-      <html lang="es">
-        <head>
-          <meta charset="utf-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Acceso a Bentoo</title>
-        </head>
-        <body style="margin:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#0f172a;">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f5f9;padding:32px 16px;">
-            <tr>
-              <td align="center">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0;">
-                  <tr>
-                    <td style="padding:32px;background:#071316;color:#ffffff;">
-                      <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#99f6e4;">Bentoo</p>
-                      <h1 style="margin:0;font-size:26px;line-height:1.2;">Entrar a tu panel</h1>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:32px;">
-                      <p style="margin:0 0 16px;font-size:16px;line-height:1.6;">Hola ${safeName},</p>
-                      <p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:#475569;">
-                        Recibimos una solicitud para entrar a tu panel de Bentoo sin contraseña.
-                        Este link vence en ${params.expiresInMinutes} minutos y se puede usar una sola vez.
-                      </p>
-                      <p style="margin:0 0 28px;text-align:center;">
-                        <a href="${safeLink}" style="display:inline-block;border-radius:12px;background:#14b8a6;color:#042f2e;text-decoration:none;padding:14px 24px;font-size:15px;font-weight:700;">
-                          Entrar al panel
-                        </a>
-                      </p>
-                      <p style="margin:0 0 12px;font-size:13px;line-height:1.6;color:#64748b;">
-                        Si el boton no funciona, copia y pega este enlace en tu navegador:
-                      </p>
-                      <p style="margin:0;word-break:break-all;font-size:12px;line-height:1.6;color:#0f766e;">${safeLink}</p>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding:20px 32px;background:#f8fafc;border-top:1px solid #e2e8f0;">
-                      <p style="margin:0;font-size:12px;line-height:1.6;color:#64748b;">
-                        Si no pediste este acceso, podes ignorar este email. Tu cuenta sigue protegida.
-                      </p>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
-    `;
   }
 
   async generateAuthResponse(user: User): Promise<AuthResponse> {
@@ -1093,24 +920,12 @@ export class AuthService {
 
     // If still no user found, create a temporary admin user
     if (!targetUser) {
-      // Find or create OWNER role
-      let ownerRole = await this.prisma.role.findFirst({
-        where: {
-          restaurantId,
-          name: { in: ['OWNER', 'Owner'] },
-        },
+      const ownerRoleId = await this.rolesCatalog.getOwnerRoleId(restaurantId);
+      const ownerRole = await this.prisma.role.findUnique({
+        where: { id: ownerRoleId },
       });
-
       if (!ownerRole) {
-        ownerRole = await this.prisma.role.create({
-          data: {
-            restaurantId,
-            name: 'OWNER',
-            permissions: ['all'],
-            color: '#ef4444',
-            isSystemRole: true,
-          },
-        });
+        throw new NotFoundException('OWNER role not found for restaurant');
       }
 
       // Create temporary admin user

@@ -129,7 +129,7 @@ La UI debe redirigir al paso de Pagos cuando recibe ese código.
 | ---------------------------------------------------------- | -------------------------------------------------------------------- |
 | Almacenar credenciales cifradas.                           | Abrir y mantener la cuenta de comerciante en Payway/MP.              |
 | Iniciar cobros, reconciliar, verificar webhooks.           | Configurar el CBU/CVU donde se acreditan los fondos.                 |
-| Mostrar estado, reportes y exportes contables al dueño.    | Cumplir con AFIP, retenciones y emisión de comprobantes.             |
+| Mostrar estado, reportes y exportes contables al dueño.    | Cumplir con ARCA, retenciones y emisión de comprobantes.             |
 | Cobrar la suscripción SaaS mensual aparte (no por orden).  | Resolver contracargos y atención al cliente final del pago.          |
 
 ## 8. Variables de entorno relevantes

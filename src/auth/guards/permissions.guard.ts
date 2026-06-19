@@ -7,6 +7,10 @@ import {
 import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  isPrivilegedRole,
+  roleHasAnyPermission,
+} from '../../common/utils/role.utils';
 
 /**
  * Guard that verifies the user's role has the required permissions.
@@ -39,39 +43,26 @@ export class PermissionsGuard implements CanActivate {
     const { user } = context.switchToHttp().getRequest();
     if (!user) return false;
 
-    const normalizedRole = String(user.role || '')
-      .trim()
-      .toUpperCase();
-
-    // Admin roles have full access
-    if (normalizedRole === 'SUPER_ADMIN' || normalizedRole === 'ADMIN') {
+    if (isPrivilegedRole(user.role)) {
       return true;
     }
 
-    // Load the role's permissions from DB
     if (!user.roleId) return false;
 
     const role = await this.prisma.role.findUnique({
       where: { id: user.roleId },
-      select: { permissions: true },
+      select: { permissions: true, name: true },
     });
 
     if (!role) return false;
 
-    const rolePermissions = Array.isArray(role.permissions)
-      ? (role.permissions as string[])
-      : [];
-
-    if (rolePermissions.includes('all')) {
-      return true;
-    }
-
-    // Check if the role has at least one of the required permissions
-    const hasPermission = requiredPermissions.some((perm) =>
-      rolePermissions.includes(perm),
+    const allowed = roleHasAnyPermission(
+      role.name ?? user.role,
+      role.permissions,
+      requiredPermissions,
     );
 
-    if (!hasPermission) {
+    if (!allowed) {
       throw new ForbiddenException(
         'You do not have permission to access this resource',
       );

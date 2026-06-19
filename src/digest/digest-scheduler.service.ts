@@ -4,6 +4,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AnalyticsService } from '../analytics/analytics.service';
 import { AnalyticsPeriod } from '../analytics/dto/analytics.dto';
 import { EmailService } from '../email/email.service';
+import { renderDigestEmail } from '../email/email-templates';
+import { ImageProcessingService } from '../common/services/image-processing.service';
 import { DigestPreferencesService } from './digest-preferences.service';
 
 @Injectable()
@@ -14,6 +16,7 @@ export class DigestSchedulerService {
     private readonly prisma: PrismaService,
     private readonly analyticsService: AnalyticsService,
     private readonly emailService: EmailService,
+    private readonly images: ImageProcessingService,
     private readonly preferencesService: DigestPreferencesService,
   ) {}
 
@@ -111,7 +114,7 @@ export class DigestSchedulerService {
       WEEKLY: 'Resumen semanal',
       MONTHLY: 'Resumen mensual',
     };
-    return `📊 ${labels[frequency] || 'Resumen'} — ${restaurantName}`;
+    return `Resumen ${labels[frequency] || ''} · ${restaurantName}`;
   }
 
   private async buildDigestHtml(
@@ -146,98 +149,27 @@ export class DigestSchedulerService {
       (revenueBreakdownResult as any)?.breakdown || [];
 
     const periodLabel: Record<string, string> = {
-      DAILY: 'hoy',
-      WEEKLY: 'esta semana',
-      MONTHLY: 'este mes',
+      DAILY: 'Resumen de hoy',
+      WEEKLY: 'Resumen de la semana',
+      MONTHLY: 'Resumen del mes',
     };
 
-    return `
-<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;">
-<div style="max-width:600px;margin:0 auto;padding:20px;">
-  <div style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-    
-    <!-- Header -->
-    <div style="background:linear-gradient(135deg,#1e293b,#334155);padding:24px;text-align:center;">
-      <h1 style="color:#fff;margin:0;font-size:22px;">📊 ${this.getSubject(restaurantName, frequency)}</h1>
-      <p style="color:#94a3b8;margin:8px 0 0;font-size:14px;">${periodLabel[frequency] || ''}</p>
-    </div>
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { logo: true },
+    });
+    const logoUrl = this.images.toEmailAssetUrl(restaurant?.logo ?? null);
 
-    <!-- KPIs -->
-    <div style="padding:24px;">
-      <div style="display:flex;justify-content:space-around;text-align:center;margin-bottom:24px;">
-        <div>
-          <p style="font-size:28px;font-weight:700;color:#1e293b;margin:0;">$${totalSales.toLocaleString()}</p>
-          <p style="color:#64748b;font-size:13px;margin:4px 0 0;">Ventas totales</p>
-        </div>
-        <div>
-          <p style="font-size:28px;font-weight:700;color:#1e293b;margin:0;">${totalOrders}</p>
-          <p style="color:#64748b;font-size:13px;margin:4px 0 0;">Pedidos</p>
-        </div>
-        <div>
-          <p style="font-size:28px;font-weight:700;color:#1e293b;margin:0;">$${avgTicket.toLocaleString()}</p>
-          <p style="color:#64748b;font-size:13px;margin:4px 0 0;">Ticket promedio</p>
-        </div>
-      </div>
-
-      <!-- Top Dishes -->
-      ${
-        topDishes.length > 0
-          ? `
-      <h3 style="font-size:16px;color:#1e293b;margin:0 0 12px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">🏆 Top platos</h3>
-      <table style="width:100%;border-collapse:collapse;font-size:14px;">
-        <tr style="color:#64748b;text-align:left;">
-          <th style="padding:6px 0;">Plato</th>
-          <th style="padding:6px 0;text-align:right;">Pedidos</th>
-          <th style="padding:6px 0;text-align:right;">Revenue</th>
-        </tr>
-        ${topDishes
-          .map(
-            (d, i) => `
-        <tr style="border-top:1px solid #f1f5f9;">
-          <td style="padding:8px 0;">${i + 1}. ${d.name}</td>
-          <td style="padding:8px 0;text-align:right;">${d.orders}</td>
-          <td style="padding:8px 0;text-align:right;">$${d.revenue.toLocaleString()}</td>
-        </tr>`,
-          )
-          .join('')}
-      </table>
-      `
-          : ''
-      }
-
-      <!-- Revenue Breakdown -->
-      ${
-        breakdown.length > 0
-          ? `
-      <h3 style="font-size:16px;color:#1e293b;margin:24px 0 12px;border-bottom:1px solid #e2e8f0;padding-bottom:8px;">📦 Desglose por tipo</h3>
-      <table style="width:100%;border-collapse:collapse;font-size:14px;">
-        ${breakdown
-          .map(
-            (b) => `
-        <tr style="border-top:1px solid #f1f5f9;">
-          <td style="padding:8px 0;">${b.type}</td>
-          <td style="padding:8px 0;text-align:right;">${b.orders} pedidos</td>
-          <td style="padding:8px 0;text-align:right;">$${b.revenue.toLocaleString()}</td>
-        </tr>`,
-          )
-          .join('')}
-      </table>
-      `
-          : ''
-      }
-    </div>
-
-    <!-- Footer -->
-    <div style="background:#f8fafc;padding:16px;text-align:center;font-size:12px;color:#94a3b8;">
-      <p style="margin:0;">Este es un resumen automático de ${restaurantName}.</p>
-      <p style="margin:4px 0 0;">Para cambiar tus preferencias, visita la configuración del restaurante.</p>
-    </div>
-  </div>
-</div>
-</body>
-</html>`;
+    return renderDigestEmail({
+      title: this.getSubject(restaurantName, frequency),
+      periodLabel: periodLabel[frequency] || '',
+      totalSales,
+      totalOrders,
+      avgTicket,
+      topDishes,
+      breakdown,
+      logoUrl,
+      restaurantName,
+    });
   }
 }

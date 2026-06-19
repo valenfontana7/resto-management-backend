@@ -88,9 +88,14 @@ describe('CustomersService', () => {
       sendGenericEmail: jest.fn().mockResolvedValue(true),
     };
 
+    const images = {
+      toEmailAssetUrl: jest.fn().mockReturnValue(null),
+    };
+
     service = new CustomersService(
       prisma,
       jwtService as any,
+      images as any,
       emailService as any,
     );
   });

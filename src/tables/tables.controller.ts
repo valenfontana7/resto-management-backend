@@ -22,6 +22,8 @@ import {
   UpdateTableStatusDto,
   CreateTableAreaDto,
   UpdateTableAreaDto,
+  BulkCreateTablesDto,
+  BulkDeleteTablesDto,
 } from './dto/table.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -45,6 +47,30 @@ export class TablesController {
     @Body() createDto: CreateTableDto,
   ) {
     return this.tablesService.create(restaurantId, user.userId, createDto);
+  }
+
+  @Post('restaurant/:restaurantId/bulk')
+  @ApiOperation({ summary: 'Create many tables at once (up to 200)' })
+  @ApiResponse({ status: 201, description: 'Tables created successfully' })
+  async createBulk(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() createDto: BulkCreateTablesDto,
+  ) {
+    return this.tablesService.createBulk(restaurantId, user.userId, createDto);
+  }
+
+  @Post('restaurant/:restaurantId/bulk-delete')
+  @ApiOperation({
+    summary: 'Delete many tables at once (only available / unused)',
+  })
+  @ApiResponse({ status: 200, description: 'Tables deleted successfully' })
+  async deleteBulk(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() deleteDto: BulkDeleteTablesDto,
+  ) {
+    return this.tablesService.deleteBulk(restaurantId, user.userId, deleteDto);
   }
 
   @Get('restaurant/:restaurantId')

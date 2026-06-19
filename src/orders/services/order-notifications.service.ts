@@ -5,6 +5,7 @@ import {
   OrderData,
   RestaurantData,
 } from '../../email/email.service';
+import { ImageProcessingService } from '../../common/services/image-processing.service';
 import {
   OrdersGateway,
   OrderUpdatePayload,
@@ -12,6 +13,7 @@ import {
 import { KitchenNotificationsService } from '../../kitchen/kitchen-notifications.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { CallMeBotService } from '../../notifications/callmebot.service';
+import { isPlatformStaffRole } from '../../notifications/order-notification-channels.util';
 import { OrderStatus, OrderType } from '../dto/order.dto';
 
 @Injectable()
@@ -21,6 +23,7 @@ export class OrderNotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
+    private readonly images: ImageProcessingService,
     private readonly ordersGateway: OrdersGateway,
     private readonly kitchenNotifications: KitchenNotificationsService,
     @Inject(forwardRef(() => NotificationsService))
@@ -60,6 +63,7 @@ export class OrderNotificationsService {
       email: restaurant.email,
       phone: restaurant.phone,
       address: restaurant.address,
+      logoUrl: this.images.toEmailAssetUrl(restaurant.logo ?? null),
     };
   }
 
@@ -189,21 +193,9 @@ export class OrderNotificationsService {
     newStatus: OrderStatus,
   ) {
     try {
-      const restaurantUsers = await this.prisma.user.findMany({
-        where: {
-          restaurantId: order.restaurantId,
-          isActive: true,
-        },
-        select: {
-          id: true,
-          name: true,
-          role: {
-            select: {
-              name: true,
-            },
-          },
-        },
-      });
+      const restaurantUsers = await this.getRestaurantStaffUsers(
+        order.restaurantId,
+      );
 
       let notificationType:
         | 'ORDER_CREATED'
@@ -259,6 +251,63 @@ export class OrderNotificationsService {
     } catch (error) {
       this.logger.error('Error enviando notificaciones de orden:', error);
     }
+  }
+
+  /**
+   * Staff operativo del restaurante (memberships + legacy restaurantId).
+   * Excluye SUPER_ADMIN y otros roles de plataforma.
+   */
+  private async getRestaurantStaffUsers(restaurantId: string) {
+    const [memberships, directUsers] = await Promise.all([
+      this.prisma.restaurantMembership.findMany({
+        where: {
+          restaurantId,
+          user: { isActive: true },
+        },
+        select: {
+          userId: true,
+          role: { select: { name: true } },
+          user: {
+            select: {
+              id: true,
+              role: { select: { name: true } },
+            },
+          },
+        },
+      }),
+      this.prisma.user.findMany({
+        where: {
+          restaurantId,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          role: { select: { name: true } },
+        },
+      }),
+    ]);
+
+    const staff = new Map<string, { id: string; name: string | null }>();
+
+    for (const membership of memberships) {
+      const roleName =
+        membership.role?.name ?? membership.user.role?.name ?? null;
+      if (isPlatformStaffRole(roleName)) continue;
+      staff.set(membership.userId, {
+        id: membership.userId,
+        name: roleName,
+      });
+    }
+
+    for (const user of directUsers) {
+      const roleName = user.role?.name ?? null;
+      if (isPlatformStaffRole(roleName)) continue;
+      if (!staff.has(user.id)) {
+        staff.set(user.id, { id: user.id, name: roleName });
+      }
+    }
+
+    return [...staff.values()];
   }
 
   /**

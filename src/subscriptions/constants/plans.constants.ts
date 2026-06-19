@@ -1,4 +1,12 @@
 import { PlanType } from '../dto';
+import {
+  FALLBACK_RESTRICTIONS_BY_PLAN,
+  buildFallbackSnapshot,
+  fallbackGetMinimumPlanForFeature,
+  fallbackHasFeature,
+  isUnlimitedLimit,
+  resolveEnforcementFeatureKey,
+} from './plan-restrictions.fallback';
 
 /**
  * Precios de los planes en centavos (ARS)
@@ -19,53 +27,55 @@ export const TRIAL_DAYS = 14;
  */
 export const GRACE_PERIOD_DAYS = 3;
 
-/**
- * Features disponibles por plan
- */
-export const PLAN_FEATURES: Record<PlanType, string[]> = {
-  [PlanType.STARTER]: ['menu_digital', 'qr_code'],
-  [PlanType.PROFESSIONAL]: [
-    'menu_digital',
-    'qr_code',
-    'basic_orders',
-    'branding',
-    'unlimited_products',
-    'reservations',
-    'kitchen_display',
-    'analytics',
-    'whatsapp_integration',
-    'reviews',
-    'loyalty',
-  ],
-  [PlanType.ENTERPRISE]: [
-    'menu_digital',
-    'qr_code',
-    'basic_orders',
-    'branding',
-    'unlimited_products',
-    'reservations',
-    'kitchen_display',
-    'analytics',
-    'whatsapp_integration',
-    'reviews',
-    'loyalty',
-    'multi_branch',
-    'delivery_integration',
-    'pedidosya_rappi',
-    'custom_api',
-  ],
-};
+function buildPlanFeaturesFromFallback(planType: PlanType): string[] {
+  const snapshot = buildFallbackSnapshot(planType);
+  const legacyKeys = new Set<string>();
+
+  for (const [key, enabled] of Object.entries(snapshot.features)) {
+    if (enabled) {
+      legacyKeys.add(key);
+    }
+  }
+
+  if (isUnlimitedLimit(snapshot.limits.products ?? 0)) {
+    legacyKeys.add('unlimited_products');
+  }
+
+  return Array.from(legacyKeys);
+}
 
 /**
- * Límites de productos por plan
+ * Features disponibles por plan (derivadas del fallback alineado con seed)
+ */
+export const PLAN_FEATURES: Record<PlanType, string[]> = {
+  [PlanType.STARTER]: buildPlanFeaturesFromFallback(PlanType.STARTER),
+  [PlanType.PROFESSIONAL]: buildPlanFeaturesFromFallback(PlanType.PROFESSIONAL),
+  [PlanType.ENTERPRISE]: buildPlanFeaturesFromFallback(PlanType.ENTERPRISE),
+};
+
+function readLimit(planType: PlanType, key: string): number {
+  return buildFallbackSnapshot(planType).limits[key] ?? 0;
+}
+
+/**
+ * Límites de menú por plan (derivados del fallback alineado con seed)
  */
 export const PLAN_LIMITS: Record<
   PlanType,
   { maxProducts: number; maxCategories: number }
 > = {
-  [PlanType.STARTER]: { maxProducts: 10, maxCategories: 3 },
-  [PlanType.PROFESSIONAL]: { maxProducts: -1, maxCategories: -1 }, // Ilimitado
-  [PlanType.ENTERPRISE]: { maxProducts: -1, maxCategories: -1 }, // Ilimitado
+  [PlanType.STARTER]: {
+    maxProducts: readLimit(PlanType.STARTER, 'products'),
+    maxCategories: readLimit(PlanType.STARTER, 'categories'),
+  },
+  [PlanType.PROFESSIONAL]: {
+    maxProducts: readLimit(PlanType.PROFESSIONAL, 'products'),
+    maxCategories: readLimit(PlanType.PROFESSIONAL, 'categories'),
+  },
+  [PlanType.ENTERPRISE]: {
+    maxProducts: readLimit(PlanType.ENTERPRISE, 'products'),
+    maxCategories: readLimit(PlanType.ENTERPRISE, 'categories'),
+  },
 };
 
 /**
@@ -81,26 +91,14 @@ export const PLAN_NAMES: Record<PlanType, string> = {
  * Obtener el plan mínimo requerido para una feature
  */
 export function getMinimumPlanForFeature(feature: string): PlanType | null {
-  const planOrder: PlanType[] = [
-    PlanType.STARTER,
-    PlanType.PROFESSIONAL,
-    PlanType.ENTERPRISE,
-  ];
-
-  for (const plan of planOrder) {
-    if (PLAN_FEATURES[plan].includes(feature)) {
-      return plan;
-    }
-  }
-
-  return null;
+  return fallbackGetMinimumPlanForFeature(feature);
 }
 
 /**
- * Verificar si un plan tiene acceso a una feature
+ * Verificar si un plan tiene acceso a una feature (fallback sync)
  */
 export function planHasFeature(planType: PlanType, feature: string): boolean {
-  return PLAN_FEATURES[planType]?.includes(feature) ?? false;
+  return fallbackHasFeature(planType, feature);
 }
 
 /**
@@ -120,52 +118,35 @@ export interface RestaurantFeatures {
   socialMedia: boolean;
 }
 
+function buildRestaurantFeaturesFromPlan(plan: PlanType): RestaurantFeatures {
+  const snapshot = buildFallbackSnapshot(plan);
+  const feature = (key: string) => snapshot.features[key] ?? false;
+  const onlineOrders = feature('online_orders');
+
+  return {
+    menu: feature('qr_menus'),
+    orders: onlineOrders,
+    reservations: feature('reservations'),
+    delivery: feature('delivery'),
+    loyalty: feature('loyalty'),
+    reviews: feature('reviews'),
+    giftCards: false,
+    catering: false,
+    onlineOrdering: onlineOrders,
+    takeaway: onlineOrders,
+    socialMedia: feature('custom_branding'),
+  };
+}
+
 /**
  * Features habilitadas por defecto según el plan
  */
-export const DEFAULT_FEATURES_BY_PLAN: Record<
-  PlanType,
-  Partial<RestaurantFeatures>
-> = {
-  [PlanType.STARTER]: {
-    menu: true,
-    orders: false,
-    reservations: false,
-    delivery: false,
-    loyalty: false,
-    reviews: false,
-    giftCards: false,
-    catering: false,
-    onlineOrdering: false,
-    takeaway: false,
-    socialMedia: false,
-  },
-  [PlanType.PROFESSIONAL]: {
-    menu: true,
-    orders: true,
-    reservations: true,
-    delivery: false,
-    loyalty: false,
-    reviews: false,
-    giftCards: false,
-    catering: false,
-    onlineOrdering: true,
-    takeaway: true,
-    socialMedia: true,
-  },
-  [PlanType.ENTERPRISE]: {
-    menu: true,
-    orders: true,
-    reservations: true,
-    delivery: true,
-    loyalty: false,
-    reviews: false,
-    giftCards: false,
-    catering: false,
-    onlineOrdering: true,
-    takeaway: true,
-    socialMedia: true,
-  },
+export const DEFAULT_FEATURES_BY_PLAN: Record<PlanType, RestaurantFeatures> = {
+  [PlanType.STARTER]: buildRestaurantFeaturesFromPlan(PlanType.STARTER),
+  [PlanType.PROFESSIONAL]: buildRestaurantFeaturesFromPlan(
+    PlanType.PROFESSIONAL,
+  ),
+  [PlanType.ENTERPRISE]: buildRestaurantFeaturesFromPlan(PlanType.ENTERPRISE),
 };
 
 /**
@@ -195,14 +176,15 @@ export function adjustFeaturesForPlan(
   const allowedFeatures = DEFAULT_FEATURES_BY_PLAN[newPlan];
   const adjustedFeatures: Partial<RestaurantFeatures> = { ...currentFeatures };
 
-  // Para cada feature, verificar si está permitida en el nuevo plan
-  Object.keys(allowedFeatures).forEach((key) => {
-    const featureKey = key as keyof RestaurantFeatures;
-    // Si la feature no está permitida en el nuevo plan, deshabilitarla
-    if (!allowedFeatures[featureKey]) {
-      adjustedFeatures[featureKey] = false;
-    }
-  });
+  (Object.keys(allowedFeatures) as Array<keyof RestaurantFeatures>).forEach(
+    (featureKey) => {
+      if (!allowedFeatures[featureKey]) {
+        adjustedFeatures[featureKey] = false;
+      }
+    },
+  );
 
   return adjustedFeatures;
 }
+
+export { FALLBACK_RESTRICTIONS_BY_PLAN, resolveEnforcementFeatureKey };

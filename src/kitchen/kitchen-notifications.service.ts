@@ -3,8 +3,14 @@ import { Subject, Observable } from 'rxjs';
 import { MessageEvent } from '@nestjs/common';
 
 export interface KitchenNotification {
-  type: 'order_created' | 'order_updated' | 'order_cancelled' | 'order_ready';
-  orderId: string;
+  type:
+    | 'order_created'
+    | 'order_updated'
+    | 'order_cancelled'
+    | 'order_ready'
+    | 'in_app';
+  orderId?: string;
+  notificationId?: string;
   restaurantId: string;
   data: any;
   timestamp: Date;

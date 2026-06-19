@@ -17,7 +17,7 @@ import { DeliveryDispatchService } from '../delivery/services/delivery-dispatch.
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CustomersService } from '../customers/customers.service';
 import * as crypto from 'crypto';
-import { Prisma } from '@prisma/client';
+import { Prisma, OrderSource, ComandaItemStatus } from '@prisma/client';
 import {
   CreateOrderDto,
   UpdateOrderStatusDto,
@@ -236,9 +236,10 @@ export class OrdersService {
           customerEmail: createDto.customerEmail,
           customerPhone,
           type: orderType,
-          status: OrderStatus.PENDING,
+          status: OrderStatus.CONFIRMED,
           paymentMethod,
           paymentStatus: PaymentStatus.PENDING,
+          confirmedAt: new Date(),
           subtotal,
           deliveryFee,
           discount,
@@ -274,9 +275,9 @@ export class OrdersService {
           },
           statusHistory: {
             create: {
-              toStatus: OrderStatus.PENDING,
+              toStatus: OrderStatus.CONFIRMED,
               changedBy: 'system',
-              notes: 'Pedido creado',
+              notes: 'Pedido recibido (pago pendiente)',
             },
           },
         },
@@ -316,7 +317,7 @@ export class OrdersService {
       this.notifications.emitNewOrderCreated(restaurantId, order);
       void this.notifications.emitKitchenNotification(
         order,
-        OrderStatus.PENDING,
+        OrderStatus.CONFIRMED,
       );
 
       return {
@@ -973,6 +974,7 @@ export class OrdersService {
             email: true,
             phone: true,
             address: true,
+            logo: true,
             features: true,
           },
         },
@@ -1012,6 +1014,7 @@ export class OrdersService {
             email: true,
             phone: true,
             address: true,
+            logo: true,
             features: true,
           },
         },
@@ -1030,7 +1033,6 @@ export class OrdersService {
 
     const parsed = this.parseOrderStatusOrPaymentStatus(updateDto.status);
 
-    // Payment status update
     if (parsed.kind === 'payment') {
       const updatedOrder = await this.prisma.order.update({
         where: { id },
@@ -1060,42 +1062,69 @@ export class OrdersService {
       return updatedOrder;
     }
 
-    this.validateStatusTransition(order.status as OrderStatus, parsed.status);
+    if (parsed.status === (order.status as OrderStatus)) {
+      return order;
+    }
+
+    const transitionSteps = this.resolveStatusTransitionSteps(
+      order.status as OrderStatus,
+      parsed.status,
+    );
+
+    let rollingStatus = order.status as OrderStatus;
+    for (const step of transitionSteps) {
+      this.validateStatusTransition(rollingStatus, step);
+      rollingStatus = step;
+    }
+
+    const finalStatus = transitionSteps[transitionSteps.length - 1];
 
     const updateData: any = {
-      status: parsed.status,
+      status: finalStatus,
       statusHistory: {
-        create: {
-          fromStatus: order.status as OrderStatus,
-          toStatus: parsed.status,
+        create: transitionSteps.map((step, index) => ({
+          fromStatus:
+            index === 0
+              ? (order.status as OrderStatus)
+              : transitionSteps[index - 1],
+          toStatus: step,
           changedBy: userId,
-          notes: updateDto.notes,
-        },
+          notes:
+            index === transitionSteps.length - 1 ? updateDto.notes : undefined,
+        })),
       },
     };
 
-    const timestampField = this.getTimestampField(parsed.status);
-    if (timestampField) {
-      updateData[timestampField] = new Date();
+    for (const step of transitionSteps) {
+      const timestampField = this.getTimestampField(step);
+      if (timestampField) {
+        updateData[timestampField] = new Date();
+      }
     }
 
-    const updatedOrder = await this.prisma.order.update({
-      where: { id },
-      data: updateData,
-      include: {
-        items: {
-          include: {
-            dish: true,
-            selectedModifiers: true,
+    const updatedOrder = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.order.update({
+        where: { id },
+        data: updateData,
+        include: {
+          items: {
+            include: {
+              dish: true,
+              selectedModifiers: true,
+            },
+          },
+          statusHistory: {
+            orderBy: {
+              createdAt: 'desc',
+            },
+            take: 5,
           },
         },
-        statusHistory: {
-          orderBy: {
-            createdAt: 'desc',
-          },
-          take: 5,
-        },
-      },
+      });
+
+      await this.syncFloorComandaKitchenItemsTx(tx, saved, finalStatus);
+
+      return saved;
     });
 
     // Send notifications via extracted service
@@ -1107,18 +1136,15 @@ export class OrdersService {
         'READY',
         'DELIVERED',
         'CANCELLED',
-      ].includes(parsed.status)
+      ].includes(finalStatus)
     ) {
       this.notifications.sendStatusUpdateEmail(updatedOrder, order.restaurant);
     }
 
     this.notifications.emitOrderUpdate(restaurantId, updatedOrder);
-    void this.notifications.emitKitchenNotification(
-      updatedOrder,
-      parsed.status,
-    );
+    void this.notifications.emitKitchenNotification(updatedOrder, finalStatus);
 
-    if (parsed.status === OrderStatus.DELIVERED) {
+    if (finalStatus === OrderStatus.DELIVERED) {
       await this.awardLoyaltyPointsForDeliveredOrder(
         updatedOrder,
         order.restaurant,
@@ -1126,6 +1152,43 @@ export class OrdersService {
     }
 
     return updatedOrder;
+  }
+
+  /**
+   * Mantiene TableSessionItem.kitchenStatus alineado con la comanda (Order).
+   * Sin esto, marcar Listo en cocina deja ítems en SENT y la mesa vuelve a "Cocina".
+   */
+  private async syncFloorComandaKitchenItemsTx(
+    tx: Prisma.TransactionClient,
+    order: { id: string; orderSource?: OrderSource | null },
+    status: OrderStatus,
+  ): Promise<void> {
+    if (order.orderSource !== OrderSource.FLOOR_COMANDA) {
+      return;
+    }
+
+    let itemStatus: ComandaItemStatus | null = null;
+    switch (status) {
+      case OrderStatus.READY:
+        itemStatus = ComandaItemStatus.READY;
+        break;
+      case OrderStatus.DELIVERED:
+        itemStatus = ComandaItemStatus.SERVED;
+        break;
+      case OrderStatus.CANCELLED:
+        itemStatus = ComandaItemStatus.CANCELLED;
+        break;
+      case OrderStatus.PREPARING:
+        itemStatus = ComandaItemStatus.SENT;
+        break;
+      default:
+        return;
+    }
+
+    await tx.tableSessionItem.updateMany({
+      where: { comandaOrderId: order.id },
+      data: { kitchenStatus: itemStatus },
+    });
   }
 
   private getTimestampField(status: OrderStatus): string | null {
@@ -1163,6 +1226,26 @@ export class OrdersService {
     }
 
     return { kind: 'status', status: normalized as OrderStatus };
+  }
+
+  private resolveStatusTransitionSteps(
+    currentStatus: OrderStatus,
+    targetStatus: OrderStatus,
+  ): OrderStatus[] {
+    if (currentStatus === targetStatus) {
+      return [targetStatus];
+    }
+
+    // Aceptar y mandar a cocina: PENDING/PAID → PREPARING pasa por CONFIRMED
+    if (
+      targetStatus === OrderStatus.PREPARING &&
+      (currentStatus === OrderStatus.PENDING ||
+        currentStatus === OrderStatus.PAID)
+    ) {
+      return [OrderStatus.CONFIRMED, OrderStatus.PREPARING];
+    }
+
+    return [targetStatus];
   }
 
   private validateStatusTransition(
@@ -1304,6 +1387,7 @@ export class OrdersService {
             email: true,
             phone: true,
             address: true,
+            logo: true,
           },
         },
       },

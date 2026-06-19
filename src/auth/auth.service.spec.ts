@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
 import { UnauthorizedException, ConflictException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
+import { RolesCatalogService } from '../common/services/roles-catalog.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -61,11 +62,17 @@ describe('AuthService', () => {
       signAsync: jest.fn().mockResolvedValue('mock-jwt-token'),
     };
 
+    const rolesCatalog = {
+      ensureSystemRoles: jest.fn().mockResolvedValue(undefined),
+      getOwnerRoleId: jest.fn().mockResolvedValue('role-owner'),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
         { provide: PrismaService, useValue: prisma },
         { provide: JwtService, useValue: jwt },
+        { provide: RolesCatalogService, useValue: rolesCatalog },
       ],
     }).compile();
 

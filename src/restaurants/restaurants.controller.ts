@@ -34,6 +34,11 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { RestaurantsService } from './restaurants.service';
+import {
+  featuresForProductIntent,
+  businessRulesPatchForIntent,
+  type OnboardingProductIntent,
+} from './onboarding-product-intent';
 import { RestaurantUsersService } from './services/restaurant-users.service';
 import { RestaurantBrandingV2Service } from './services/restaurant-branding-v2.service';
 import { RestaurantSettingsService } from './services/restaurant-settings.service';
@@ -220,6 +225,13 @@ export class RestaurantsController {
       const contact = d.contact || {};
       const paymentMethods = d.paymentMethods || {};
 
+      const productIntent = (d.productIntent ??
+        'both') as OnboardingProductIntent;
+      const intentFeatures = featuresForProductIntent(productIntent);
+      const intentRules = businessRulesPatchForIntent(productIntent);
+      const selectedPlan = d.planSelection?.selectedPlan || 'STARTER';
+      const isStarter = selectedPlan === 'STARTER';
+
       payload = {
         planSelection: d.planSelection,
         businessInfo: {
@@ -243,9 +255,25 @@ export class RestaurantsController {
             minOrderAmount:
               paymentMethods.minOrder || paymentMethods.minOrderAmount || 1000,
             orderLeadTime: (d.estimatedTime && parseInt(d.estimatedTime)) || 30,
+            allowScheduledOrders: intentFeatures.onlineOrdering !== false,
           },
+          delivery: {
+            enabled:
+              !isStarter &&
+              (d.deliveryZones?.enabled ?? false) &&
+              intentFeatures.delivery !== false,
+          },
+          pickup: {
+            enabled: !isStarter && intentFeatures.takeaway !== false,
+          },
+          dineIn: {
+            enabled: true,
+            reservationsEnabled:
+              !isStarter && intentFeatures.reservations !== false,
+          },
+          ...intentRules,
         },
-        features: {},
+        features: intentFeatures,
         hours: d.hours || {},
         slug: contact.customSlug || undefined,
       };

@@ -99,6 +99,20 @@ export class AnalyticsController {
     );
   }
 
+  @Get('restaurant/:restaurantId/top-tables')
+  async getTopTables(
+    @Param('restaurantId') restaurantId: string,
+    @Query() query: TopItemsQueryDto,
+  ) {
+    return this.analyticsService.getTopTables(
+      restaurantId,
+      query.period,
+      query.limit || 10,
+      query.startDate,
+      query.endDate,
+    );
+  }
+
   @Get('restaurant/:restaurantId/performance')
   async getPerformance(
     @Param('restaurantId') restaurantId: string,

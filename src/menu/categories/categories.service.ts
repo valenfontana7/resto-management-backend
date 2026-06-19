@@ -12,6 +12,8 @@ import {
 } from '../../common/services/image-processing.service';
 import { PLAN_LIMITS } from '../../subscriptions/constants';
 import { PlanType } from '../../subscriptions/dto';
+import { PlanEntitlementsService } from '../../subscriptions/plans/plan-entitlements.service';
+import { isUnlimitedLimit } from '../../subscriptions/constants/plan-restrictions.fallback';
 
 /**
  * Servicio para gestión de categorías.
@@ -25,6 +27,7 @@ export class CategoriesService {
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
     private readonly imageProcessing: ImageProcessingService,
+    private readonly planEntitlements: PlanEntitlementsService,
   ) {}
 
   async findAll(restaurantId: string, userId: string) {
@@ -71,21 +74,30 @@ export class CategoriesService {
 
     const subscription = await this.prisma.subscription.findUnique({
       where: { restaurantId },
-      select: { planType: true },
+      select: { planId: true, planType: true },
     });
-    const planType = (subscription?.planType as PlanType) || PlanType.STARTER;
-    const maxCategories =
-      PLAN_LIMITS[planType]?.maxCategories ??
-      PLAN_LIMITS[PlanType.STARTER].maxCategories;
+    const planId =
+      subscription?.planId ||
+      (subscription?.planType as PlanType) ||
+      PlanType.STARTER;
+    const maxCategories = await this.planEntitlements.getLimit(
+      planId,
+      'categories',
+    );
+    const fallbackMaxCategories =
+      PLAN_LIMITS[(subscription?.planType as PlanType) || PlanType.STARTER]
+        ?.maxCategories ?? PLAN_LIMITS[PlanType.STARTER].maxCategories;
+    const effectiveMaxCategories =
+      maxCategories === 0 ? fallbackMaxCategories : maxCategories;
 
-    if (maxCategories >= 0) {
+    if (!isUnlimitedLimit(effectiveMaxCategories)) {
       const currentCategories = await this.prisma.category.count({
         where: { restaurantId, deletedAt: null },
       });
 
-      if (currentCategories >= maxCategories) {
+      if (currentCategories >= effectiveMaxCategories) {
         throw new ConflictException(
-          `Tu plan actual permite hasta ${maxCategories} categorías. Actualiza tu plan para agregar más.`,
+          `Tu plan actual permite hasta ${effectiveMaxCategories} categorías. Actualiza tu plan para agregar más.`,
         );
       }
     }

@@ -41,6 +41,6 @@ import { CustomersModule } from '../customers/customers.module';
     OrderNotificationsService,
     PaymentReconciliationService,
   ],
-  exports: [OrdersService],
+  exports: [OrdersService, OrderNotificationsService],
 })
 export class OrdersModule {}

@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsArray,
   IsEnum,
+  IsIn,
   ValidateNested,
   Min,
   Matches,
@@ -333,6 +334,13 @@ export class PaymentRulesDto {
   @IsOptional()
   @IsBoolean()
   acceptTips?: boolean;
+
+  @ApiPropertyOptional({
+    example: { cash: 10, 'bank-transfer': 5 },
+    description: 'Descuento porcentual por medio de pago (salón y checkout)',
+  })
+  @IsOptional()
+  methodDiscounts?: Record<string, number>;
 }
 
 export class PickupRulesDto {
@@ -352,6 +360,18 @@ export class DineInRulesDto {
   @IsOptional()
   @IsBoolean()
   reservationsEnabled?: boolean;
+}
+
+export class AdminAppearanceDto {
+  @ApiPropertyOptional({ example: 'inter' })
+  @IsOptional()
+  @IsString()
+  fontFamily?: string;
+
+  @ApiPropertyOptional({ enum: ['sm', 'md', 'lg'], example: 'md' })
+  @IsOptional()
+  @IsIn(['sm', 'md', 'lg'])
+  fontSize?: 'sm' | 'md' | 'lg';
 }
 
 export class BusinessRulesDto {
@@ -390,6 +410,12 @@ export class BusinessRulesDto {
   @ValidateNested()
   @Type(() => PaymentRulesDto)
   payment?: PaymentRulesDto;
+
+  @ApiPropertyOptional({ type: AdminAppearanceDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AdminAppearanceDto)
+  adminAppearance?: AdminAppearanceDto;
 }
 
 // ==================== Features ====================

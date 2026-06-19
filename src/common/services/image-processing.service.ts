@@ -129,6 +129,59 @@ export class ImageProcessingService {
   }
 
   /**
+   * URL absoluta y accesible para clientes de correo (CDN/S3 público).
+   */
+  toEmailAssetUrl(value: string | null | undefined): string | null {
+    if (value == null) return null;
+    const trimmed = String(value).trim();
+    if (!trimmed) return null;
+
+    if (/^https?:\/\//i.test(trimmed)) {
+      if (trimmed.includes('localhost') || trimmed.includes('127.0.0.1')) {
+        const path = trimmed.replace(/^https?:\/\/[^/]+/, '');
+        if (path.startsWith('/api/uploads/')) {
+          const key = this.extractUploadKey(path);
+          if (key) return this.s3.buildPublicUrl(key);
+        }
+        const base = this.absoluteBaseUrl();
+        return base ? `${base}${path}` : null;
+      }
+      return trimmed;
+    }
+
+    if (trimmed.startsWith('/api/uploads/')) {
+      const key = this.extractUploadKey(trimmed);
+      if (key && !/^https?:\/\//i.test(key)) {
+        return this.s3.buildPublicUrl(key);
+      }
+      if (key && /^https?:\/\//i.test(key)) return key;
+      const base = this.absoluteBaseUrl();
+      return base ? `${base}${trimmed}` : null;
+    }
+
+    return this.s3.buildPublicUrl(trimmed);
+  }
+
+  private extractUploadKey(path: string): string | null {
+    try {
+      return decodeURIComponent(path.replace(/^\/api\/uploads\//, ''));
+    } catch {
+      return null;
+    }
+  }
+
+  private absoluteBaseUrl(): string {
+    return (
+      process.env.S3_PUBLIC_BASE_URL ||
+      process.env.BACKEND_URL ||
+      process.env.FRONTEND_URL ||
+      ''
+    )
+      .trim()
+      .replace(/\/$/, '');
+  }
+
+  /**
    * Transforma un objeto, convirtiendo campos de imagen a URLs.
    *
    * @param obj - Objeto con campos de imagen

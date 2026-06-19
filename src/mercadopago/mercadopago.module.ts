@@ -27,6 +27,7 @@ import { AuthModule } from '../auth/auth.module';
     MercadoPagoCredentialsService,
     MercadoPagoWebhookService,
     MercadoPagoOAuthService,
+    EncryptionService,
   ],
 })
 export class MercadoPagoModule {}

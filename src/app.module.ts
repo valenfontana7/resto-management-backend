@@ -47,6 +47,8 @@ import { PaymentProvidersModule } from './payment-providers/payment-providers.mo
 import { OnboardingAiModule } from './onboarding-ai/onboarding-ai.module';
 import { OnboardingAnalyticsModule } from './onboarding-analytics/onboarding-analytics.module';
 import { DemoExamplesModule } from './demo-examples/demo-examples.module';
+import { FloorModule } from './floor/floor.module';
+import { BusinessHealthModule } from './business-health/business-health.module';
 import { getJwtSecret } from './common/config/jwt.config';
 import { validateEnvironment } from './common/config/env.validation';
 
@@ -127,6 +129,8 @@ import { validateEnvironment } from './common/config/env.validation';
     OnboardingAiModule,
     OnboardingAnalyticsModule,
     DemoExamplesModule,
+    FloorModule,
+    BusinessHealthModule,
   ],
   controllers: [AppController],
   providers: [

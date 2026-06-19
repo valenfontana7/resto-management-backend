@@ -14,6 +14,7 @@ import { RestaurantSettingsService } from './services/restaurant-settings.servic
 import { RestaurantStatus, SubscriptionStatus } from '@prisma/client';
 import { adjustFeaturesForPlan } from '../subscriptions/constants';
 import { PlanType } from '../subscriptions/dto';
+import { RolesCatalogService } from '../common/services/roles-catalog.service';
 
 @Injectable()
 export class RestaurantsService {
@@ -22,6 +23,7 @@ export class RestaurantsService {
   constructor(
     private prisma: PrismaService,
     private readonly s3: S3Service,
+    private readonly rolesCatalog: RolesCatalogService,
     @Inject(forwardRef(() => RestaurantSettingsService))
     private readonly settingsService: RestaurantSettingsService,
   ) {}
@@ -537,57 +539,8 @@ export class RestaurantsService {
         },
       });
 
-      // 2. Create system roles
-      await tx.role.createMany({
-        data: [
-          {
-            restaurantId: restaurant.id,
-            name: 'Admin',
-            permissions: ['all'],
-            color: '#ef4444',
-            isSystemRole: true,
-          },
-          {
-            restaurantId: restaurant.id,
-            name: 'Manager',
-            permissions: [
-              'dashboard',
-              'menu',
-              'orders',
-              'reservations',
-              'tables',
-              'reports',
-              'analytics',
-              'kitchen',
-              'delivery',
-              'settings',
-            ],
-            color: '#f59e0b',
-            isSystemRole: true,
-          },
-          {
-            restaurantId: restaurant.id,
-            name: 'Waiter',
-            permissions: ['orders', 'tables'],
-            color: '#3b82f6',
-            isSystemRole: true,
-          },
-          {
-            restaurantId: restaurant.id,
-            name: 'Kitchen',
-            permissions: ['orders', 'kitchen'],
-            color: '#8b5cf6',
-            isSystemRole: true,
-          },
-          {
-            restaurantId: restaurant.id,
-            name: 'Delivery',
-            permissions: ['orders', 'delivery'],
-            color: '#10b981',
-            isSystemRole: true,
-          },
-        ],
-      });
+      // 2. Roles de sistema (catálogo canónico)
+      await this.rolesCatalog.ensureSystemRoles(restaurant.id, tx);
 
       const now = new Date();
       const selectedSubscriptionPlan = await tx.subscriptionPlan.findUnique({
@@ -628,17 +581,14 @@ export class RestaurantsService {
   }
 
   async associateUserWithRestaurant(userId: string, restaurantId: string) {
-    // Find the Admin role for this restaurant
-    const adminRole = await this.prisma.role.findFirst({
-      where: {
-        restaurantId,
-        name: 'Admin',
-        isSystemRole: true,
-      },
+    await this.rolesCatalog.ensureSystemRoles(restaurantId);
+    const ownerRoleId = await this.rolesCatalog.getOwnerRoleId(restaurantId);
+    const adminRole = await this.prisma.role.findUnique({
+      where: { id: ownerRoleId },
     });
 
     if (!adminRole) {
-      throw new NotFoundException('Admin role not found for this restaurant');
+      throw new NotFoundException('OWNER role not found for this restaurant');
     }
 
     // Multi-cuenta por usuario: preservar el acceso al restaurante actualmente
@@ -931,6 +881,27 @@ export class RestaurantsService {
         mergedBusinessRules.promotions = {
           ...(currentBusinessRules.promotions || {}),
           ...(parsedIncomingBusinessRules.promotions || {}),
+        };
+      }
+
+      const hasFiscal =
+        currentBusinessRules.fiscal || parsedIncomingBusinessRules.fiscal;
+
+      if (hasFiscal) {
+        mergedBusinessRules.fiscal = {
+          ...(currentBusinessRules.fiscal || {}),
+          ...(parsedIncomingBusinessRules.fiscal || {}),
+        };
+      }
+
+      const hasAdminAppearance =
+        currentBusinessRules.adminAppearance ||
+        parsedIncomingBusinessRules.adminAppearance;
+
+      if (hasAdminAppearance) {
+        mergedBusinessRules.adminAppearance = {
+          ...(currentBusinessRules.adminAppearance || {}),
+          ...(parsedIncomingBusinessRules.adminAppearance || {}),
         };
       }
 

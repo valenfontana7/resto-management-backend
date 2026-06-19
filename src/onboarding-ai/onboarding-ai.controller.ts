@@ -6,6 +6,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { GenerateMenuDraftDto } from './dto/generate-menu-draft.dto';
 import { GenerateOnboardingDraftDto } from './dto/generate-onboarding-draft.dto';
 import { OnboardingAiService } from './onboarding-ai.service';
 
@@ -23,6 +24,20 @@ export class OnboardingAiController {
   @ApiResponse({ status: 201, description: 'Draft generated successfully.' })
   async generateDraft(@Body() dto: GenerateOnboardingDraftDto) {
     const draft = await this.onboardingAiService.generateDraft(dto);
+    return { draft };
+  }
+
+  @Post('generate-menu-draft')
+  @ApiOperation({
+    summary:
+      'Generate a menu draft (categories and dishes) from a natural language prompt',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Menu draft generated successfully.',
+  })
+  async generateMenuDraft(@Body() dto: GenerateMenuDraftDto) {
+    const draft = await this.onboardingAiService.generateMenuDraft(dto);
     return { draft };
   }
 }

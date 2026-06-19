@@ -1,7 +1,11 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AnalyticsPeriod } from './dto/analytics.dto';
-import { OrderStatus } from '@prisma/client';
+import { OrderSource, OrderStatus } from '@prisma/client';
+import {
+  getCustomerRankingKey,
+  getSalonTableRankingKey,
+} from '../orders/utils/order-channel.util';
 
 @Injectable()
 export class AnalyticsService {
@@ -182,7 +186,7 @@ export class AnalyticsService {
   }
 
   /**
-   * Get top customers
+   * Get top online customers (excludes salon / floor orders).
    */
   async getTopCustomers(
     restaurantId: string,
@@ -197,6 +201,7 @@ export class AnalyticsService {
       where: {
         restaurantId,
         status: OrderStatus.DELIVERED,
+        orderSource: OrderSource.ONLINE,
         createdAt: {
           gte: start,
           lte: end,
@@ -208,6 +213,8 @@ export class AnalyticsService {
         customerEmail: true,
         total: true,
         createdAt: true,
+        orderSource: true,
+        tableSessionId: true,
       },
     });
 
@@ -224,7 +231,8 @@ export class AnalyticsService {
     >();
 
     orders.forEach((order) => {
-      const key = order.customerPhone || order.customerName || 'Unknown';
+      const key = getCustomerRankingKey(order);
+      if (!key) return;
 
       if (!customerMap.has(key)) {
         customerMap.set(key, {
@@ -261,6 +269,104 @@ export class AnalyticsService {
       .slice(0, limit);
 
     return { topCustomers };
+  }
+
+  /**
+   * Get top tables by revenue from salon (floor) payments.
+   */
+  async getTopTables(
+    restaurantId: string,
+    period: AnalyticsPeriod,
+    limit: number = 10,
+    startDate?: string,
+    endDate?: string,
+  ) {
+    const { start, end } = this.getDateRange(period, startDate, endDate);
+
+    const orders = await this.prisma.order.findMany({
+      where: {
+        restaurantId,
+        status: OrderStatus.DELIVERED,
+        orderSource: OrderSource.FLOOR_FINAL,
+        createdAt: {
+          gte: start,
+          lte: end,
+        },
+      },
+      select: {
+        total: true,
+        createdAt: true,
+        tableId: true,
+        tableSessionId: true,
+        orderSource: true,
+        customerName: true,
+        table: {
+          select: {
+            number: true,
+            area: {
+              select: { name: true },
+            },
+          },
+        },
+      },
+    });
+
+    const tableMap = new Map<
+      string,
+      {
+        tableId: string;
+        tableNumber: string;
+        area: string | null;
+        orders: number;
+        totalSpent: number;
+        lastVisit: Date;
+      }
+    >();
+
+    orders.forEach((order) => {
+      const key = getSalonTableRankingKey(order);
+      if (!key) return;
+
+      if (!tableMap.has(key)) {
+        const tableNumber = order.table?.number ?? key.slice(-6);
+        const areaName = order.table?.area?.name ?? null;
+        tableMap.set(key, {
+          tableId: key,
+          tableNumber,
+          area: areaName,
+          orders: 0,
+          totalSpent: 0,
+          lastVisit: order.createdAt,
+        });
+      }
+
+      const table = tableMap.get(key)!;
+      table.orders += 1;
+      table.totalSpent += order.total;
+
+      if (order.createdAt > table.lastVisit) {
+        table.lastVisit = order.createdAt;
+      }
+    });
+
+    const topTables = Array.from(tableMap.values())
+      .map((table, index) => ({
+        id: `table_${index + 1}`,
+        tableId: table.tableId,
+        tableNumber: table.tableNumber,
+        area: table.area,
+        label: table.area
+          ? `Mesa ${table.tableNumber} · ${table.area}`
+          : `Mesa ${table.tableNumber}`,
+        orders: table.orders,
+        totalSpent: table.totalSpent,
+        avgTicket: Math.round(table.totalSpent / table.orders),
+        lastVisit: table.lastVisit.toISOString(),
+      }))
+      .sort((a, b) => b.totalSpent - a.totalSpent)
+      .slice(0, limit);
+
+    return { topTables };
   }
 
   /**
@@ -520,6 +626,11 @@ export class AnalyticsService {
       DELIVERY: 'Delivery',
     };
 
+    const channelLabels: Record<string, string> = {
+      ONLINE: 'Pedidos online',
+      FLOOR: 'Salón / mesas',
+    };
+
     const rows = await this.prisma.$queryRaw<
       Array<{ type: string; orders: bigint | number; revenue: bigint | number }>
     >`
@@ -533,6 +644,29 @@ export class AnalyticsService {
         AND "createdAt" >= ${start}
         AND "createdAt" <= ${end}
       GROUP BY "type"
+      ORDER BY "revenue" DESC
+    `;
+
+    const channelRows = await this.prisma.$queryRaw<
+      Array<{
+        channel: string;
+        orders: bigint | number;
+        revenue: bigint | number;
+      }>
+    >`
+      SELECT
+        CASE
+          WHEN "orderSource" IN ('FLOOR_FINAL', 'FLOOR_COMANDA') THEN 'FLOOR'
+          ELSE 'ONLINE'
+        END AS "channel",
+        COUNT(*)::int AS "orders",
+        COALESCE(SUM("total"), 0) AS "revenue"
+      FROM "Order"
+      WHERE "restaurantId" = ${restaurantId}
+        AND "status" = 'DELIVERED'
+        AND "createdAt" >= ${start}
+        AND "createdAt" <= ${end}
+      GROUP BY 1
       ORDER BY "revenue" DESC
     `;
 
@@ -552,7 +686,26 @@ export class AnalyticsService {
       };
     });
 
-    return { revenueBreakdown };
+    const channelTotal = channelRows.reduce(
+      (sum, r) => sum + Number(r.revenue),
+      0,
+    );
+
+    const channelBreakdown = channelRows.map((r) => {
+      const revenue = Number(r.revenue);
+      return {
+        channel: r.channel,
+        label: channelLabels[r.channel] || r.channel,
+        orders: Number(r.orders),
+        revenue,
+        percentage:
+          channelTotal > 0
+            ? parseFloat(((revenue / channelTotal) * 100).toFixed(1))
+            : 0,
+      };
+    });
+
+    return { revenueBreakdown, channelBreakdown };
   }
 
   /**

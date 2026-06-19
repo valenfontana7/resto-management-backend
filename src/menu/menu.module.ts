@@ -6,9 +6,10 @@ import { DishesService } from './dishes/dishes.service';
 import { ModifiersController } from './modifiers.controller';
 import { ModifiersService } from './modifiers.service';
 import { StorageModule } from '../storage/storage.module';
+import { PlansModule } from '../subscriptions/plans/plans.module';
 
 @Module({
-  imports: [StorageModule],
+  imports: [StorageModule, PlansModule],
   controllers: [CategoriesController, DishesController, ModifiersController],
   providers: [CategoriesService, DishesService, ModifiersService],
 })

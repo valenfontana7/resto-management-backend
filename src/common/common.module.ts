@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { OwnershipService } from './services/ownership.service';
 import { ImageProcessingService } from './services/image-processing.service';
+import { RolesCatalogService } from './services/roles-catalog.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { StorageModule } from '../storage/storage.module';
 import { RestaurantOwnerGuard } from './guards/restaurant-owner.guard';
@@ -26,12 +27,14 @@ import { ImageTransformInterceptor } from './interceptors/image-transform.interc
   providers: [
     OwnershipService,
     ImageProcessingService,
+    RolesCatalogService,
     RestaurantOwnerGuard,
     ImageTransformInterceptor,
   ],
   exports: [
     OwnershipService,
     ImageProcessingService,
+    RolesCatalogService,
     RestaurantOwnerGuard,
     ImageTransformInterceptor,
   ],
