@@ -11,6 +11,7 @@ describe('role.utils', () => {
     it('maps legacy Admin to OWNER', () => {
       expect(normalizeRoleCode('Admin')).toBe('OWNER');
       expect(normalizeRoleCode('ADMIN')).toBe('OWNER');
+      expect(normalizeRoleCode({ name: 'Admin' })).toBe('OWNER');
     });
 
     it('maps friendly Spanish names', () => {

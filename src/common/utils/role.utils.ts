@@ -43,9 +43,22 @@ const CANONICAL_PERMISSIONS = new Set<string>([
   'cashier',
 ]);
 
-export function normalizeRoleCode(roleName?: string | null): string | null {
-  if (!roleName) return null;
-  const normalized = roleName
+/** Rol como string (JWT) o relación Prisma `{ name }` (validateUser). */
+export type RoleLike = string | { name?: string | null } | null | undefined;
+
+export function resolveRoleName(role?: RoleLike): string | null {
+  if (!role) return null;
+  if (typeof role === 'string') return role;
+  if (typeof role === 'object' && typeof role.name === 'string') {
+    return role.name;
+  }
+  return null;
+}
+
+export function normalizeRoleCode(roleName?: RoleLike): string | null {
+  const name = resolveRoleName(roleName);
+  if (!name) return null;
+  const normalized = name
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
@@ -78,7 +91,7 @@ export function normalizeRoleCode(roleName?: string | null): string | null {
     if (
       def.legacyNames.some(
         (legacy) =>
-          legacy.toUpperCase() === normalized || legacy === roleName.trim(),
+          legacy.toUpperCase() === normalized || legacy === name.trim(),
       )
     ) {
       return def.code;
@@ -88,18 +101,18 @@ export function normalizeRoleCode(roleName?: string | null): string | null {
   return normalized;
 }
 
-export function isPrivilegedRole(roleName?: string | null): boolean {
+export function isPrivilegedRole(roleName?: RoleLike): boolean {
   const code = normalizeRoleCode(roleName);
   return !!code && PRIVILEGED_ROLE_CODES.has(code);
 }
 
-export function canManageMainCash(roleName?: string | null): boolean {
+export function canManageMainCash(roleName?: RoleLike): boolean {
   const code = normalizeRoleCode(roleName);
   return !!code && MAIN_CASH_ROLE_CODES.has(code);
 }
 
 export function roleMeetsRequirement(
-  userRoleName: string | null | undefined,
+  userRoleName: RoleLike,
   requiredRole: string,
 ): boolean {
   const userCode = normalizeRoleCode(userRoleName);
@@ -167,7 +180,7 @@ export function normalizePermissionList(
 }
 
 export function roleHasAnyPermission(
-  roleName: string | null | undefined,
+  roleName: RoleLike,
   rolePermissions: unknown,
   required: string[],
 ): boolean {

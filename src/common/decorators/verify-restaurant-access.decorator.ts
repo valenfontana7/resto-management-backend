@@ -7,6 +7,7 @@ import {
   isPrivilegedRole,
   roleMeetsRequirement,
   normalizeRoleCode,
+  type RoleLike,
 } from '../utils/role.utils';
 
 /**
@@ -129,7 +130,12 @@ export const VerifyRestaurantRole = createParamDecorator(
  * ```
  */
 export function assertRestaurantAccess(
-  user: { restaurantId?: string | null; role?: string } | undefined,
+  user:
+    | {
+        restaurantId?: string | null;
+        role?: RoleLike;
+      }
+    | undefined,
   restaurantId: string,
 ): void {
   if (!user) {
