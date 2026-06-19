@@ -14,7 +14,7 @@ type PlanRestrictionSeed = {
   value: string;
   displayName: string;
   description: string;
-  category: 'limits' | 'features' | 'integrations' | 'support';
+  category: 'limits' | 'features' | 'integrations' | 'support' | 'marketing';
 };
 
 type SubscriptionPlanDetails = {
@@ -27,6 +27,8 @@ type SubscriptionPlanDetails = {
   order: number;
   isActive: boolean;
   isDefault: boolean;
+  showOnLanding?: boolean;
+  isPopular?: boolean;
 };
 
 type SubscriptionPlanSeed = {
@@ -263,6 +265,38 @@ const STARTER_RESTRICTION_UPDATES: PlanRestrictionSeed[] = [
     displayName: 'Soporte',
     description: 'Nivel de soporte tecnico',
     category: 'support',
+  },
+  {
+    key: 'landing_menu_qr',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Menú online con QR',
+    description: 'Bullet de landing',
+    category: 'marketing',
+  },
+  {
+    key: 'landing_direct_orders',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Pedidos directos por link',
+    description: 'Bullet de landing',
+    category: 'marketing',
+  },
+  {
+    key: 'landing_basic_panel',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Panel básico de pedidos',
+    description: 'Bullet de landing',
+    category: 'marketing',
+  },
+  {
+    key: 'landing_no_commission',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Sin comisión por venta',
+    description: 'Bullet de landing',
+    category: 'marketing',
   },
 ];
 
@@ -617,6 +651,46 @@ const PROFESSIONAL_RESTRICTION_UPDATES: PlanRestrictionSeed[] = [
     description: 'Sistema de resenas de clientes',
     category: 'features',
   },
+  {
+    key: 'landing_includes_directo',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Todo lo de Directo',
+    description: 'Bullet de landing',
+    category: 'marketing',
+  },
+  {
+    key: 'landing_salon',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Salón: mesas, comandas, caja y cobro parcial',
+    description: 'Bullet de landing',
+    category: 'marketing',
+  },
+  {
+    key: 'landing_arca',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Comprobantes ARCA e impresión térmica',
+    description: 'Bullet de landing',
+    category: 'marketing',
+  },
+  {
+    key: 'landing_kitchen_reservations',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Monitor de cocina y reservas',
+    description: 'Bullet de landing',
+    category: 'marketing',
+  },
+  {
+    key: 'landing_delivery',
+    type: 'boolean',
+    value: 'true',
+    displayName: 'Delivery propio con zonas y reportes',
+    description: 'Bullet de landing',
+    category: 'marketing',
+  },
 ];
 
 const ENTERPRISE_RESTRICTION_UPDATES: PlanRestrictionSeed[] = [
@@ -667,6 +741,8 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
       order: 1,
       isActive: true,
       isDefault: true,
+      showOnLanding: true,
+      isPopular: false,
     },
     create: {
       displayName: 'Directo',
@@ -678,6 +754,8 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
       order: 1,
       isActive: true,
       isDefault: true,
+      showOnLanding: true,
+      isPopular: false,
     },
     createRestrictions: STARTER_RESTRICTIONS,
   },
@@ -693,6 +771,8 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
       order: 2,
       isActive: true,
       isDefault: false,
+      showOnLanding: true,
+      isPopular: true,
     },
     create: {
       displayName: 'Operación',
@@ -704,6 +784,8 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
       order: 2,
       isActive: true,
       isDefault: false,
+      showOnLanding: true,
+      isPopular: true,
     },
     createRestrictions: PROFESSIONAL_RESTRICTIONS,
   },
@@ -719,6 +801,8 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
       order: 3,
       isActive: true,
       isDefault: false,
+      showOnLanding: false,
+      isPopular: false,
     },
     create: {
       displayName: 'Full',
@@ -730,6 +814,8 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
       order: 3,
       isActive: true,
       isDefault: false,
+      showOnLanding: false,
+      isPopular: false,
     },
     createRestrictions: ENTERPRISE_RESTRICTIONS,
   },

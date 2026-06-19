@@ -147,6 +147,25 @@ const C = {
   bentoo: '#0F766E',
 };
 
+export function getBentooEmailLogoUrl(): string {
+  const explicit = (process.env.BENTOO_EMAIL_LOGO_URL || '').trim();
+  if (explicit) return explicit;
+
+  const base = (
+    process.env.FRONTEND_URL ||
+    process.env.BACKEND_URL ||
+    'https://www.bentoo.com.ar'
+  )
+    .trim()
+    .replace(/\/$/, '');
+
+  return `${base}/apple-touch-icon.svg`;
+}
+
+function bentooHeaderBranding(): { logoUrl: string; brandName: string } {
+  return { logoUrl: getBentooEmailLogoUrl(), brandName: 'Bentoo' };
+}
+
 export function formatPrice(amount: number): string {
   return Number(amount).toLocaleString('es-AR', {
     minimumFractionDigits: 2,
@@ -363,9 +382,12 @@ function emailFooterRestaurant(restaurant: RestaurantData): string {
 }
 
 function emailFooterBentoo(): string {
+  const logoBlock = emailBrandLogo(getBentooEmailLogoUrl(), 'Bentoo');
+
   return `
 <tr>
   <td style="background: #FAFAF9; padding: 28px 36px; text-align: center; border-top: 1px solid ${C.border};">
+    ${logoBlock}
     <p style="margin: 0 0 4px; font-size: 17px; font-weight: 700; color: ${C.text};">Bentoo</p>
     <p style="margin: 0 0 14px; font-size: 13px; color: ${C.textSubtle};">La plataforma pensada para restaurantes que quieren crecer</p>
     <div style="width: 48px; height: 3px; background: ${C.bentoo}; margin: 0 auto 14px; border-radius: 2px; opacity: 0.6;"></div>
@@ -776,8 +798,10 @@ ${emailHeader({
   title: params.title,
   subtitle: params.subtitle,
   accent,
-  logoUrl: params.restaurant?.logoUrl,
-  brandName: params.restaurant?.name,
+  logoUrl: isRestaurantBrand
+    ? params.restaurant?.logoUrl
+    : getBentooEmailLogoUrl(),
+  brandName: isRestaurantBrand ? params.restaurant!.name : 'Bentoo',
 })}
 <tr>
   <td class="email-content" style="padding: 32px 36px 36px;">
@@ -812,6 +836,7 @@ ${emailHeader({
   title,
   subtitle: 'Mensaje del sistema de gestión',
   accent: C.accent,
+  ...bentooHeaderBranding(),
 })}
 <tr>
   <td class="email-content" style="padding: 32px 36px 36px;">
@@ -889,6 +914,7 @@ ${emailHeader({
   title: 'Entrá a tu panel',
   subtitle: 'Acceso seguro sin contraseña',
   accent: C.bentoo,
+  ...bentooHeaderBranding(),
 })}
 <tr>
   <td class="email-content" style="padding: 32px 36px 36px;">
@@ -924,6 +950,7 @@ ${emailHeader({
   title: 'Restablecé tu contraseña',
   subtitle: 'Recuperá el acceso a tu panel',
   accent: C.bentoo,
+  ...bentooHeaderBranding(),
 })}
 <tr>
   <td class="email-content" style="padding: 32px 36px 36px;">
@@ -1004,6 +1031,7 @@ ${emailHeader({
   title: 'Tu acceso al panel',
   subtitle: safeRestaurant,
   accent: C.bentoo,
+  ...bentooHeaderBranding(),
 })}
 <tr>
   <td class="email-content" style="padding: 32px 36px 36px;">

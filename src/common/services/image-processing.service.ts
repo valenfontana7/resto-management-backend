@@ -136,45 +136,70 @@ export class ImageProcessingService {
     const trimmed = String(value).trim();
     if (!trimmed) return null;
 
+    if (this.isBase64Image(trimmed)) return null;
+
     if (/^https?:\/\//i.test(trimmed)) {
-      if (trimmed.includes('localhost') || trimmed.includes('127.0.0.1')) {
-        const path = trimmed.replace(/^https?:\/\/[^/]+/, '');
-        if (path.startsWith('/api/uploads/')) {
-          const key = this.extractUploadKey(path);
-          if (key) return this.s3.buildPublicUrl(key);
-        }
-        const base = this.absoluteBaseUrl();
-        return base ? `${base}${path}` : null;
+      if (trimmed.includes('/api/uploads/')) {
+        return this.toAbsoluteProxyUrl(trimmed);
       }
+
+      const storageKey = this.s3.tryExtractLogicalKey(trimmed);
+      if (storageKey) {
+        return this.toAbsoluteProxyUrl(this.s3.buildProxyUrl(storageKey));
+      }
+
+      if (trimmed.includes('localhost') || trimmed.includes('127.0.0.1')) {
+        return this.toAbsoluteProxyUrl(trimmed);
+      }
+
       return trimmed;
     }
 
     if (trimmed.startsWith('/api/uploads/')) {
-      const key = this.extractUploadKey(trimmed);
-      if (key && !/^https?:\/\//i.test(key)) {
-        return this.s3.buildPublicUrl(key);
+      return this.toAbsoluteProxyUrl(trimmed);
+    }
+
+    return this.toAbsoluteProxyUrl(this.s3.buildProxyUrl(trimmed));
+  }
+
+  private toAbsoluteProxyUrl(pathOrAbsolute: string): string | null {
+    const base = this.emailPublicBaseUrl();
+    if (!base) return null;
+
+    let path: string;
+    if (/^https?:\/\//i.test(pathOrAbsolute)) {
+      try {
+        const url = new URL(pathOrAbsolute);
+        if (!url.pathname.startsWith('/api/uploads/')) {
+          return pathOrAbsolute;
+        }
+        path = url.pathname;
+      } catch {
+        return null;
       }
-      if (key && /^https?:\/\//i.test(key)) return key;
-      const base = this.absoluteBaseUrl();
-      return base ? `${base}${trimmed}` : null;
+    } else if (pathOrAbsolute.startsWith('/api/uploads/')) {
+      path = pathOrAbsolute;
+    } else {
+      const proxy = this.s3.buildProxyUrl(pathOrAbsolute.replace(/^\/+/, ''));
+      if (/^https?:\/\//i.test(proxy)) {
+        try {
+          path = new URL(proxy).pathname;
+        } catch {
+          return null;
+        }
+      } else {
+        path = proxy;
+      }
     }
 
-    return this.s3.buildPublicUrl(trimmed);
+    return `${base}${path}`;
   }
 
-  private extractUploadKey(path: string): string | null {
-    try {
-      return decodeURIComponent(path.replace(/^\/api\/uploads\//, ''));
-    } catch {
-      return null;
-    }
-  }
-
-  private absoluteBaseUrl(): string {
+  private emailPublicBaseUrl(): string {
     return (
-      process.env.S3_PUBLIC_BASE_URL ||
-      process.env.BACKEND_URL ||
       process.env.FRONTEND_URL ||
+      process.env.BACKEND_URL ||
+      process.env.BASE_URL ||
       ''
     )
       .trim()

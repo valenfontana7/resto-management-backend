@@ -359,6 +359,11 @@ export class S3Service {
     return this.buildProxyUrl(trimmed);
   }
 
+  /** Resuelve una URL o key de nuestro storage a la key lógica en el bucket. */
+  tryExtractLogicalKey(urlOrKey: string): string | null {
+    return this.extractKey(urlOrKey);
+  }
+
   buildPublicUrl(key: string): string {
     const normalizedKey = this.normalizeKey(key);
 

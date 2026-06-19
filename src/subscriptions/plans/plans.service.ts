@@ -63,6 +63,27 @@ export class PlansService {
   }
 
   /**
+   * Planes para landing, registro y pricing público.
+   */
+  async findForPublicDisplay() {
+    return this.prisma.subscriptionPlan.findMany({
+      where: {
+        isActive: true,
+        showOnLanding: true,
+      },
+      include: {
+        restrictions: {
+          orderBy: {
+            category: 'asc',
+          },
+        },
+      },
+      orderBy: [{ order: 'asc' }, { createdAt: 'asc' }],
+      take: 2,
+    });
+  }
+
+  /**
    * Obtener un plan por ID
    */
   async findOne(id: string) {

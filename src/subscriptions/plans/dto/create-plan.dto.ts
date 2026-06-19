@@ -66,6 +66,14 @@ export class CreatePlanDto {
   isDefault?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  showOnLanding?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isPopular?: boolean;
+
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreatePlanRestrictionDto)
