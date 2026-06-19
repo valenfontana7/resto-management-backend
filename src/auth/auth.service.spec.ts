@@ -2,7 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService } from '@nestjs/jwt';
-import { UnauthorizedException, ConflictException } from '@nestjs/common';
+import {
+  UnauthorizedException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { RolesCatalogService } from '../common/services/roles-catalog.service';
 
@@ -48,6 +52,11 @@ describe('AuthService', () => {
         createMany: jest.fn(),
       },
       authLoginLink: {
+        updateMany: jest.fn(),
+        create: jest.fn(),
+        findUnique: jest.fn(),
+      },
+      authPasswordResetLink: {
         updateMany: jest.fn(),
         create: jest.fn(),
         findUnique: jest.fn(),
@@ -446,6 +455,122 @@ describe('AuthService', () => {
       await expect(
         service.consumeMagicLink({
           token: 'abcdefghijklmnopqrstuvwxyz1234567890',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('changePassword', () => {
+    it('should update password when current password is valid', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: mockUser.id,
+        password: mockUser.password,
+        isActive: true,
+        passwordSetupRequired: false,
+        deletedAt: null,
+      });
+      prisma.user.update.mockResolvedValue(mockUser);
+
+      const result = await service.changePassword(mockUser.id, {
+        currentPassword: 'password123',
+        newPassword: 'Newpass123',
+      });
+
+      expect(result.message).toBe('Password updated successfully');
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: mockUser.id },
+        data: { password: expect.any(String) },
+      });
+    });
+
+    it('should reject incorrect current password', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: mockUser.id,
+        password: mockUser.password,
+        isActive: true,
+        passwordSetupRequired: false,
+        deletedAt: null,
+      });
+
+      await expect(
+        service.changePassword(mockUser.id, {
+          currentPassword: 'wrong-password',
+          newPassword: 'Newpass123',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should reject when password setup is still pending', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: mockUser.id,
+        password: mockUser.password,
+        isActive: true,
+        passwordSetupRequired: true,
+        deletedAt: null,
+      });
+
+      await expect(
+        service.changePassword(mockUser.id, {
+          currentPassword: 'password123',
+          newPassword: 'Newpass123',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('password reset', () => {
+    it('should send reset link for configured active users', async () => {
+      prisma.user.findFirst.mockResolvedValue(mockUser);
+      prisma.authPasswordResetLink.updateMany.mockResolvedValue({ count: 0 });
+      prisma.authPasswordResetLink.create.mockResolvedValue({ id: 'reset-1' });
+
+      const result = await service.requestPasswordReset({
+        email: 'test@example.com',
+      });
+
+      expect(result.sent).toBe(true);
+      expect(result.expiresInMinutes).toBe(60);
+      expect(prisma.authPasswordResetLink.create).toHaveBeenCalled();
+    });
+
+    it('should return generic response when user is missing', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+
+      const result = await service.requestPasswordReset({
+        email: 'missing@example.com',
+      });
+
+      expect(result.sent).toBe(true);
+      expect(prisma.authPasswordResetLink.create).not.toHaveBeenCalled();
+    });
+
+    it('should reset password with a valid token', async () => {
+      prisma.authPasswordResetLink.findUnique.mockResolvedValue({
+        id: 'reset-1',
+        userId: mockUser.id,
+        tokenHash: 'hash',
+        expiresAt: new Date(Date.now() + 60_000),
+        usedAt: null,
+        user: mockUser,
+      });
+      prisma.authPasswordResetLink.updateMany.mockResolvedValue({ count: 1 });
+      prisma.user.update.mockResolvedValue(mockUser);
+
+      const result = await service.resetPassword({
+        token: 'abcdefghijklmnopqrstuvwxyz1234567890',
+        newPassword: 'Newpass123',
+      });
+
+      expect(result.message).toBe('Password reset successfully');
+    });
+
+    it('should reject invalid reset tokens', async () => {
+      prisma.authPasswordResetLink.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.resetPassword({
+          token: 'abcdefghijklmnopqrstuvwxyz1234567890',
+          newPassword: 'Newpass123',
         }),
       ).rejects.toThrow(UnauthorizedException);
     });

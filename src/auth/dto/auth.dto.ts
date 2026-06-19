@@ -101,3 +101,40 @@ export class ConsumeMagicLinkDto {
   @IsString()
   token: string;
 }
+
+export class ChangePasswordDto {
+  @ApiProperty({ example: 'CurrentPass123' })
+  @IsString()
+  @MinLength(1, { message: 'Current password is required' })
+  currentPassword: string;
+
+  @ApiProperty({ example: 'NewSecurePass123', minLength: 6 })
+  @IsString()
+  @MinLength(6)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+    message:
+      'Password must contain at least one uppercase letter, one lowercase letter, and one number',
+  })
+  newPassword: string;
+}
+
+export class RequestPasswordResetDto {
+  @ApiProperty({ example: 'john@example.com' })
+  @IsEmail()
+  email: string;
+}
+
+export class ResetPasswordDto {
+  @ApiProperty({ example: 'raw-token-from-email' })
+  @IsString()
+  token: string;
+
+  @ApiProperty({ example: 'NewSecurePass123', minLength: 6 })
+  @IsString()
+  @MinLength(6)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+    message:
+      'Password must contain at least one uppercase letter, one lowercase letter, and one number',
+  })
+  newPassword: string;
+}

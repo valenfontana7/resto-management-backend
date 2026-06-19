@@ -910,6 +910,41 @@ ${emailFooterBentoo()}`;
   return emailDocument('Acceso a Bentoo', C.bg, emailCard(content));
 }
 
+export function renderPasswordResetEmail(params: {
+  name: string;
+  link: string;
+  expiresInMinutes: number;
+}): string {
+  const safeName = escapeHtml(params.name || 'Hola');
+  const safeLink = escapeHtml(params.link);
+
+  const content = `
+${emailHeader({
+  eyebrow: 'Bentoo',
+  title: 'Restablecé tu contraseña',
+  subtitle: 'Recuperá el acceso a tu panel',
+  accent: C.bentoo,
+})}
+<tr>
+  <td class="email-content" style="padding: 32px 36px 36px;">
+    ${emailParagraph(`Hola <strong>${safeName}</strong>,`)}
+    ${emailParagraph(
+      `Recibimos una solicitud para restablecer la contraseña de tu cuenta. Este enlace es de un solo uso y vence en <strong>${params.expiresInMinutes} minutos</strong>.`,
+      true,
+    )}
+    ${emailCta(params.link, 'Elegir nueva contraseña', C.accent)}
+    ${emailSecondaryLink(safeLink, 'Si el botón no funciona, copiá este enlace:')}
+    ${emailHighlightBox(
+      'Si no pediste restablecer tu contraseña, podés ignorar este correo. Tu cuenta sigue protegida.',
+      'neutral',
+    )}
+  </td>
+</tr>
+${emailFooterBentoo()}`;
+
+  return emailDocument('Restablecer contraseña', C.bg, emailCard(content));
+}
+
 export function renderCustomerMagicLinkEmail(params: {
   restaurantName: string;
   customerName: string;

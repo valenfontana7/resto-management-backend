@@ -15,6 +15,9 @@ import {
   RequestMagicLinkDto,
   RegisterMagicLinkDto,
   ConsumeMagicLinkDto,
+  ChangePasswordDto,
+  RequestPasswordResetDto,
+  ResetPasswordDto,
 } from './dto/auth.dto';
 import { ImpersonateDto } from './dto/impersonate.dto';
 import { SwitchRestaurantDto } from './dto/switch-restaurant.dto';
@@ -150,6 +153,38 @@ export class AuthController {
     const result = await this.authService.completePasswordSetup(dto);
     this.setAuthCookie(res, result.token);
     return result;
+  }
+
+  @Post('change-password')
+  @ApiBearerAuth()
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @ApiOperation({ summary: 'Change password for the authenticated user' })
+  @ApiResponse({ status: 200, description: 'Password updated successfully' })
+  @ApiResponse({ status: 401, description: 'Current password is incorrect' })
+  async changePassword(
+    @Body() dto: ChangePasswordDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.authService.changePassword(user.userId, dto);
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @ApiOperation({ summary: 'Request a password reset link by email' })
+  @ApiResponse({ status: 200, description: 'Reset request accepted' })
+  async forgotPassword(@Body() dto: RequestPasswordResetDto) {
+    return this.authService.requestPasswordReset(dto);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @ApiOperation({ summary: 'Reset password using a one-time token' })
+  @ApiResponse({ status: 200, description: 'Password reset successfully' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired reset link' })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto);
   }
 
   @Get('me')

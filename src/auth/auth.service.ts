@@ -19,11 +19,17 @@ import {
   RequestMagicLinkDto,
   RegisterMagicLinkDto,
   ConsumeMagicLinkDto,
+  ChangePasswordDto,
+  RequestPasswordResetDto,
+  ResetPasswordDto,
 } from './dto/auth.dto';
 import { User } from '@prisma/client';
 import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
 import { EmailService } from '../email/email.service';
-import { renderMagicLinkEmail } from '../email/email-templates';
+import {
+  renderMagicLinkEmail,
+  renderPasswordResetEmail,
+} from '../email/email-templates';
 import { RolesCatalogService } from '../common/services/roles-catalog.service';
 import {
   normalizeRoleCode,
@@ -67,6 +73,7 @@ export interface MagicLinkRequestResponse {
 }
 
 const MAGIC_LINK_EXPIRY_MINUTES = 15;
+const PASSWORD_RESET_EXPIRY_MINUTES = 60;
 
 @Injectable()
 export class AuthService {
@@ -106,7 +113,9 @@ export class AuthService {
     if (
       normalizedPath === '/admin/login' ||
       normalizedPath === '/admin/register' ||
-      normalizedPath === '/admin/magic-link'
+      normalizedPath === '/admin/magic-link' ||
+      normalizedPath === '/admin/forgot-password' ||
+      normalizedPath === '/admin/reset-password'
     ) {
       return '/admin';
     }
@@ -118,6 +127,12 @@ export class AuthService {
     const url = new URL('/admin/magic-link', this.getFrontendUrl());
     url.searchParams.set('token', token);
     url.searchParams.set('redirect', this.normalizeRedirect(redirect));
+    return url.toString();
+  }
+
+  private buildPasswordResetLink(token: string): string {
+    const url = new URL('/admin/reset-password', this.getFrontendUrl());
+    url.searchParams.set('token', token);
     return url.toString();
   }
 
@@ -643,6 +658,177 @@ export class AuthService {
     });
 
     return await this.generateAuthResponse(updatedUser as User);
+  }
+
+  async changePassword(
+    userId: string,
+    dto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        password: true,
+        isActive: true,
+        passwordSetupRequired: true,
+        deletedAt: true,
+      },
+    });
+
+    if (!user || user.deletedAt || !user.isActive) {
+      throw new UnauthorizedException('User not found or inactive');
+    }
+
+    if (user.passwordSetupRequired) {
+      throw new BadRequestException(
+        'Password setup is still pending. Complete your first login first.',
+      );
+    }
+
+    const isCurrentPasswordValid = await bcrypt.compare(
+      dto.currentPassword,
+      user.password,
+    );
+
+    if (!isCurrentPasswordValid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    const isSamePassword = await bcrypt.compare(dto.newPassword, user.password);
+
+    if (isSamePassword) {
+      throw new BadRequestException(
+        'New password must be different from the current password',
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashedPassword },
+    });
+
+    return { message: 'Password updated successfully' };
+  }
+
+  async requestPasswordReset(
+    dto: RequestPasswordResetDto,
+  ): Promise<MagicLinkRequestResponse> {
+    const normalizedEmail = this.normalizeEmail(dto.email);
+    const response: MagicLinkRequestResponse = {
+      sent: true,
+      expiresInMinutes: PASSWORD_RESET_EXPIRY_MINUTES,
+    };
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+        isActive: true,
+        passwordSetupRequired: false,
+        deletedAt: null,
+      },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    if (!user) {
+      return response;
+    }
+
+    const rawToken = randomBytes(32).toString('base64url');
+    const tokenHash = this.hashLoginToken(rawToken);
+    const expiresAt = new Date(
+      Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000,
+    );
+
+    await this.prisma.$transaction([
+      this.prisma.authPasswordResetLink.updateMany({
+        where: {
+          userId: user.id,
+          usedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        data: { usedAt: new Date() },
+      }),
+      this.prisma.authPasswordResetLink.create({
+        data: {
+          userId: user.id,
+          tokenHash,
+          expiresAt,
+        },
+      }),
+    ]);
+
+    const link = this.buildPasswordResetLink(rawToken);
+    const html = renderPasswordResetEmail({
+      name: user.name,
+      link,
+      expiresInMinutes: PASSWORD_RESET_EXPIRY_MINUTES,
+    });
+
+    await this.emailService?.sendGenericEmail(
+      user.email,
+      'Restablecé tu contraseña de Bentoo',
+      html,
+      'Bentoo',
+    );
+
+    if (process.env.NODE_ENV !== 'production') {
+      response.devLink = link;
+    }
+
+    return response;
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<{ message: string }> {
+    const token = dto.token?.trim();
+    if (!token || token.length < 24) {
+      throw new UnauthorizedException('Invalid or expired reset link');
+    }
+
+    const tokenHash = this.hashLoginToken(token);
+    const link = await this.prisma.authPasswordResetLink.findUnique({
+      where: { tokenHash },
+      include: {
+        user: true,
+      },
+    });
+
+    const now = new Date();
+    if (
+      !link ||
+      link.usedAt ||
+      link.expiresAt.getTime() < now.getTime() ||
+      !link.user.isActive ||
+      link.user.deletedAt ||
+      link.user.passwordSetupRequired
+    ) {
+      throw new UnauthorizedException('Invalid or expired reset link');
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
+
+    await this.prisma.$transaction(async (tx) => {
+      const consumed = await tx.authPasswordResetLink.updateMany({
+        where: {
+          id: link.id,
+          usedAt: null,
+          expiresAt: { gte: now },
+        },
+        data: { usedAt: now },
+      });
+
+      if (consumed.count !== 1) {
+        throw new UnauthorizedException('Invalid or expired reset link');
+      }
+
+      await tx.user.update({
+        where: { id: link.userId },
+        data: { password: hashedPassword },
+      });
+    });
+
+    return { message: 'Password reset successfully' };
   }
 
   async validateUser(userId: string): Promise<any> {
