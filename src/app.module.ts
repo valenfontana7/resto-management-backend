@@ -51,6 +51,9 @@ import { FloorModule } from './floor/floor.module';
 import { BusinessHealthModule } from './business-health/business-health.module';
 import { getJwtSecret } from './common/config/jwt.config';
 import { validateEnvironment } from './common/config/env.validation';
+import { isLocalMode } from './common/config/bentoo-mode.config';
+import { LocalDiscoveryModule } from './local-discovery/local-discovery.module';
+import { EdgeSyncModule } from './edge-sync/edge-sync.module';
 
 @Module({
   imports: [
@@ -131,6 +134,8 @@ import { validateEnvironment } from './common/config/env.validation';
     DemoExamplesModule,
     FloorModule,
     BusinessHealthModule,
+    EdgeSyncModule,
+    ...(isLocalMode() ? [LocalDiscoveryModule] : []),
   ],
   controllers: [AppController],
   providers: [

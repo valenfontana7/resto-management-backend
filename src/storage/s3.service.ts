@@ -318,10 +318,9 @@ export class S3Service {
       .map((segment) => encodeURIComponent(segment))
       .join('/');
 
-    if (this.proxyBaseUrl) {
-      return `${this.proxyBaseUrl.replace(/\/+$/g, '')}/api/uploads/${encoded}`;
-    }
-
+    // Always return a same-origin relative path for API clients. The frontend
+    // proxies /api/uploads/* to the backend; absolute backend URLs break in dev
+    // (different ports) and trigger CORP blocks from Helmet.
     return `/api/uploads/${encoded}`;
   }
 
@@ -345,13 +344,19 @@ export class S3Service {
     }
 
     if (/^https?:\/\//i.test(trimmed)) {
-      // If it's a localhost URL, replace with current proxy base
+      try {
+        const url = new URL(trimmed);
+        if (url.pathname.startsWith('/api/uploads/')) {
+          return url.pathname;
+        }
+      } catch {
+        // fall through
+      }
+
+      // Legacy localhost absolute URLs stored in DB
       if (trimmed.includes('localhost') || trimmed.includes('127.0.0.1')) {
         const path = trimmed.replace(/^https?:\/\/[^/]+/, '');
-        if (this.proxyBaseUrl) {
-          return `${this.proxyBaseUrl.replace(/\/+$/g, '')}${path}`;
-        }
-        return path;
+        return path || trimmed;
       }
       return trimmed;
     }

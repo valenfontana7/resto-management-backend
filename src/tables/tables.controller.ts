@@ -14,6 +14,7 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { TablesService } from './tables.service';
 import {
   CreateTableDto,
@@ -24,6 +25,7 @@ import {
   UpdateTableAreaDto,
   BulkCreateTablesDto,
   BulkDeleteTablesDto,
+  BulkUpdateTablePositionsDto,
 } from './dto/table.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -33,6 +35,7 @@ import type { RequestUser } from '../auth/strategies/jwt.strategy';
 @Controller('api/tables')
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
+@SkipThrottle()
 export class TablesController {
   constructor(private readonly tablesService: TablesService) {}
 
@@ -105,6 +108,27 @@ export class TablesController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.tablesService.findOne(id, restaurantId, user.userId);
+  }
+
+  @Patch('restaurant/:restaurantId/positions')
+  @ApiOperation({
+    summary: 'Update many table positions in one request (POS plan)',
+  })
+  @ApiResponse({ status: 200, description: 'Positions updated successfully' })
+  async bulkUpdatePositions(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: BulkUpdateTablePositionsDto,
+  ) {
+    return this.tablesService.bulkUpdatePositions(
+      restaurantId,
+      user.userId,
+      dto.positions.map((p) => ({
+        tableId: p.tableId,
+        x: p.position.x,
+        y: p.position.y,
+      })),
+    );
   }
 
   @Patch(':id/restaurant/:restaurantId')

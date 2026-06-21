@@ -28,3 +28,25 @@ export function resolveOrderNotificationChannels(
 export function isPlatformStaffRole(roleName?: string | null): boolean {
   return Boolean(roleName && PLATFORM_STAFF_ROLES.has(roleName));
 }
+
+/**
+ * ¿Debe recibir alertas operativas de pedidos de un restaurante?
+ *
+ * SUPER_ADMIN en membership no-default = acceso de soporte → sin spam.
+ * SUPER_ADMIN en su membership default (restaurante propio) → sí recibe.
+ */
+export function shouldReceiveRestaurantOrderAlerts(options: {
+  roleName?: string | null;
+  viaMembership?: boolean;
+  isDefaultMembership?: boolean;
+}): boolean {
+  const {
+    roleName,
+    viaMembership = false,
+    isDefaultMembership = false,
+  } = options;
+
+  if (!isPlatformStaffRole(roleName)) return true;
+  if (viaMembership && isDefaultMembership) return true;
+  return false;
+}

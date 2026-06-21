@@ -19,6 +19,8 @@ import { OrdersService } from './orders.service';
 import {
   CreateOrderDto,
   UpdateOrderStatusDto,
+  MarkOrderPaymentDto,
+  SalonDispatchDeliveryDto,
   OrderFiltersDto,
 } from './dto/order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -141,6 +143,49 @@ export class OrdersController {
       restaurantId,
       user.userId,
       updateDto,
+    );
+    return { order };
+  }
+
+  @Patch('orders/:id/payment')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Registrar cobro de pedido (ej. efectivo en domicilio)',
+  })
+  async markPaymentReceived(
+    @Param('id') id: string,
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: MarkOrderPaymentDto,
+  ) {
+    const order = await this.ordersService.markPaymentReceived(
+      id,
+      restaurantId,
+      user.userId,
+      dto.paymentMethod,
+    );
+    return { order };
+  }
+
+  @Post('orders/:id/salon-dispatch')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Cobrar (si aplica), asignar repartidor y despachar desde salón',
+  })
+  async dispatchDeliveryFromSalon(
+    @Param('id') id: string,
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: SalonDispatchDeliveryDto,
+  ) {
+    const order = await this.ordersService.dispatchDeliveryFromSalon(
+      id,
+      restaurantId,
+      user.userId,
+      dto.driverId,
+      dto.paymentMethod,
     );
     return { order };
   }

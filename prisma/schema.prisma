@@ -79,6 +79,7 @@ model Restaurant {
   terminals             RestaurantTerminal[]
   dailyOperations       DailyOperation[]
   inventoryItems        InventoryItem[]
+  edgeLocalServer       EdgeLocalServer?
 
   @@index([slug])
   @@index([status])
@@ -1361,6 +1362,7 @@ enum OrderSource {
   ONLINE
   FLOOR_COMANDA
   FLOOR_FINAL
+  SALON_PHONE
 }
 
 enum TableSessionStatus {
@@ -1611,4 +1613,45 @@ model FloorClientMutation {
 
   @@unique([restaurantId, clientMutationId])
   @@index([restaurantId, createdAt])
+}
+
+enum EdgeLocalServerStatus {
+  PENDING
+  ACTIVE
+  DISCONNECTED
+}
+
+model EdgeLocalServer {
+  id              String                @id @default(cuid())
+  restaurantId    String                @unique
+  localId         String                @unique
+  syncTokenHash   String
+  hostname        String?
+  version         String?
+  lastHeartbeatAt DateTime?
+  lastLanUrl      String?
+  lastSyncPullAt  DateTime?
+  lastSyncPushAt  DateTime?
+  pendingPushCount Int                  @default(0)
+  status          EdgeLocalServerStatus @default(PENDING)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  restaurant      Restaurant            @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  cursors         EdgeSyncCursor[]
+
+  @@index([status])
+  @@index([lastHeartbeatAt])
+}
+
+model EdgeSyncCursor {
+  id           String          @id @default(cuid())
+  restaurantId String
+  localId      String
+  streamKey    String
+  cursorValue  String?
+  updatedAt    DateTime        @updatedAt
+  edgeServer   EdgeLocalServer @relation(fields: [localId], references: [localId], onDelete: Cascade)
+
+  @@unique([restaurantId, localId, streamKey])
+  @@index([restaurantId, streamKey])
 }

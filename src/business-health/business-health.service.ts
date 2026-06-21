@@ -411,7 +411,7 @@ export class BusinessHealthService {
       process.env.FRONTEND_URL?.trim().replace(/\/$/, '') ||
       'http://localhost:3000';
     const menuUrl = `${frontendUrl}/${restaurant.slug}`;
-    const logoUrl = this.images.toEmailAssetUrl(restaurant.logo);
+    const logoUrl = await this.images.toEmailAssetUrl(restaurant.logo);
 
     const recipients = await this.listInactiveEmailRecipients(restaurantId);
     const keyFilter = dto.sendToAll ? null : new Set(dto.customerKeys ?? []);

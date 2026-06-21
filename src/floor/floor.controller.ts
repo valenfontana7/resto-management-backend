@@ -44,6 +44,15 @@ import {
 } from './dto/main-cash-register.dto';
 import { MainCashRegisterService } from './services/main-cash-register.service';
 import { FloorIdempotencyService } from './services/floor-idempotency.service';
+import { QuickAddSalonStaffDto } from './dto/salon-staff.dto';
+import {
+  AddSalonDeliveryItemsDto,
+  CreateSalonDeliveryOrderDto,
+  UpdateSalonDeliveryOrderDto,
+} from './dto/salon-delivery-order.dto';
+import { RestaurantUsersService } from '../restaurants/services/restaurant-users.service';
+import { SalonDeliveryOrderService } from './services/salon-delivery-order.service';
+import { VerifyRestaurantAccess } from '../common/decorators/verify-restaurant-access.decorator';
 
 @ApiTags('floor')
 @ApiBearerAuth()
@@ -58,6 +67,8 @@ export class FloorController {
     private readonly dailyOperations: DailyOperationService,
     private readonly mainCashRegister: MainCashRegisterService,
     private readonly idempotency: FloorIdempotencyService,
+    private readonly restaurantUsers: RestaurantUsersService,
+    private readonly salonDeliveryOrders: SalonDeliveryOrderService,
   ) {}
 
   // ─── Cuentas de mesa ───────────────────────────────────────────────────────
@@ -619,5 +630,71 @@ export class FloorController {
   ) {
     void user;
     return this.fiscalDocuments.createCreditNote(restaurantId, documentId);
+  }
+
+  // ─── Equipo de salón (alta rápida) ─────────────────────────────────────────
+
+  @Post('salon-staff/quick')
+  @ApiOperation({
+    summary:
+      'Agregar mozo al equipo desde salón (rol Mesero, sin email manual)',
+  })
+  quickAddSalonStaff(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @Body() dto: QuickAddSalonStaffDto,
+  ) {
+    return this.restaurantUsers.quickAddSalonWaiter(restaurantId, dto);
+  }
+
+  @Post('salon-delivery-orders')
+  @ApiOperation({ summary: 'Alta de pedido domicilio manual desde salón' })
+  createSalonDeliveryOrder(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: CreateSalonDeliveryOrderDto,
+  ) {
+    return this.salonDeliveryOrders.create(restaurantId, user.userId, dto);
+  }
+
+  @Post('salon-delivery-orders/:orderId/items')
+  @ApiOperation({ summary: 'Agregar platos a pedido domicilio del salón' })
+  addSalonDeliveryItems(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @Param('orderId') orderId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: AddSalonDeliveryItemsDto,
+  ) {
+    return this.salonDeliveryOrders.addItems(
+      restaurantId,
+      orderId,
+      user.userId,
+      dto,
+    );
+  }
+
+  @Patch('salon-delivery-orders/:orderId')
+  @ApiOperation({ summary: 'Actualizar datos de pedido domicilio del salón' })
+  updateSalonDeliveryOrder(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @Param('orderId') orderId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: UpdateSalonDeliveryOrderDto,
+  ) {
+    return this.salonDeliveryOrders.update(
+      restaurantId,
+      orderId,
+      user.userId,
+      dto,
+    );
+  }
+
+  @Post('salon-delivery-orders/:orderId/cancel')
+  @ApiOperation({ summary: 'Anular pedido domicilio del salón' })
+  cancelSalonDeliveryOrder(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @Param('orderId') orderId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.salonDeliveryOrders.cancel(restaurantId, orderId, user.userId);
   }
 }

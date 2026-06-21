@@ -103,6 +103,32 @@ export function validateEnvironment(config: Record<string, unknown>) {
     );
   }
 
+  const bentooMode = (env.BENTOO_MODE?.trim() || 'cloud').toLowerCase();
+  if (bentooMode !== 'cloud' && bentooMode !== 'local') {
+    errors.push('BENTOO_MODE must be cloud or local');
+  }
+  env.BENTOO_MODE = bentooMode;
+
+  if (bentooMode === 'local') {
+    const bindHost = env.BIND_HOST?.trim();
+    if (bindHost && bindHost.includes(' ')) {
+      errors.push('BIND_HOST must not contain spaces');
+    }
+    const discoveryPortRaw = env.BENTOO_DISCOVERY_PORT?.trim();
+    if (discoveryPortRaw) {
+      const discoveryPort = Number(discoveryPortRaw);
+      if (
+        !Number.isInteger(discoveryPort) ||
+        discoveryPort < 1 ||
+        discoveryPort > 65535
+      ) {
+        errors.push(
+          'BENTOO_DISCOVERY_PORT must be an integer between 1 and 65535',
+        );
+      }
+    }
+  }
+
   // MercadoPago OAuth: si se define alguna, validar coherencia mínima
   const mpOauthFields = {
     MERCADOPAGO_OAUTH_CLIENT_ID: env.MERCADOPAGO_OAUTH_CLIENT_ID?.trim(),

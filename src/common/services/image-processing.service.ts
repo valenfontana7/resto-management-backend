@@ -1,5 +1,10 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { S3Service } from '../../storage/s3.service';
+import { getEmailPublicBaseUrl } from '../utils/email-public-base-url.util';
+import { normalizeAssetReference } from '../utils/asset-reference.util';
+
+/** Presigned GET URLs for email clients (Gmail cannot reach localhost). */
+const EMAIL_ASSET_PRESIGN_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 export type ImageType = 'dish' | 'category' | 'restaurant' | 'user';
 
@@ -129,41 +134,61 @@ export class ImageProcessingService {
   }
 
   /**
-   * URL absoluta y accesible para clientes de correo (CDN/S3 público).
+   * URL absoluta accesible desde clientes de correo.
+   * Usa presigned GET de S3/Spaces (bucket privado) para que funcione en dev y prod
+   * sin depender de localhost ni del proxy público de Bentoo.
    */
-  toEmailAssetUrl(value: string | null | undefined): string | null {
+  async toEmailAssetUrl(
+    value: string | null | undefined,
+  ): Promise<string | null> {
     if (value == null) return null;
     const trimmed = String(value).trim();
-    if (!trimmed) return null;
+    if (!trimmed || this.isBase64Image(trimmed)) return null;
 
-    if (this.isBase64Image(trimmed)) return null;
+    const normalized = normalizeAssetReference(trimmed);
+    if (!normalized) return null;
 
-    if (/^https?:\/\//i.test(trimmed)) {
-      if (trimmed.includes('/api/uploads/')) {
-        return this.toAbsoluteProxyUrl(trimmed);
-      }
-
-      const storageKey = this.s3.tryExtractLogicalKey(trimmed);
-      if (storageKey) {
-        return this.toAbsoluteProxyUrl(this.s3.buildProxyUrl(storageKey));
-      }
-
-      if (trimmed.includes('localhost') || trimmed.includes('127.0.0.1')) {
-        return this.toAbsoluteProxyUrl(trimmed);
-      }
-
-      return trimmed;
+    // URL externa (Unsplash, etc.) — no re-firmar
+    if (/^https?:\/\//i.test(normalized)) {
+      return this.sanitizeEmailAssetUrl(normalized);
     }
 
-    if (trimmed.startsWith('/api/uploads/')) {
-      return this.toAbsoluteProxyUrl(trimmed);
+    try {
+      return await this.s3.createPresignedGetUrl({
+        key: normalized,
+        expiresInSeconds: EMAIL_ASSET_PRESIGN_TTL_SECONDS,
+      });
+    } catch {
+      const proxyUrl = this.toAbsoluteProxyUrl(
+        trimmed.startsWith('/api/uploads/')
+          ? trimmed
+          : this.s3.buildProxyUrl(normalized),
+      );
+      return this.sanitizeEmailAssetUrl(proxyUrl);
+    }
+  }
+
+  private sanitizeEmailAssetUrl(url: string | null): string | null {
+    if (!url) return null;
+
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.toLowerCase();
+      if (
+        (host === 'localhost' || host === '127.0.0.1' || host === '::1') &&
+        parsed.pathname.startsWith('/api/uploads/')
+      ) {
+        return `${getEmailPublicBaseUrl()}${parsed.pathname}`;
+      }
+    } catch {
+      // ignore
     }
 
-    return this.toAbsoluteProxyUrl(this.s3.buildProxyUrl(trimmed));
+    return url;
   }
 
   private toAbsoluteProxyUrl(pathOrAbsolute: string): string | null {
-    const base = this.emailPublicBaseUrl();
+    const base = getEmailPublicBaseUrl();
     if (!base) return null;
 
     let path: string;
@@ -193,17 +218,6 @@ export class ImageProcessingService {
     }
 
     return `${base}${path}`;
-  }
-
-  private emailPublicBaseUrl(): string {
-    return (
-      process.env.FRONTEND_URL ||
-      process.env.BACKEND_URL ||
-      process.env.BASE_URL ||
-      ''
-    )
-      .trim()
-      .replace(/\/$/, '');
   }
 
   /**

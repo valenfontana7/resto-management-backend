@@ -164,3 +164,22 @@ export class BulkDeleteTablesDto {
   @IsString({ each: true })
   tableIds?: string[];
 }
+
+export class BulkUpdateTablePositionItemDto {
+  @IsString()
+  @IsNotEmpty()
+  tableId: string;
+
+  @ValidateNested()
+  @Type(() => PositionDto)
+  position: PositionDto;
+}
+
+export class BulkUpdateTablePositionsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => BulkUpdateTablePositionItemDto)
+  positions: BulkUpdateTablePositionItemDto[];
+}

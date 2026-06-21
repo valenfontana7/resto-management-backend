@@ -14,6 +14,7 @@ import { CouponsService } from '../coupons/coupons.service';
 import { PaymentProviderFactory } from '../payment-providers/payment-provider.factory';
 import { DeliveryPricingService } from '../delivery/services/delivery-pricing.service';
 import { DeliveryDispatchService } from '../delivery/services/delivery-dispatch.service';
+import { DeliveryService } from '../delivery/delivery.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CustomersService } from '../customers/customers.service';
 import * as crypto from 'crypto';
@@ -43,6 +44,7 @@ export class OrdersService {
     private readonly paymentProviderFactory: PaymentProviderFactory,
     private readonly deliveryPricingService: DeliveryPricingService,
     private readonly deliveryDispatchService: DeliveryDispatchService,
+    private readonly deliveryService: DeliveryService,
     private readonly loyaltyService: LoyaltyService,
     private readonly customersService: CustomersService,
   ) {}
@@ -975,6 +977,7 @@ export class OrdersService {
             phone: true,
             address: true,
             logo: true,
+            branding: true,
             features: true,
           },
         },
@@ -1015,6 +1018,7 @@ export class OrdersService {
             phone: true,
             address: true,
             logo: true,
+            branding: true,
             features: true,
           },
         },
@@ -1152,6 +1156,94 @@ export class OrdersService {
     }
 
     return updatedOrder;
+  }
+
+  async markPaymentReceived(
+    id: string,
+    restaurantId: string,
+    userId: string,
+    paymentMethod: string,
+  ) {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    const order = await this.prisma.order.findFirst({
+      where: { id, restaurantId },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order with ID ${id} not found`);
+    }
+
+    if ((order.paymentStatus as string) === (PaymentStatus.PAID as string)) {
+      return order;
+    }
+
+    const normalizedMethod = (paymentMethod ?? 'cash').trim() || 'cash';
+
+    const updated = await this.prisma.order.update({
+      where: { id },
+      data: {
+        paymentStatus: PaymentStatus.PAID,
+        paymentMethod: normalizedMethod,
+        paidAt: new Date(),
+      },
+      include: {
+        items: {
+          include: {
+            dish: true,
+            selectedModifiers: true,
+          },
+        },
+      },
+    });
+
+    this.notifications.emitOrderUpdate(restaurantId, updated);
+    return updated;
+  }
+
+  async dispatchDeliveryFromSalon(
+    id: string,
+    restaurantId: string,
+    userId: string,
+    driverId: string,
+    paymentMethod?: string,
+  ) {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    const order = await this.prisma.order.findFirst({
+      where: { id, restaurantId },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Order with ID ${id} not found`);
+    }
+
+    if ((order.type as string) !== (OrderType.DELIVERY as string)) {
+      throw new BadRequestException('El pedido no es de delivery');
+    }
+
+    if ((order.status as string) !== (OrderStatus.READY as string)) {
+      throw new BadRequestException(
+        `El pedido debe estar listo para despachar. Estado actual: ${order.status}`,
+      );
+    }
+
+    const unpaid =
+      (order.paymentStatus as string) !== (PaymentStatus.PAID as string) &&
+      !order.paymentId;
+
+    if (unpaid) {
+      const method =
+        (paymentMethod ?? order.paymentMethod ?? 'cash').trim() || 'cash';
+      await this.markPaymentReceived(id, restaurantId, userId, method);
+    }
+
+    await this.deliveryService.assignDriver(restaurantId, id, { driverId });
+
+    return this.updateStatus(id, restaurantId, userId, {
+      status: OrderStatus.DELIVERED,
+      notes: 'Despachado desde salón',
+    });
   }
 
   /**
@@ -1388,6 +1480,7 @@ export class OrdersService {
             phone: true,
             address: true,
             logo: true,
+            branding: true,
           },
         },
       },

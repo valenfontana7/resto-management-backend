@@ -1,12 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from './prisma/prisma.service';
+import { isLocalMode } from './common/config/bentoo-mode.config';
+import { LocalDiscoveryService } from './local-discovery/local-discovery.service';
 
 @Injectable()
 export class AppService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
+    @Optional() private readonly localDiscovery?: LocalDiscoveryService,
   ) {}
 
   getHello(): string {
@@ -23,10 +26,20 @@ export class AppService {
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       environment: process.env.NODE_ENV || 'development',
+      bentooMode: isLocalMode() ? 'local' : 'cloud',
       version: process.env.npm_package_version || '0.0.1',
       services: {
         database: dbStatus ? 'connected' : 'disconnected',
         redis: redisStatus,
+        ...(isLocalMode() && this.localDiscovery
+          ? {
+              lanDiscovery: {
+                advertisedUrl: this.localDiscovery.getAdvertisedServerUrl(),
+                udpPort:
+                  this.config.get<string>('BENTOO_DISCOVERY_PORT') ?? '40200',
+              },
+            }
+          : {}),
       },
       memory: {
         rss: Math.round(mem.rss / 1024 / 1024),

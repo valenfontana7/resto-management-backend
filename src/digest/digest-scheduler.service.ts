@@ -158,7 +158,7 @@ export class DigestSchedulerService {
       where: { id: restaurantId },
       select: { logo: true },
     });
-    const logoUrl = this.images.toEmailAssetUrl(restaurant?.logo ?? null);
+    const logoUrl = await this.images.toEmailAssetUrl(restaurant?.logo ?? null);
 
     return renderDigestEmail({
       title: this.getSubject(restaurantName, frequency),

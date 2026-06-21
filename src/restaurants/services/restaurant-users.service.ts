@@ -467,6 +467,54 @@ export class RestaurantUsersService {
     return updatedUser;
   }
 
+  /**
+   * Alta rápida de mozo desde salón (sin email manual).
+   * Genera credencial interna; el dueño puede completar email en Configuración.
+   */
+  async quickAddSalonWaiter(
+    restaurantId: string,
+    dto: { name: string; phone?: string },
+  ) {
+    const name = dto.name?.trim();
+    if (!name || name.length < 2) {
+      throw new BadRequestException('Nombre requerido (mínimo 2 caracteres)');
+    }
+
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { slug: true },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException('Restaurant not found');
+    }
+
+    const slug =
+      (restaurant.slug ?? 'local').replace(/[^a-z0-9-]/gi, '').toLowerCase() ||
+      'local';
+    const phoneDigits = (dto.phone ?? '').replace(/\D/g, '');
+    const unique = randomBytes(4).toString('hex');
+    const email =
+      phoneDigits.length >= 8
+        ? `${phoneDigits}.${unique}@staff.${slug}.bentoo`
+        : `mozo.${unique}@staff.${slug}.bentoo`;
+
+    const created = await this.inviteUser(restaurantId, {
+      email,
+      roleName: 'WAITER',
+      name,
+    });
+
+    return {
+      id: created.id,
+      name: created.name,
+      email: created.email ?? email,
+      isActive: created.isActive ?? true,
+      phone: dto.phone?.trim() || null,
+      quickAdd: true,
+    };
+  }
+
   // ─── Métodos privados ───────────────────────────────────────────────
 
   private async findRole(restaurantId: string, roleIdentifier: string) {

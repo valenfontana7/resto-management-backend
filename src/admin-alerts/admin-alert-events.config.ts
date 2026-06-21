@@ -11,6 +11,7 @@ export const ADMIN_ALERT_EVENT_TOGGLE_DEFAULTS = {
   trialEnabled: true,
   trialDisabled: true,
   billingControlsUpdated: true,
+  edgeSyncStale: true,
 } as const;
 
 export type AdminAlertEventToggleKey =
@@ -34,6 +35,7 @@ export const ADMIN_ALERT_EVENT_KEY_MAP: Record<
   TRIAL_ENABLED: 'trialEnabled',
   TRIAL_DISABLED: 'trialDisabled',
   BILLING_CONTROLS_UPDATED: 'billingControlsUpdated',
+  EDGE_SYNC_STALE: 'edgeSyncStale',
 };
 
 export const REGISTRATION_ADMIN_ALERT_EVENT_KEYS =

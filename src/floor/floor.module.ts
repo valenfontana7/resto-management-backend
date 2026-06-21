@@ -13,6 +13,9 @@ import { CommonModule } from '../common/common.module';
 import { KitchenModule } from '../kitchen/kitchen.module';
 import { OrdersModule } from '../orders/orders.module';
 import { FiscalModule } from '../fiscal/fiscal.module';
+import { RestaurantsModule } from '../restaurants/restaurants.module';
+import { DeliveryModule } from '../delivery/delivery.module';
+import { SalonDeliveryOrderService } from './services/salon-delivery-order.service';
 
 @Module({
   imports: [
@@ -20,7 +23,9 @@ import { FiscalModule } from '../fiscal/fiscal.module';
     CommonModule,
     KitchenModule,
     FiscalModule,
+    DeliveryModule,
     forwardRef(() => OrdersModule),
+    RestaurantsModule,
   ],
   controllers: [FloorController],
   providers: [
@@ -32,6 +37,7 @@ import { FiscalModule } from '../fiscal/fiscal.module';
     DailyOperationService,
     MainCashRegisterService,
     FloorIdempotencyService,
+    SalonDeliveryOrderService,
   ],
   exports: [
     TableSessionService,

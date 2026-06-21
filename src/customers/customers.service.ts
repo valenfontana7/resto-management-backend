@@ -254,7 +254,7 @@ export class CustomersService {
       customerName: profile.displayName,
       link,
       expiresInMinutes: CUSTOMER_MAGIC_LINK_EXPIRY_MINUTES,
-      logoUrl: this.images.toEmailAssetUrl(profile.restaurant.logo),
+      logoUrl: await this.images.toEmailAssetUrl(profile.restaurant.logo),
     });
 
     await this.emailService?.sendGenericEmail(

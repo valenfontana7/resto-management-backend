@@ -6,6 +6,7 @@ import {
   RestaurantData,
 } from '../../email/email.service';
 import { ImageProcessingService } from '../../common/services/image-processing.service';
+import { resolveRestaurantLogo } from '../../common/utils/restaurant-logo.util';
 import {
   OrdersGateway,
   OrderUpdatePayload,
@@ -13,7 +14,7 @@ import {
 import { KitchenNotificationsService } from '../../kitchen/kitchen-notifications.service';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { CallMeBotService } from '../../notifications/callmebot.service';
-import { isPlatformStaffRole } from '../../notifications/order-notification-channels.util';
+import { shouldReceiveRestaurantOrderAlerts } from '../../notifications/order-notification-channels.util';
 import { OrderStatus, OrderType } from '../dto/order.dto';
 
 @Injectable()
@@ -56,15 +57,63 @@ export class OrderNotificationsService {
     };
   }
 
-  mapRestaurantToEmailData(restaurant: any): RestaurantData {
+  mapRestaurantToEmailData(restaurant: any): Promise<RestaurantData> {
+    return this.buildRestaurantEmailData(restaurant);
+  }
+
+  private async buildRestaurantEmailData(
+    restaurant: any,
+  ): Promise<RestaurantData> {
     return {
       id: restaurant.id,
       name: restaurant.name,
       email: restaurant.email,
       phone: restaurant.phone,
       address: restaurant.address,
-      logoUrl: this.images.toEmailAssetUrl(restaurant.logo ?? null),
+      logoUrl: await this.images.toEmailAssetUrl(
+        resolveRestaurantLogo(restaurant),
+      ),
     };
+  }
+
+  sendStatusUpdateEmail(order: any, restaurant: any) {
+    void this.dispatchStatusUpdateEmail(order, restaurant);
+  }
+
+  private async dispatchStatusUpdateEmail(order: any, restaurant: any) {
+    const orderData = this.mapOrderToEmailData(order);
+    const restaurantData = await this.buildRestaurantEmailData(restaurant);
+
+    this.emailService
+      .sendStatusUpdate(orderData, restaurantData)
+      .catch((err) => {
+        this.logger.error(`Failed to send status update email: ${err.message}`);
+      });
+  }
+
+  sendOrderConfirmationEmails(order: any, restaurant: any) {
+    void this.dispatchOrderConfirmationEmails(order, restaurant);
+  }
+
+  private async dispatchOrderConfirmationEmails(order: any, restaurant: any) {
+    const orderData = this.mapOrderToEmailData(order);
+    const restaurantData = await this.buildRestaurantEmailData(restaurant);
+
+    this.emailService
+      .sendOrderConfirmation(orderData, restaurantData)
+      .catch((err) => {
+        this.logger.error(
+          `Failed to send order confirmation email: ${err.message}`,
+        );
+      });
+
+    this.emailService
+      .sendNewOrderNotification(orderData, restaurantData)
+      .catch((err) => {
+        this.logger.error(
+          `Failed to send new order notification: ${err.message}`,
+        );
+      });
   }
 
   mapOrderToWebSocketPayload(order: any): OrderUpdatePayload {
@@ -85,38 +134,6 @@ export class OrderNotificationsService {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
     };
-  }
-
-  sendStatusUpdateEmail(order: any, restaurant: any) {
-    const orderData = this.mapOrderToEmailData(order);
-    const restaurantData = this.mapRestaurantToEmailData(restaurant);
-
-    this.emailService
-      .sendStatusUpdate(orderData, restaurantData)
-      .catch((err) => {
-        this.logger.error(`Failed to send status update email: ${err.message}`);
-      });
-  }
-
-  sendOrderConfirmationEmails(order: any, restaurant: any) {
-    const orderData = this.mapOrderToEmailData(order);
-    const restaurantData = this.mapRestaurantToEmailData(restaurant);
-
-    this.emailService
-      .sendOrderConfirmation(orderData, restaurantData)
-      .catch((err) => {
-        this.logger.error(
-          `Failed to send order confirmation email: ${err.message}`,
-        );
-      });
-
-    this.emailService
-      .sendNewOrderNotification(orderData, restaurantData)
-      .catch((err) => {
-        this.logger.error(
-          `Failed to send new order notification: ${err.message}`,
-        );
-      });
   }
 
   emitOrderUpdate(restaurantId: string, order: any) {
@@ -266,6 +283,7 @@ export class OrderNotificationsService {
         },
         select: {
           userId: true,
+          isDefault: true,
           role: { select: { name: true } },
           user: {
             select: {
@@ -292,7 +310,15 @@ export class OrderNotificationsService {
     for (const membership of memberships) {
       const roleName =
         membership.role?.name ?? membership.user.role?.name ?? null;
-      if (isPlatformStaffRole(roleName)) continue;
+      if (
+        !shouldReceiveRestaurantOrderAlerts({
+          roleName,
+          viaMembership: true,
+          isDefaultMembership: membership.isDefault,
+        })
+      ) {
+        continue;
+      }
       staff.set(membership.userId, {
         id: membership.userId,
         name: roleName,
@@ -301,7 +327,14 @@ export class OrderNotificationsService {
 
     for (const user of directUsers) {
       const roleName = user.role?.name ?? null;
-      if (isPlatformStaffRole(roleName)) continue;
+      if (
+        !shouldReceiveRestaurantOrderAlerts({
+          roleName,
+          viaMembership: false,
+        })
+      ) {
+        continue;
+      }
       if (!staff.has(user.id)) {
         staff.set(user.id, { id: user.id, name: roleName });
       }

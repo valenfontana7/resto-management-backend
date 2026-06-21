@@ -26,6 +26,20 @@ export interface RestaurantCreatedAlertPayload {
   ownerEmail?: string | null;
 }
 
+export interface EdgeSyncStaleAlertPayload {
+  source: string;
+  restaurantId: string;
+  restaurantName: string;
+  restaurantSlug: string;
+  localId: string;
+  hostname?: string | null;
+  lastLanUrl?: string | null;
+  pendingPushCount: number;
+  minutesSinceActivity: number;
+  staleThresholdMinutes: number;
+  lastActivityAt: string;
+}
+
 export interface AdminEventAlertPayload {
   source: string;
   event: string;
@@ -225,6 +239,34 @@ export class AdminAlertsService {
         restaurantName: payload.restaurantName,
         restaurantSlug: payload.restaurantSlug,
         ownerEmail: payload.ownerEmail ?? null,
+      },
+    });
+  }
+
+  async notifyEdgeSyncStale(
+    payload: EdgeSyncStaleAlertPayload,
+  ): Promise<boolean> {
+    const message =
+      `El servidor local de ${payload.restaurantName} lleva ${payload.minutesSinceActivity} minutos sin actividad de sync ` +
+      `(umbral ${payload.staleThresholdMinutes} min). Revisá conectividad, servicio BentooSalonLocal o outbox pendiente.`;
+
+    return this.notifyAdminEvent({
+      source: payload.source,
+      event: 'EDGE_SYNC_STALE',
+      subject: `⚠️ Sync local detenido · ${payload.restaurantName}`,
+      title: 'Servidor local sin sincronizar',
+      message,
+      data: {
+        restaurantId: payload.restaurantId,
+        restaurantName: payload.restaurantName,
+        restaurantSlug: payload.restaurantSlug,
+        localId: payload.localId,
+        hostname: payload.hostname ?? null,
+        lastLanUrl: payload.lastLanUrl ?? null,
+        pendingPushCount: payload.pendingPushCount,
+        minutesSinceActivity: payload.minutesSinceActivity,
+        staleThresholdMinutes: payload.staleThresholdMinutes,
+        lastActivityAt: payload.lastActivityAt,
       },
     });
   }

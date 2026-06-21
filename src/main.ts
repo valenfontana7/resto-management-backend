@@ -12,6 +12,7 @@ import {
   createWinstonLogger,
   WinstonNestLogger,
 } from './common/logging/winston-nest.logger';
+import { isLocalMode } from './common/config/bentoo-mode.config';
 
 async function bootstrap() {
   const winstonLogger = createWinstonLogger();
@@ -44,8 +45,8 @@ async function bootstrap() {
     }),
   );
 
-  // HTTPS: Force HTTPS in production
-  if (process.env.NODE_ENV === 'production') {
+  // HTTPS: Force HTTPS in production (cloud only — local LAN uses HTTP)
+  if (process.env.NODE_ENV === 'production' && !isLocalMode()) {
     app.use((req: any, res: any, next: any) => {
       // Skip HTTPS redirect for localhost/127.0.0.1 (for local development/testing)
       const host = req.header('host');
@@ -202,7 +203,12 @@ async function bootstrap() {
     SwaggerModule.setup('api/docs', app, document);
   }
 
-  await app.listen(process.env.PORT ?? 4000);
+  const port = Number(process.env.PORT ?? 4000);
+  if (isLocalMode()) {
+    await app.listen(port, process.env.BIND_HOST ?? '0.0.0.0');
+  } else {
+    await app.listen(port);
+  }
 
   // Graceful shutdown
   const registerShutdownHandler = (signal: 'SIGTERM' | 'SIGINT') => {

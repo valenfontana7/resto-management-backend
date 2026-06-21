@@ -19,6 +19,7 @@ import {
 } from './types/builder-config.types';
 import { UpdateBuilderConfigDto } from './dto/builder-config.dto';
 import { normalizeRestaurantDraftPayload } from './utils/restaurant-draft.util';
+import { normalizeAssetReference } from './utils/asset-reference.util';
 
 @Injectable()
 export class BuilderService {
@@ -472,9 +473,17 @@ export class BuilderService {
       );
     }
 
+    const reconciledDraftBase = draftBase
+      ? this.reconcileDraftBaseWithBrandingAssets(
+          draftBase,
+          brandingData,
+          restaurant,
+        )
+      : undefined;
+
     const conflictingFields = this.getRestaurantDraftConflictFields(
       draftData,
-      draftBase,
+      reconciledDraftBase,
       restaurant,
     );
 
@@ -859,7 +868,11 @@ export class BuilderService {
     if (config.restaurant) {
       nextMetadata.restaurantDraftBase =
         previousConfig?.restaurant && previousDraftBase
-          ? previousDraftBase
+          ? this.reconcileDraftBaseWithBrandingAssets(
+              previousDraftBase,
+              config,
+              restaurant,
+            )
           : this.buildRestaurantDraftBase(restaurant);
     } else {
       delete nextMetadata.restaurantDraftBase;
@@ -905,6 +918,43 @@ export class BuilderService {
       },
       {},
     );
+  }
+
+  private reconcileDraftBaseWithBrandingAssets(
+    draftBase: RestaurantDraft,
+    config: Pick<BuilderConfiguration, 'assets'>,
+    restaurant: RestaurantInfo,
+  ): RestaurantDraft {
+    const assets = config.assets;
+    if (!assets) {
+      return draftBase;
+    }
+
+    const reconciled: RestaurantDraft = { ...draftBase };
+
+    if (assets.logo !== undefined && restaurant.logo !== undefined) {
+      if (
+        this.areEquivalentRestaurantValues('logo', restaurant.logo, assets.logo)
+      ) {
+        reconciled.logo = restaurant.logo;
+      }
+    }
+
+    const coverAsset = assets.coverImage ?? assets.bannerImage ?? undefined;
+
+    if (coverAsset !== undefined && restaurant.coverImage !== undefined) {
+      if (
+        this.areEquivalentRestaurantValues(
+          'coverImage',
+          restaurant.coverImage,
+          coverAsset,
+        )
+      ) {
+        reconciled.coverImage = restaurant.coverImage;
+      }
+    }
+
+    return reconciled;
   }
 
   private getRestaurantDraftConflictFields(
@@ -1014,8 +1064,8 @@ export class BuilderService {
 
     if (field === 'logo' || field === 'coverImage') {
       return (
-        this.normalizeAssetReference(draftValue) ===
-        this.normalizeAssetReference(liveValue)
+        normalizeAssetReference(draftValue) ===
+        normalizeAssetReference(liveValue)
       );
     }
 
@@ -1032,34 +1082,6 @@ export class BuilderService {
 
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : undefined;
-  }
-
-  private normalizeAssetReference(value: unknown): string | undefined {
-    const normalized = this.normalizeScalarValue(value);
-    if (typeof normalized !== 'string') {
-      return undefined;
-    }
-
-    try {
-      const url = new URL(normalized);
-      const uploadPathMatch = url.pathname.match(
-        /\/api\/(?:proxy\/)?uploads\/(.+)$/i,
-      );
-      if (uploadPathMatch) {
-        return decodeURIComponent(uploadPathMatch[1]);
-      }
-
-      return url.href;
-    } catch {
-      const localUploadPathMatch = normalized.match(
-        /^\/?api\/(?:proxy\/)?uploads\/(.+)$/i,
-      );
-      if (localUploadPathMatch) {
-        return decodeURIComponent(localUploadPathMatch[1]);
-      }
-
-      return normalized.replace(/^\/+/, '');
-    }
   }
 
   private extractWebsiteFromSocialMedia(value: unknown): string | undefined {

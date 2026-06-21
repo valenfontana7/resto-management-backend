@@ -89,7 +89,7 @@ describe('CustomersService', () => {
     };
 
     const images = {
-      toEmailAssetUrl: jest.fn().mockReturnValue(null),
+      toEmailAssetUrl: jest.fn().mockResolvedValue(null),
     };
 
     service = new CustomersService(

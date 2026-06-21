@@ -373,6 +373,44 @@ export class TablesService {
     });
   }
 
+  async bulkUpdatePositions(
+    restaurantId: string,
+    userId: string,
+    positions: Array<{ tableId: string; x: number; y: number }>,
+  ) {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    if (!positions.length) {
+      return { updated: 0 };
+    }
+
+    const ids = [...new Set(positions.map((p) => p.tableId))];
+    const tables = await this.prisma.table.findMany({
+      where: { restaurantId, id: { in: ids } },
+      select: { id: true },
+    });
+    const validIds = new Set(tables.map((t) => t.id));
+
+    const updates = positions.filter((p) => validIds.has(p.tableId));
+    if (!updates.length) {
+      return { updated: 0 };
+    }
+
+    await this.prisma.$transaction(
+      updates.map((p) =>
+        this.prisma.table.update({
+          where: { id: p.tableId },
+          data: {
+            positionX: Math.round(p.x),
+            positionY: Math.round(p.y),
+          },
+        }),
+      ),
+    );
+
+    return { updated: updates.length };
+  }
+
   private async checkTableDeletable(
     tableId: string,
     restaurantId: string,
@@ -710,8 +748,12 @@ export class TablesService {
         select: { number: true },
         orderBy: { number: 'asc' },
       });
+      const skippedHint =
+        tableResult.skippedNumbers.length > 0
+          ? ` Mesas con cuenta abierta u ocupadas: ${tableResult.skippedNumbers.join(', ')}.`
+          : '';
       throw new BadRequestException(
-        `No se puede eliminar el área «${area.name}»: ${remaining} mesa(s) ocupada(s), en limpieza o con cuenta abierta (${blocked.map((t) => t.number).join(', ')}). Liberá esas mesas primero.`,
+        `No se puede eliminar el área «${area.name}»: ${remaining} mesa(s) aún activa(s) (${blocked.map((t) => t.number).join(', ')}).${skippedHint} Liberá o eliminá esas mesas primero.`,
       );
     }
 

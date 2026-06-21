@@ -69,11 +69,7 @@ export class NotificationsService {
     await this.sendNotification(notification);
 
     // Tiempo real en panel admin (campana + listas conectadas).
-    // Pedidos ya emiten order_created por SSE; evitamos duplicar eventos.
-    if (
-      notification.restaurantId &&
-      !String(notification.type).startsWith('ORDER_')
-    ) {
+    if (notification.restaurantId) {
       this.kitchenNotifications.emitNotification(notification.restaurantId, {
         type: 'in_app',
         notificationId: notification.id,

@@ -1,5 +1,8 @@
 import { NotificationChannel } from '@prisma/client';
-import { resolveOrderNotificationChannels } from './order-notification-channels.util';
+import {
+  resolveOrderNotificationChannels,
+  shouldReceiveRestaurantOrderAlerts,
+} from './order-notification-channels.util';
 
 describe('order-notification-channels.util', () => {
   it('sends email only for new orders and cancellations', () => {
@@ -31,5 +34,35 @@ describe('order-notification-channels.util', () => {
         ]),
       );
     }
+  });
+
+  it('allows SUPER_ADMIN on default membership to receive order alerts', () => {
+    expect(
+      shouldReceiveRestaurantOrderAlerts({
+        roleName: 'SUPER_ADMIN',
+        viaMembership: true,
+        isDefaultMembership: true,
+      }),
+    ).toBe(true);
+  });
+
+  it('blocks SUPER_ADMIN on non-default membership from order alerts', () => {
+    expect(
+      shouldReceiveRestaurantOrderAlerts({
+        roleName: 'SUPER_ADMIN',
+        viaMembership: true,
+        isDefaultMembership: false,
+      }),
+    ).toBe(false);
+  });
+
+  it('allows operational roles regardless of membership default', () => {
+    expect(
+      shouldReceiveRestaurantOrderAlerts({
+        roleName: 'OWNER',
+        viaMembership: true,
+        isDefaultMembership: false,
+      }),
+    ).toBe(true);
   });
 });

@@ -75,19 +75,6 @@ export class NotificationsController {
     return { count };
   }
 
-  @Put(':id/read')
-  @ApiOperation({ summary: 'Marcar notificación como leída' })
-  @ApiResponse({ status: 200, description: 'Notificación marcada como leída' })
-  async markAsRead(
-    @Param('id') notificationId: string,
-    @Request() req: any,
-  ): Promise<Notification> {
-    return this.notificationsService.markAsRead(
-      notificationId,
-      req.user.userId,
-    );
-  }
-
   @Put('mark-all-read')
   @ApiOperation({ summary: 'Marcar todas las notificaciones como leídas' })
   @ApiResponse({
@@ -103,6 +90,19 @@ export class NotificationsController {
       restaurantId,
     );
     return { markedCount };
+  }
+
+  @Put(':id/read')
+  @ApiOperation({ summary: 'Marcar notificación como leída' })
+  @ApiResponse({ status: 200, description: 'Notificación marcada como leída' })
+  async markAsRead(
+    @Param('id') notificationId: string,
+    @Request() req: any,
+  ): Promise<Notification> {
+    return this.notificationsService.markAsRead(
+      notificationId,
+      req.user.userId,
+    );
   }
 
   @Delete(':id')

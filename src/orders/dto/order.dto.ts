@@ -160,6 +160,22 @@ export class UpdateOrderStatusDto {
   notes?: string;
 }
 
+export class MarkOrderPaymentDto {
+  @IsString()
+  @IsNotEmpty()
+  paymentMethod: string;
+}
+
+export class SalonDispatchDeliveryDto {
+  @IsString()
+  @IsNotEmpty()
+  driverId: string;
+
+  @IsOptional()
+  @IsString()
+  paymentMethod?: string;
+}
+
 export class OrderFiltersDto {
   @IsOptional()
   @IsString()

@@ -26,6 +26,13 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { Public } from '../auth/decorators/public.decorator';
 import { S3Service } from '../storage/s3.service';
+import {
+  needsTranscode,
+  resolveCompatOutputFormat,
+  streamToBuffer,
+  transcodeForCompatClient,
+  wantsCompatTranscode,
+} from './upload-image-transcode.util';
 
 @ApiTags('Uploads')
 @Controller('api/uploads')
@@ -110,6 +117,35 @@ export class UploadsController {
       const object = usedFallback
         ? await this.s3.getObjectStreamRaw(finalKey)
         : await this.s3.getObjectStream(finalKey);
+
+      const compatRequested = wantsCompatTranscode(req);
+      const shouldTranscode =
+        compatRequested && needsTranscode(head.contentType);
+
+      if (shouldTranscode) {
+        try {
+          const raw = await streamToBuffer(object.body);
+          const outputFormat = resolveCompatOutputFormat(req);
+          const transcoded = await transcodeForCompatClient(raw, outputFormat);
+
+          res.status(200);
+          res.setHeader('Content-Type', transcoded.contentType);
+          res.setHeader('Content-Length', String(transcoded.buffer.length));
+          res.setHeader('Cache-Control', 'public, max-age=86400');
+          res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+          if (head.etag) res.setHeader('ETag', head.etag);
+          return res.end(transcoded.buffer);
+        } catch (err: any) {
+          this.logger.warn(
+            `Compat transcode failed for ${finalKey}: ${err?.message ?? err}`,
+          );
+          if (res.headersSent) {
+            res.destroy();
+            return;
+          }
+          return res.status(502).json({ message: 'Image transcode failed' });
+        }
+      }
 
       this.applyCacheHeaders(res, head);
       res.status(200);
@@ -357,6 +393,9 @@ export class UploadsController {
     if (head.lastModified)
       res.setHeader('Last-Modified', head.lastModified.toUTCString());
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    // Public assets are embedded from the frontend origin (and emails/OG). Helmet sets
+    // Cross-Origin-Resource-Policy: same-origin globally; override for uploads.
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   }
 
   private getHttpStatus(err: any): number {

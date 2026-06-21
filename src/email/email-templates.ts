@@ -3,6 +3,8 @@
  * Tono: profesional, cálido y claro. Compatible con clientes de correo (tablas + inline styles).
  */
 
+import { getEmailPublicBaseUrl } from '../common/utils/email-public-base-url.util';
+
 export interface OrderData {
   id: string;
   orderNumber: string;
@@ -151,15 +153,7 @@ export function getBentooEmailLogoUrl(): string {
   const explicit = (process.env.BENTOO_EMAIL_LOGO_URL || '').trim();
   if (explicit) return explicit;
 
-  const base = (
-    process.env.FRONTEND_URL ||
-    process.env.BACKEND_URL ||
-    'https://www.bentoo.com.ar'
-  )
-    .trim()
-    .replace(/\/$/, '');
-
-  return `${base}/apple-touch-icon.svg`;
+  return `${getEmailPublicBaseUrl()}/apple-touch-icon.svg`;
 }
 
 function bentooHeaderBranding(): { logoUrl: string; brandName: string } {
