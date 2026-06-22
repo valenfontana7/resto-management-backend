@@ -255,6 +255,11 @@ export class FiscalDocumentService {
   async generatePdf(restaurantId: string, documentId: string) {
     const doc = await this.prisma.fiscalDocument.findFirst({
       where: { id: documentId, restaurantId },
+      include: {
+        relatedFiscalDocument: {
+          select: { type: true },
+        },
+      },
     });
 
     if (!doc) {
@@ -272,12 +277,15 @@ export class FiscalDocumentService {
 
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { id: restaurantId },
-      select: { name: true, taxId: true },
+      select: { name: true, taxId: true, businessRules: true },
     });
 
     if (!restaurant) {
       throw new NotFoundException('Restaurante no encontrado');
     }
+
+    const fiscalConfig = await this.fiscalConfig.getPublicConfig(restaurantId);
+    const lineItems = await this.loadLineItems(doc.orderId);
 
     return this.fiscalPdf.generate({
       type: doc.type,
@@ -289,12 +297,47 @@ export class FiscalDocumentService {
       customerName: doc.customerName,
       customerDocType: doc.customerDocType,
       customerDocNumber: doc.customerDocNumber,
+      customerIvaCondition: doc.customerIvaCondition,
       subtotal: doc.subtotal,
       ivaAmount: doc.ivaAmount,
       total: doc.total,
       createdAt: doc.createdAt,
       restaurantName: restaurant.name,
-      restaurantTaxId: restaurant.taxId,
+      restaurantTaxId: fiscalConfig?.cuit ?? restaurant.taxId,
+      issuerRazonSocial: fiscalConfig?.razonSocial,
+      issuerPuntoVenta: fiscalConfig?.puntoVenta ?? doc.puntoVenta,
+      relatedInvoiceType: doc.relatedFiscalDocument?.type ?? null,
+      lineItems,
+    });
+  }
+
+  private async loadLineItems(orderId?: string | null) {
+    if (!orderId) return [];
+
+    const items = await this.prisma.orderItem.findMany({
+      where: { orderId },
+      include: {
+        dish: { select: { name: true } },
+        selectedModifiers: { select: { name: true, priceAdj: true } },
+      },
+      orderBy: { id: 'asc' },
+    });
+
+    return items.map((item) => {
+      const modifierLabel = item.selectedModifiers
+        .map((modifier) => modifier.name)
+        .filter(Boolean)
+        .join(', ');
+      const description = modifierLabel
+        ? `${item.dish.name} (${modifierLabel})`
+        : item.dish.name;
+
+      return {
+        description,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        subtotal: item.subtotal,
+      };
     });
   }
 
@@ -463,6 +506,10 @@ export class FiscalDocumentService {
     });
   }
 
+  private canDownloadPdf(doc: { type: string; status: string }): boolean {
+    return doc.status === FiscalDocumentStatus.AUTHORIZED;
+  }
+
   private extractRelatedInvoiceType(
     payload: unknown,
   ): FiscalDocumentType | undefined {
@@ -516,6 +563,7 @@ export class FiscalDocumentService {
       tableSessionId: doc.tableSessionId ?? null,
       orderId: doc.orderId ?? null,
       isFiscal: doc.type !== FiscalDocumentType.INTERNAL_TICKET,
+      canDownloadPdf: this.canDownloadPdf(doc),
       canIssueCreditNote:
         doc.type !== FiscalDocumentType.INTERNAL_TICKET &&
         doc.type !== FiscalDocumentType.NOTA_CREDITO &&

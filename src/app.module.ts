@@ -54,6 +54,7 @@ import { validateEnvironment } from './common/config/env.validation';
 import { isLocalMode } from './common/config/bentoo-mode.config';
 import { LocalDiscoveryModule } from './local-discovery/local-discovery.module';
 import { EdgeSyncModule } from './edge-sync/edge-sync.module';
+import { SalonDesktopModule } from './salon-desktop/salon-desktop.module';
 
 @Module({
   imports: [
@@ -135,6 +136,7 @@ import { EdgeSyncModule } from './edge-sync/edge-sync.module';
     FloorModule,
     BusinessHealthModule,
     EdgeSyncModule,
+    SalonDesktopModule,
     ...(isLocalMode() ? [LocalDiscoveryModule] : []),
   ],
   controllers: [AppController],

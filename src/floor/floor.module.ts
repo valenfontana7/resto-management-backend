@@ -16,6 +16,9 @@ import { FiscalModule } from '../fiscal/fiscal.module';
 import { RestaurantsModule } from '../restaurants/restaurants.module';
 import { DeliveryModule } from '../delivery/delivery.module';
 import { SalonDeliveryOrderService } from './services/salon-delivery-order.service';
+import { FloorDesktopBootstrapService } from './services/floor-desktop-bootstrap.service';
+import { TablesModule } from '../tables/tables.module';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
@@ -24,6 +27,8 @@ import { SalonDeliveryOrderService } from './services/salon-delivery-order.servi
     KitchenModule,
     FiscalModule,
     DeliveryModule,
+    TablesModule,
+    StorageModule,
     forwardRef(() => OrdersModule),
     RestaurantsModule,
   ],
@@ -38,6 +43,7 @@ import { SalonDeliveryOrderService } from './services/salon-delivery-order.servi
     MainCashRegisterService,
     FloorIdempotencyService,
     SalonDeliveryOrderService,
+    FloorDesktopBootstrapService,
   ],
   exports: [
     TableSessionService,

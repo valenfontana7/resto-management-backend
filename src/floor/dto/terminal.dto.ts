@@ -29,3 +29,25 @@ export class UpdateTerminalDto {
   @IsBoolean()
   isActive?: boolean;
 }
+
+export class PingTerminalDto {
+  @ApiPropertyOptional({ example: '0.2.1' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  clientVersion?: string;
+
+  @ApiPropertyOptional({ example: '0.1.4' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  localVersion?: string;
+
+  @ApiPropertyOptional({
+    example: 'Microsoft Windows NT 6.1.7601 Service Pack 1',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  platform?: string;
+}

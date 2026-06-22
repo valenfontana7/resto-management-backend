@@ -8,7 +8,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 
 import { OwnershipService } from '../../common/services/ownership.service';
 
-import { CreateTerminalDto, UpdateTerminalDto } from '../dto/terminal.dto';
+import {
+  CreateTerminalDto,
+  PingTerminalDto,
+  UpdateTerminalDto,
+} from '../dto/terminal.dto';
 
 @Injectable()
 export class TerminalService {
@@ -104,7 +108,12 @@ export class TerminalService {
     return { terminal: this.formatTerminal(terminal) };
   }
 
-  async ping(restaurantId: string, terminalId: string, userId: string) {
+  async ping(
+    restaurantId: string,
+    terminalId: string,
+    userId: string,
+    dto?: PingTerminalDto,
+  ) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
     const terminal = await this.findTerminalOrThrow(restaurantId, terminalId);
@@ -116,7 +125,18 @@ export class TerminalService {
     const updated = await this.prisma.restaurantTerminal.update({
       where: { id: terminalId },
 
-      data: { lastSeenAt: new Date() },
+      data: {
+        lastSeenAt: new Date(),
+        ...(dto?.clientVersion !== undefined
+          ? { clientVersion: dto.clientVersion.trim() || null }
+          : {}),
+        ...(dto?.localVersion !== undefined
+          ? { localVersion: dto.localVersion.trim() || null }
+          : {}),
+        ...(dto?.platform !== undefined
+          ? { platform: dto.platform.trim() || null }
+          : {}),
+      },
     });
 
     return { terminal: this.formatTerminal(updated) };
@@ -175,6 +195,12 @@ export class TerminalService {
 
     lastSeenAt: Date | null;
 
+    clientVersion: string | null;
+
+    localVersion: string | null;
+
+    platform: string | null;
+
     createdAt: Date;
 
     updatedAt: Date;
@@ -187,6 +213,12 @@ export class TerminalService {
       isActive: terminal.isActive,
 
       lastSeenAt: terminal.lastSeenAt,
+
+      clientVersion: terminal.clientVersion,
+
+      localVersion: terminal.localVersion,
+
+      platform: terminal.platform,
 
       createdAt: terminal.createdAt,
 

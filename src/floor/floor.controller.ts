@@ -32,7 +32,11 @@ import {
   CreateCashMovementDto,
   OpenCashRegisterDto,
 } from './dto/cash-register.dto';
-import { CreateTerminalDto, UpdateTerminalDto } from './dto/terminal.dto';
+import {
+  CreateTerminalDto,
+  UpdateTerminalDto,
+  PingTerminalDto,
+} from './dto/terminal.dto';
 import { UploadAfipCertificateDto } from '../fiscal/dto/upload-afip-certificate.dto';
 import { DailyOperationService } from './services/daily-operation.service';
 import { UpdateDailyOperationDto } from './dto/daily-operation.dto';
@@ -52,6 +56,7 @@ import {
 } from './dto/salon-delivery-order.dto';
 import { RestaurantUsersService } from '../restaurants/services/restaurant-users.service';
 import { SalonDeliveryOrderService } from './services/salon-delivery-order.service';
+import { FloorDesktopBootstrapService } from './services/floor-desktop-bootstrap.service';
 import { VerifyRestaurantAccess } from '../common/decorators/verify-restaurant-access.decorator';
 
 @ApiTags('floor')
@@ -69,7 +74,22 @@ export class FloorController {
     private readonly idempotency: FloorIdempotencyService,
     private readonly restaurantUsers: RestaurantUsersService,
     private readonly salonDeliveryOrders: SalonDeliveryOrderService,
+    private readonly desktopBootstrap: FloorDesktopBootstrapService,
   ) {}
+
+  // ─── Bootstrap desktop (un round-trip) ─────────────────────────────────────
+
+  @Get('desktop-bootstrap')
+  @ApiOperation({ summary: 'Snapshot inicial para Bentoo Salón Desktop' })
+  getDesktopBootstrap(
+    @Param('restaurantId') restaurantId: string,
+    @Query('ordersLimit') ordersLimit: string | undefined,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const parsed = ordersLimit != null ? parseInt(ordersLimit, 10) : 120;
+    const limit = Number.isFinite(parsed) ? parsed : 120;
+    return this.desktopBootstrap.getBootstrap(restaurantId, user.userId, limit);
+  }
 
   // ─── Cuentas de mesa ───────────────────────────────────────────────────────
 
@@ -503,9 +523,10 @@ export class FloorController {
   pingTerminal(
     @Param('restaurantId') restaurantId: string,
     @Param('terminalId') terminalId: string,
+    @Body() dto: PingTerminalDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.terminals.ping(restaurantId, terminalId, user.userId);
+    return this.terminals.ping(restaurantId, terminalId, user.userId, dto);
   }
 
   @Delete('terminals/:terminalId')

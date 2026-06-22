@@ -15,6 +15,7 @@ import { PaymentProviderFactory } from '../payment-providers/payment-provider.fa
 import { DeliveryPricingService } from '../delivery/services/delivery-pricing.service';
 import { DeliveryDispatchService } from '../delivery/services/delivery-dispatch.service';
 import { DeliveryService } from '../delivery/delivery.service';
+import { GeocodeService } from '../delivery/services/geocode.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CustomersService } from '../customers/customers.service';
 import * as crypto from 'crypto';
@@ -45,6 +46,7 @@ export class OrdersService {
     private readonly deliveryPricingService: DeliveryPricingService,
     private readonly deliveryDispatchService: DeliveryDispatchService,
     private readonly deliveryService: DeliveryService,
+    private readonly geocodeService: GeocodeService,
     private readonly loyaltyService: LoyaltyService,
     private readonly customersService: CustomersService,
   ) {}
@@ -106,6 +108,8 @@ export class OrdersService {
         email: true,
         phone: true,
         address: true,
+        city: true,
+        country: true,
         businessRules: true,
       },
     });
@@ -296,14 +300,18 @@ export class OrdersService {
 
       // Auto-create DeliveryOrder for DELIVERY type
       if (orderType === OrderType.DELIVERY) {
-        await this.createDeliveryOrder(order.id, createDto, {
-          deliveryFee,
-          zoneId: deliveryQuote?.zone?.id,
-          estimatedTime: deliveryQuote?.estimatedTime ?? undefined,
-        });
-        await this.deliveryDispatchService.dispatchOrder(
-          restaurantId,
+        await this.createDeliveryOrder(
           order.id,
+          createDto,
+          {
+            deliveryFee,
+            zoneId: deliveryQuote?.zone?.id,
+            estimatedTime: deliveryQuote?.estimatedTime ?? undefined,
+          },
+          {
+            city: restaurant.city,
+            country: restaurant.country,
+          },
         );
       }
 
@@ -1155,6 +1163,18 @@ export class OrdersService {
       );
     }
 
+    if (
+      (updatedOrder.type as string) === (OrderType.DELIVERY as string) &&
+      (finalStatus === OrderStatus.READY ||
+        finalStatus === OrderStatus.CANCELLED)
+    ) {
+      await this.syncDeliveryOrderForOrderStatus(
+        restaurantId,
+        updatedOrder.id,
+        finalStatus,
+      );
+    }
+
     return updatedOrder;
   }
 
@@ -1666,10 +1686,6 @@ export class OrdersService {
           estimatedTime: deliveryQuote.estimatedTime ?? undefined,
         },
       );
-      await this.deliveryDispatchService.dispatchOrder(
-        checkout.restaurantId,
-        createdOrder.id,
-      );
     }
 
     // Record coupon usage from checkout
@@ -1705,8 +1721,29 @@ export class OrdersService {
       zoneId?: string;
       estimatedTime?: string;
     },
+    geoContext?: { city?: string; country?: string },
   ) {
     try {
+      let geo = geoContext;
+      if (!geo?.city && !geo?.country) {
+        const order = await this.prisma.order.findUnique({
+          where: { id: orderId },
+          select: {
+            restaurant: { select: { city: true, country: true } },
+          },
+        });
+        geo = {
+          city: order?.restaurant.city,
+          country: order?.restaurant.country,
+        };
+      }
+
+      const coordinates =
+        await this.geocodeService.coordinatesForDeliveryAddress(
+          dto.deliveryAddress || '',
+          geo,
+        );
+
       await this.prisma.deliveryOrder.create({
         data: {
           orderId,
@@ -1717,7 +1754,8 @@ export class OrdersService {
             delivery.estimatedTime,
           ),
           customerNotes: dto.deliveryNotes || null,
-          status: 'READY',
+          status: 'PENDING',
+          ...coordinates,
         },
       });
     } catch (error) {
@@ -1726,6 +1764,48 @@ export class OrdersService {
         error,
       );
     }
+  }
+
+  private async syncDeliveryOrderForOrderStatus(
+    restaurantId: string,
+    orderId: string,
+    orderStatus: OrderStatus,
+  ): Promise<void> {
+    const delivery = await this.prisma.deliveryOrder.findUnique({
+      where: { orderId },
+    });
+
+    if (!delivery) {
+      return;
+    }
+
+    if (orderStatus === OrderStatus.CANCELLED) {
+      if (delivery.status !== 'DELIVERED' && delivery.status !== 'CANCELLED') {
+        await this.prisma.deliveryOrder.update({
+          where: { id: delivery.id },
+          data: { status: 'CANCELLED' },
+        });
+      }
+      return;
+    }
+
+    if (orderStatus !== OrderStatus.READY) {
+      return;
+    }
+
+    if (delivery.status !== 'PENDING') {
+      return;
+    }
+
+    await this.prisma.deliveryOrder.update({
+      where: { id: delivery.id },
+      data: {
+        status: 'READY',
+        readyAt: new Date(),
+      },
+    });
+
+    await this.deliveryDispatchService.dispatchOrder(restaurantId, orderId);
   }
 
   private parseEstimatedTime(value?: string | null): number | undefined {

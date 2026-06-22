@@ -30,7 +30,7 @@ import { CustomersModule } from '../customers/customers.module';
     forwardRef(() => KitchenModule),
     forwardRef(() => NotificationsModule),
     CouponsModule,
-    DeliveryModule,
+    forwardRef(() => DeliveryModule),
     CustomersModule,
     LoyaltyModule,
   ],

@@ -283,6 +283,8 @@ export class DailyOperationService {
       yesterdayClosedCash,
       partialSessionsToday,
       todayOrderRows,
+      yesterdayOrders,
+      yesterdayRevenue,
     ] = await Promise.all([
       this.prisma.order.count({
         where: {
@@ -362,6 +364,21 @@ export class DailyOperationService {
           type: true,
         },
       }),
+      this.prisma.order.count({
+        where: {
+          restaurantId,
+          createdAt: { gte: yesterdayBounds.start, lte: yesterdayBounds.end },
+          status: { not: OrderStatus.CANCELLED },
+        },
+      }),
+      this.prisma.order.aggregate({
+        where: {
+          restaurantId,
+          createdAt: { gte: yesterdayBounds.start, lte: yesterdayBounds.end },
+          status: { not: OrderStatus.CANCELLED },
+        },
+        _sum: { total: true },
+      }),
     ]);
 
     const salesToday = this.buildSalesTodaySnapshot(
@@ -370,10 +387,29 @@ export class DailyOperationService {
       partialSessionsToday,
     );
 
+    const openingChecklist = normalizeChecklist(
+      OPENING_CHECKLIST_IDS,
+      operationRecord?.openingChecklist,
+    );
+    const closingChecklist = normalizeChecklist(
+      CLOSING_CHECKLIST_IDS,
+      operationRecord?.closingChecklist,
+    );
+
     return {
       businessDate: formatBusinessDate(businessDate),
       todayOrders,
       todayRevenue: todayRevenue._sum.total ?? 0,
+      yesterdayOrders,
+      yesterdayRevenue: yesterdayRevenue._sum.total ?? 0,
+      openingComplete: isChecklistComplete(
+        OPENING_CHECKLIST_IDS,
+        openingChecklist,
+      ),
+      closingComplete: isChecklistComplete(
+        CLOSING_CHECKLIST_IDS,
+        closingChecklist,
+      ),
       pendingReservations,
       openTableSessions,
       cashRegisterOpen: Boolean(openCashRegister),

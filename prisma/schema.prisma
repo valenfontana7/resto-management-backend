@@ -502,6 +502,7 @@ model DeliveryZone {
   createdAt      DateTime        @default(now())
   deliveryFee    Int
   updatedAt      DateTime        @updatedAt
+  polygon        Json?
   deliveryOrders DeliveryOrder[]
   restaurant     Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   orders         Order[]
@@ -514,6 +515,7 @@ model DeliveryZone {
 model DeliveryDriver {
   id             String           @id @default(cuid())
   restaurantId   String
+  userId         String?
   name           String
   phone          String
   email          String?
@@ -522,14 +524,19 @@ model DeliveryDriver {
   isActive       Boolean          @default(true)
   isAvailable    Boolean          @default(true)
   avatarUrl      String?
+  whatsappNotifyEnabled Boolean  @default(false)
+  whatsappApiKey        String?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   restaurant     Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  user           User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
   deliveryOrders DeliveryOrder[]
   locations      DriverLocation[]
 
+  @@unique([restaurantId, userId])
   @@index([restaurantId])
   @@index([restaurantId, isActive, isAvailable])
+  @@index([userId])
 }
 
 model DeliveryOrder {
@@ -540,7 +547,7 @@ model DeliveryOrder {
   deliveryAddress       String
   deliveryLat           Decimal?        @db.Decimal(10, 8)
   deliveryLng           Decimal?        @db.Decimal(11, 8)
-  status                DeliveryStatus  @default(READY)
+  status                DeliveryStatus  @default(PENDING)
   readyAt               DateTime?
   assignedAt            DateTime?
   pickedUpAt            DateTime?
@@ -680,6 +687,7 @@ model User {
   loginLinks         AuthLoginLink[]
   passwordResetLinks AuthPasswordResetLink[]
   memberships        RestaurantMembership[]
+  deliveryDriverProfiles DeliveryDriver[]
 
   @@index([email])
   @@index([restaurantId])
@@ -1156,6 +1164,7 @@ enum TableShape {
 }
 
 enum DeliveryStatus {
+  PENDING
   READY
   ASSIGNED
   PICKED_UP
@@ -1416,15 +1425,18 @@ enum FiscalDocumentStatus {
 }
 
 model RestaurantTerminal {
-  id           String       @id @default(cuid())
-  restaurantId String
-  name         String
-  isActive     Boolean      @default(true)
-  lastSeenAt   DateTime?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  cashSessions CashRegisterSession[]
+  id            String       @id @default(cuid())
+  restaurantId  String
+  name          String
+  isActive      Boolean      @default(true)
+  lastSeenAt    DateTime?
+  clientVersion String?
+  localVersion  String?
+  platform      String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  restaurant    Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  cashSessions  CashRegisterSession[]
 
   @@unique([restaurantId, name])
 }

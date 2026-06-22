@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { OnboardingAnalyticsService } from './onboarding-analytics.service';
+import { ActivationDashboardService } from './activation-dashboard.service';
 
 @ApiTags('Onboarding Analytics')
 @Controller('api/super-admin/onboarding-analytics')
@@ -11,7 +12,10 @@ import { OnboardingAnalyticsService } from './onboarding-analytics.service';
 @Roles('SUPER_ADMIN')
 @ApiBearerAuth()
 export class OnboardingAnalyticsAdminController {
-  constructor(private readonly service: OnboardingAnalyticsService) {}
+  constructor(
+    private readonly service: OnboardingAnalyticsService,
+    private readonly activationDashboard: ActivationDashboardService,
+  ) {}
 
   @Get('funnel')
   @ApiOperation({ summary: 'Get onboarding funnel aggregated by event' })
@@ -31,5 +35,16 @@ export class OnboardingAnalyticsAdminController {
     const safeDays =
       Number.isFinite(parsed) && parsed > 0 && parsed <= 90 ? parsed : 30;
     return this.service.getRetentionCohorts(safeDays);
+  }
+
+  @Get('activation-dashboard')
+  @ApiOperation({
+    summary: 'Tablero semanal de activación (registro → cobro → equipo)',
+  })
+  async getActivationDashboard(@Query('days') days?: string) {
+    const parsed = days ? Number(days) : 7;
+    const safeDays =
+      Number.isFinite(parsed) && parsed > 0 && parsed <= 90 ? parsed : 7;
+    return this.activationDashboard.getDashboard(safeDays);
   }
 }

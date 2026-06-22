@@ -1,5 +1,8 @@
 # Delivery API Documentation
 
+> **⚠️ Parcialmente obsoleto.** El conteo de endpoints y algunos flujos no incluyen: quote, geocode, sync-polygons, driver run, out-of-zone.  
+> **Guía operativa actual:** [`resto-management-system/docs/DELIVERY.md`](../resto-management-system/docs/DELIVERY.md)
+
 ## Tabla de Contenidos
 
 1. [Visión General](#visión-general)
@@ -1327,5 +1330,28 @@ curl -X GET "http://localhost:4000/api/tracking/clyyy?token=abc123"
 
 ---
 
-**Última actualización**: 30 de noviembre de 2025
-**Versión**: 1.0.0
+## Apéndice — Endpoints añadidos (jun 2026)
+
+Guía operativa completa: `resto-management-system/docs/DELIVERY.md`.
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| POST | `/restaurants/:id/delivery/quote` | Cotización; body opcional `lat`/`lng` para point-in-polygon |
+| POST | `/restaurants/:id/delivery/geocode` | Geocodificar dirección (Nominatim) |
+| POST | `/restaurants/:id/delivery/zones/sync-polygons` | Generar/actualizar polígonos (`?force`, `?zoneId`) |
+| PATCH | `/restaurants/:id/delivery/zones/:zoneId/polygon` | Guardar polígono manual |
+| DELETE | `/restaurants/:id/delivery/zones/:zoneId/polygon` | Borrar polígono guardado |
+| GET | `/restaurants/:id/delivery/run/session` | Sesión repartidor (pedidos asignados) |
+| POST | `/restaurants/:id/delivery/run/link` | Vincular usuario ↔ driver |
+| PATCH | `/restaurants/:id/delivery/run/orders/:orderId/status` | Estado en ruta (ASSIGNED→DELIVERED) |
+| POST | `/restaurants/:id/delivery/run/location` | GPS repartidor |
+| GET | `/public/orders/:token/tracking` | Tracking cliente (+ `deliveryLat`/`deliveryLng`) |
+
+**Quote — campos relevantes en respuesta:** `matchedBy` (`coordinates` \| `text` \| `out-of-zone` \| `none`), `zoneId`, `deliveryFee`, `minOrder`.
+
+**DeliveryZone:** campo JSON `polygon` `{ rings: [{lat,lng}[]], source, updatedAt }`.
+
+---
+
+**Última actualización**: 21 de junio de 2026
+**Versión**: 1.1.0

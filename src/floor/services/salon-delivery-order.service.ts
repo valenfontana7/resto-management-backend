@@ -14,6 +14,7 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OwnershipService } from '../../common/services/ownership.service';
 import { DeliveryPricingService } from '../../delivery/services/delivery-pricing.service';
+import { GeocodeService } from '../../delivery/services/geocode.service';
 import { OrderNotificationsService } from '../../orders/services/order-notifications.service';
 import {
   isSalonSellable,
@@ -32,6 +33,7 @@ export class SalonDeliveryOrderService {
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
     private readonly deliveryPricing: DeliveryPricingService,
+    private readonly geocodeService: GeocodeService,
     private readonly notifications: OrderNotificationsService,
   ) {}
 
@@ -76,6 +78,15 @@ export class SalonDeliveryOrderService {
 
     const resolved = this.resolveDeliveryQuote(quote, dto.deliveryZoneId);
     const { deliveryFee, zoneId, estimatedTime } = resolved;
+
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { city: true, country: true },
+    });
+    const coordinates = await this.geocodeService.coordinatesForDeliveryAddress(
+      address,
+      restaurant ?? undefined,
+    );
 
     const orderNumber = await this.generateOrderNumber(restaurantId);
     const publicTrackingToken = crypto.randomBytes(32).toString('base64url');
@@ -122,7 +133,8 @@ export class SalonDeliveryOrderService {
           zoneId,
           deliveryFee,
           customerNotes: dto.deliveryNotes?.trim() || null,
-          status: 'READY',
+          status: 'PENDING',
+          ...coordinates,
         },
       });
 

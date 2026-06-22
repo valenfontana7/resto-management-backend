@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { KitchenNotificationsService } from '../kitchen/kitchen-notifications.service';
@@ -11,6 +11,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { resolveOrderNotificationChannels } from './order-notification-channels.util';
+import { sanitizeNotificationData } from './notification-data.util';
 
 export interface CreateNotificationDto {
   userId: string;
@@ -55,7 +56,7 @@ export class NotificationsService {
         type: dto.type,
         title: dto.title,
         message: dto.message,
-        data: dto.data || {},
+        data: sanitizeNotificationData(dto.data ?? {}),
         priority: dto.priority || NotificationPriority.NORMAL,
         channels: dto.channels || [NotificationChannel.IN_APP],
       },
@@ -211,6 +212,11 @@ export class NotificationsService {
   }
 
   private resolveUrlForNotification(notification: Notification): string {
+    const data = (notification.data as Record<string, unknown> | null) ?? {};
+    if (typeof data.url === 'string') {
+      return data.url;
+    }
+
     if (notification.type.startsWith('ORDER_')) return '/admin/orders';
     if (notification.type.startsWith('RESERVATION_'))
       return '/admin/reservations';
@@ -260,11 +266,20 @@ export class NotificationsService {
     notificationId: string,
     userId: string,
   ): Promise<Notification> {
+    const existing = await this.prisma.notification.findFirst({
+      where: { id: notificationId, userId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Notificación no encontrada');
+    }
+
+    if (existing.isRead) {
+      return existing;
+    }
+
     return this.prisma.notification.update({
-      where: {
-        id: notificationId,
-        userId, // Asegurar que el usuario solo pueda marcar sus propias notificaciones
-      },
+      where: { id: notificationId },
       data: { isRead: true },
     });
   }
@@ -313,11 +328,16 @@ export class NotificationsService {
     notificationId: string,
     userId: string,
   ): Promise<void> {
+    const existing = await this.prisma.notification.findFirst({
+      where: { id: notificationId, userId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Notificación no encontrada');
+    }
+
     await this.prisma.notification.delete({
-      where: {
-        id: notificationId,
-        userId, // Asegurar que el usuario solo pueda eliminar sus propias notificaciones
-      },
+      where: { id: notificationId },
     });
   }
 
@@ -351,7 +371,14 @@ export class NotificationsService {
       type: type as NotificationType,
       title: titles[type],
       message: messages[type],
-      data: orderData,
+      data: {
+        orderId,
+        orderNumber: orderData.orderNumber,
+        status: orderData.status,
+        customerName: orderData.customerName,
+        type: orderData.type,
+        total: orderData.total,
+      },
       channels: resolveOrderNotificationChannels(type),
     });
   }

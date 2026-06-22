@@ -20,8 +20,13 @@ import { DeliveryService } from './delivery.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { VerifyRestaurantAccess } from '../common/decorators/verify-restaurant-access.decorator';
 import {
+  CurrentUser,
+  type RequestUser,
+} from '../auth/decorators/current-user.decorator';
+import {
   CreateDeliveryZoneDto,
   UpdateDeliveryZoneDto,
+  UpdateDeliveryZonePolygonDto,
   CreateDeliveryDriverDto,
   UpdateDeliveryDriverDto,
   AssignDriverDto,
@@ -32,6 +37,10 @@ import {
   UpdateDriverLocationDto,
   DriverStatsFiltersDto,
   DriverFiltersDto,
+  GeocodeBatchDto,
+  LinkDeliveryDriverDto,
+  TestDriverWhatsappDto,
+  UpdateDriverWhatsappDto,
 } from './dto/delivery.dto';
 
 @ApiTags('Delivery')
@@ -235,6 +244,170 @@ export class DeliveryController {
     @Param('zoneId') zoneId: string,
   ) {
     return this.deliveryService.deleteZone(restaurantId, zoneId);
+  }
+
+  @Post('zones/sync-polygons')
+  @ApiOperation({ summary: 'Generar polígonos de zonas para el mapa' })
+  @ApiResponse({ status: 200, description: 'Polígonos sincronizados' })
+  async syncZonePolygons(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @Query('force') force?: string,
+    @Query('zoneId') zoneId?: string,
+  ) {
+    return this.deliveryService.syncZonePolygons(restaurantId, {
+      force: force === 'true' || force === '1',
+      zoneId: zoneId?.trim() || undefined,
+    });
+  }
+
+  @Patch('zones/:zoneId/polygon')
+  @ApiOperation({ summary: 'Guardar polígono manual de una zona' })
+  async updateZonePolygon(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @Param('zoneId') zoneId: string,
+    @Body() dto: UpdateDeliveryZonePolygonDto,
+  ) {
+    return this.deliveryService.updateZonePolygon(restaurantId, zoneId, dto);
+  }
+
+  @Delete('zones/:zoneId/polygon')
+  @ApiOperation({ summary: 'Eliminar polígono guardado de una zona' })
+  async clearZonePolygon(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @Param('zoneId') zoneId: string,
+  ) {
+    return this.deliveryService.clearZonePolygon(restaurantId, zoneId);
+  }
+
+  @Get('geocode')
+  @ApiOperation({
+    summary: 'Geocodificar una dirección para el mapa de delivery',
+  })
+  @ApiResponse({ status: 200, description: 'Coordenadas encontradas o null' })
+  async geocodeAddress(
+    @VerifyRestaurantAccess('restaurantId') _restaurantId: string,
+    @Query('q') query: string,
+  ) {
+    return this.deliveryService.geocodeAddress(query || '');
+  }
+
+  @Post('geocode/batch')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Geocodificar múltiples direcciones para el mapa de delivery',
+  })
+  @ApiResponse({ status: 200, description: 'Mapa de dirección → coordenadas' })
+  async geocodeAddressesBatch(
+    @VerifyRestaurantAccess('restaurantId') _restaurantId: string,
+    @Body() dto: GeocodeBatchDto,
+  ) {
+    return this.deliveryService.geocodeAddressesBatch(dto.queries);
+  }
+
+  @Post('orders/geocode-missing')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Geocodificar pedidos delivery sin coordenadas guardadas',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Cantidad actualizada y pendientes',
+  })
+  async geocodeMissingOrderCoordinates(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+  ) {
+    return this.deliveryService.geocodeMissingOrderCoordinates(restaurantId);
+  }
+
+  @Get('run/session')
+  @ApiOperation({
+    summary: 'Sesión del repartidor — pedidos activos y vínculo de perfil',
+  })
+  async getRunSession(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.deliveryService.getRunSession(restaurantId, user.userId);
+  }
+
+  @Post('run/link')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Vincular usuario autenticado con un repartidor' })
+  async linkRunDriver(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: LinkDeliveryDriverDto,
+  ) {
+    return this.deliveryService.linkRunDriver(
+      restaurantId,
+      user.userId,
+      user.role,
+      dto.driverId,
+    );
+  }
+
+  @Patch('run/orders/:orderId/status')
+  @ApiOperation({
+    summary: 'Actualizar estado de un pedido asignado al repartidor',
+  })
+  async updateRunOrderStatus(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Param('orderId') orderId: string,
+    @Body() dto: UpdateDeliveryStatusDto,
+  ) {
+    return this.deliveryService.updateRunOrderStatus(
+      restaurantId,
+      user.userId,
+      orderId,
+      dto,
+    );
+  }
+
+  @Post('run/location')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Reportar ubicación GPS del repartidor' })
+  async updateRunLocation(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: UpdateDriverLocationDto,
+  ) {
+    return this.deliveryService.updateRunLocation(
+      restaurantId,
+      user.userId,
+      dto,
+    );
+  }
+
+  @Patch('run/whatsapp')
+  @ApiOperation({
+    summary: 'Configurar WhatsApp CallMeBot del repartidor vinculado',
+  })
+  async updateRunWhatsapp(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: UpdateDriverWhatsappDto,
+  ) {
+    return this.deliveryService.updateDriverWhatsapp(
+      restaurantId,
+      user.userId,
+      dto,
+    );
+  }
+
+  @Post('run/whatsapp/test')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Enviar WhatsApp de prueba al repartidor' })
+  async testRunWhatsapp(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: TestDriverWhatsappDto,
+  ) {
+    return this.deliveryService.testDriverWhatsapp(
+      restaurantId,
+      user.userId,
+      dto,
+    );
   }
 }
 

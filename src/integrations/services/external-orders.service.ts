@@ -5,13 +5,17 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { GeocodeService } from '../../delivery/services/geocode.service';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class ExternalOrdersService {
   private readonly logger = new Logger(ExternalOrdersService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly geocodeService: GeocodeService,
+  ) {}
 
   async list(
     restaurantId: string,
@@ -172,6 +176,15 @@ export class ExternalOrdersService {
       },
     });
 
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { city: true, country: true },
+    });
+    const coordinates = await this.geocodeService.coordinatesForDeliveryAddress(
+      extOrder.deliveryAddress || '',
+      restaurant ?? undefined,
+    );
+
     // Also create DeliveryOrder
     await this.prisma.deliveryOrder.create({
       data: {
@@ -179,6 +192,7 @@ export class ExternalOrdersService {
         deliveryAddress: extOrder.deliveryAddress || '',
         deliveryFee: extOrder.deliveryFee,
         status: 'READY',
+        ...coordinates,
       },
     });
 

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
@@ -6,23 +6,24 @@ import { EmailService } from '../email/email.service';
 import { ImageProcessingService } from '../common/services/image-processing.service';
 import { isSalonFloorOrder } from '../orders/utils/order-channel.util';
 import { SendWinBackEmailDto } from './dto/win-back.dto';
+import {
+  buildGrowthActions,
+  buildMenuRecommendations,
+  clampScore,
+  computeCommercialScore,
+  computeMarginScore,
+  computeOperationalScore,
+  countPendingActionableOrders,
+  countStuckKitchenOrders,
+  marginPercent,
+} from './business-health.utils';
+import { BusinessHealthAlertsService } from './business-health-alerts.service';
+import { BusinessHealthPdfService } from './business-health-pdf.service';
 
 const INACTIVE_DAYS = 30;
 const PERIOD_DAYS = 30;
 const RETENTION_COHORT_DAYS = 90;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function clampScore(value: number): number {
-  return Math.max(0, Math.min(100, Math.round(value)));
-}
-
-function marginPercent(
-  salePrice: number,
-  costPrice: number | null,
-): number | null {
-  if (costPrice == null || salePrice <= 0) return null;
-  return Math.round(((salePrice - costPrice) / salePrice) * 1000) / 10;
-}
 
 function buildCustomerKey(order: {
   customerProfileId?: string | null;
@@ -43,11 +44,15 @@ function isValidEmail(value: string | null | undefined): value is string {
 
 @Injectable()
 export class BusinessHealthService {
+  private readonly logger = new Logger(BusinessHealthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
     private readonly email: EmailService,
     private readonly images: ImageProcessingService,
+    private readonly alerts: BusinessHealthAlertsService,
+    private readonly pdf: BusinessHealthPdfService,
   ) {}
 
   async getDashboard(restaurantId: string, userId: string) {
@@ -98,6 +103,7 @@ export class BusinessHealthService {
         select: {
           id: true,
           total: true,
+          status: true,
           orderSource: true,
           tableSessionId: true,
           type: true,
@@ -299,30 +305,28 @@ export class BusinessHealthService {
 
     const retention = await this.getCustomerRetentionCohorts(restaurantId);
 
-    const menuRecommendations = this.buildMenuRecommendations(dishRows);
-    const growthActions = this.buildGrowthActions({
+    const menuRecommendations = buildMenuRecommendations(dishRows);
+    const growthActions = buildGrowthActions({
       onlineShare,
       inactiveCustomers,
       dishesWithoutCost: dishes.length - dishesWithCost.length,
       lowStockCount: lowStockItems.length,
     });
 
-    const operationalScore = clampScore(
-      100 -
-        (openTableSessions > 5 ? 15 : openTableSessions * 2) -
-        (openCash ? 0 : 10),
-    );
-    const commercialScore = clampScore(
-      (orders.length > 0 ? 50 : 10) + Math.min(onlineShare, 50),
-    );
-    const marginScore = clampScore(
-      dishes.length === 0
-        ? 0
-        : (dishesWithCost.length / dishes.length) * 60 +
-            (avgMargin != null ? Math.min(avgMargin, 40) : 0),
+    const operationalScore = computeOperationalScore({
+      openTableSessions,
+      cashRegisterOpen: Boolean(openCash),
+      pendingActionableOrders: countPendingActionableOrders(orders),
+      stuckKitchenOrders: countStuckKitchenOrders(orders),
+    });
+    const commercialScore = computeCommercialScore(orders.length, onlineShare);
+    const marginScore = computeMarginScore(
+      dishes.length,
+      dishesWithCost.length,
+      avgMargin,
     );
 
-    return {
+    const dashboard = {
       periodDays: PERIOD_DAYS,
       healthScore: {
         overall: clampScore(
@@ -374,6 +378,40 @@ export class BusinessHealthService {
       },
       retention,
     };
+
+    void this.alerts
+      .syncFromDashboard(restaurantId, dashboard)
+      .catch((error) => {
+        this.logger.warn(
+          `No se pudieron sincronizar alertas de salud para ${restaurantId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
+
+    return dashboard;
+  }
+
+  async exportPdf(restaurantId: string, userId: string): Promise<Buffer> {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    const [dashboard, restaurant] = await Promise.all([
+      this.getDashboard(restaurantId, userId),
+      this.prisma.restaurant.findUnique({
+        where: { id: restaurantId },
+        select: { name: true },
+      }),
+    ]);
+
+    if (!restaurant) {
+      throw new BadRequestException('Restaurante no encontrado');
+    }
+
+    return this.pdf.generateReport({
+      restaurantName: restaurant.name,
+      periodDays: dashboard.periodDays,
+      dashboard,
+    });
   }
 
   async sendWinBackEmails(
@@ -651,133 +689,5 @@ export class BusinessHealthService {
       sampleCustomersD30: sumCustomersD30,
       cohorts: cohorts.slice(0, 14),
     };
-  }
-
-  private buildMenuRecommendations(
-    dishes: Array<{
-      dishId: string;
-      name: string;
-      marginPercent: number | null;
-      unitsSold: number;
-      hasCost: boolean;
-    }>,
-  ) {
-    const withData = dishes.filter((d) => d.hasCost && d.marginPercent != null);
-    if (withData.length === 0) {
-      return [
-        {
-          id: 'add-costs',
-          type: 'setup' as const,
-          title: 'Cargá costos en el menú',
-          detail:
-            'Agregá el costo estimado en cada plato para ver margen y recomendaciones.',
-          href: '/admin/menu',
-        },
-      ];
-    }
-
-    const recommendations: Array<{
-      id: string;
-      type: 'promote' | 'review' | 'setup';
-      title: string;
-      detail: string;
-      href: string;
-    }> = [];
-
-    const promote = [...withData]
-      .filter((d) => (d.marginPercent ?? 0) >= 40 && d.unitsSold <= 3)
-      .slice(0, 2);
-    for (const dish of promote) {
-      recommendations.push({
-        id: `promote-${dish.dishId}`,
-        type: 'promote',
-        title: `Promocionar "${dish.name}"`,
-        detail: `Margen ${dish.marginPercent}% pero pocas ventas (${dish.unitsSold} u.) — ideal para empujar en QR/link.`,
-        href: '/admin/menu',
-      });
-    }
-
-    const review = [...withData]
-      .filter((d) => (d.marginPercent ?? 100) < 25 && d.unitsSold >= 5)
-      .slice(0, 2);
-    for (const dish of review) {
-      recommendations.push({
-        id: `review-${dish.dishId}`,
-        type: 'review',
-        title: `Revisar margen de "${dish.name}"`,
-        detail: `Margen ${dish.marginPercent}% con ${dish.unitsSold} ventas — evaluá precio o costo.`,
-        href: '/admin/menu',
-      });
-    }
-
-    if (recommendations.length === 0) {
-      recommendations.push({
-        id: 'balanced',
-        type: 'setup',
-        title: 'Menú equilibrado',
-        detail: 'No hay alertas fuertes de margen vs demanda en este período.',
-        href: '/admin/analytics',
-      });
-    }
-
-    return recommendations;
-  }
-
-  private buildGrowthActions(input: {
-    onlineShare: number;
-    inactiveCustomers: Array<{ name: string; daysInactive: number }>;
-    dishesWithoutCost: number;
-    lowStockCount: number;
-  }) {
-    const actions: Array<{
-      id: string;
-      title: string;
-      detail: string;
-      href: string;
-      priority: 'high' | 'medium' | 'low';
-    }> = [];
-
-    if (input.onlineShare < 35) {
-      actions.push({
-        id: 'direct-channel',
-        title: 'Empujar canal directo',
-        detail: `Solo ${input.onlineShare}% de ingresos viene del link/QR. Compartí tu menú y evitá comisiones de apps.`,
-        href: '/admin/builder',
-        priority: 'high',
-      });
-    }
-
-    if (input.inactiveCustomers.length > 0) {
-      actions.push({
-        id: 'win-back',
-        title: `Recuperar ${input.inactiveCustomers.length} cliente(s) inactivo(s)`,
-        detail:
-          'Enviá un email de win-back o contactá por WhatsApp con un cupón.',
-        href: '/admin/salud#clientes-inactivos',
-        priority: 'medium',
-      });
-    }
-
-    if (input.dishesWithoutCost > 0) {
-      actions.push({
-        id: 'complete-costs',
-        title: `${input.dishesWithoutCost} plato(s) sin costo cargado`,
-        detail: 'Completá costos para decisiones semanales de margen.',
-        href: '/admin/menu',
-        priority: 'medium',
-      });
-    }
-
-    if (input.lowStockCount > 0) {
-      actions.push({
-        id: 'restock',
-        title: `${input.lowStockCount} insumo(s) en quiebre`,
-        detail: 'Reponé stock crítico antes de marcar platos agotados.',
-        href: '/admin/salud#inventario',
-        priority: 'high',
-      });
-    }
-
-    return actions;
   }
 }

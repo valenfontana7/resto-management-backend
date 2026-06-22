@@ -1,11 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { GeocodeService } from './geocode.service';
+import {
+  estimatePolygonAreaSqKm,
+  isPointInZoneRings,
+  parseStoredZonePolygon,
+  type GeoPoint,
+} from '../../common/utils/geo-polygon.util';
+import { buildDeliveryQuoteFailureMessage } from '../utils/delivery-quote-messages.util';
 
 type QuoteInput = {
   type?: 'pickup' | 'delivery';
   subtotal?: number;
   address?: string;
   zoneId?: string;
+  lat?: number;
+  lng?: number;
 };
 
 type ZoneSummary = {
@@ -15,6 +25,10 @@ type ZoneSummary = {
   minOrder: number;
   estimatedTime?: string | null;
   areas: string[];
+};
+
+type ZoneCandidate = ZoneSummary & {
+  rings: GeoPoint[][];
 };
 
 type DeliveryBusinessRules = {
@@ -38,7 +52,13 @@ export type DeliveryQuote = {
   zone: ZoneSummary | null;
   zones: ZoneSummary[];
   requiresZoneSelection: boolean;
-  matchedBy: 'none' | 'zoneId' | 'address' | 'single-zone';
+  matchedBy:
+    | 'none'
+    | 'zoneId'
+    | 'address'
+    | 'coordinates'
+    | 'single-zone'
+    | 'out-of-zone';
   freeDeliveryThreshold?: number;
   message?: string;
   externalPlatform?: string;
@@ -46,7 +66,10 @@ export type DeliveryQuote = {
 
 @Injectable()
 export class DeliveryPricingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly geocodeService: GeocodeService,
+  ) {}
 
   async quoteDelivery(
     restaurantId: string,
@@ -73,7 +96,12 @@ export class DeliveryPricingService {
     const [restaurant, zones, activePlatform] = await Promise.all([
       this.prisma.restaurant.findUnique({
         where: { id: restaurantId },
-        select: { businessRules: true, features: true },
+        select: {
+          businessRules: true,
+          features: true,
+          city: true,
+          country: true,
+        },
       }),
       this.prisma.deliveryZone.findMany({
         where: { restaurantId, isActive: true },
@@ -87,14 +115,10 @@ export class DeliveryPricingService {
     ]);
 
     const deliveryRules = this.parseRestaurantDeliveryFlags(restaurant);
-    const normalizedZones = zones.map((zone) => ({
-      id: zone.id,
-      name: zone.name,
-      deliveryFee: zone.deliveryFee,
-      minOrder: zone.minOrder,
-      estimatedTime: zone.estimatedTime,
-      areas: Array.isArray(zone.areas) ? zone.areas : [],
-    }));
+    const zoneCandidates = zones.map((zone) => this.toZoneCandidate(zone));
+    const normalizedZones = zoneCandidates.map((zone) =>
+      this.toZoneSummary(zone),
+    );
 
     const deliveryEnabled = this.isDeliveryEnabled({
       deliveryRules,
@@ -142,13 +166,18 @@ export class DeliveryPricingService {
       };
     }
 
-    const { zone, matchedBy } = this.resolveZone(
-      normalizedZones,
-      input.zoneId,
-      input.address,
-    );
+    const { zone, matchedBy } = await this.resolveZone(zoneCandidates, input, {
+      city: restaurant?.city,
+      country: restaurant?.country,
+    });
 
     if (!zone) {
+      const failure = buildDeliveryQuoteFailureMessage({
+        matchedBy: matchedBy === 'out-of-zone' ? 'out-of-zone' : 'none',
+        zones: normalizedZones,
+        hasAddress: Boolean(input.address?.trim()),
+      });
+
       return {
         available: false,
         type,
@@ -159,14 +188,11 @@ export class DeliveryPricingService {
         estimatedTime: null,
         zone: null,
         zones: normalizedZones,
-        requiresZoneSelection: normalizedZones.length > 1,
+        requiresZoneSelection: failure.requiresZoneSelection,
         matchedBy,
         freeDeliveryThreshold:
           deliveryRules.businessRules.freeDeliveryThreshold,
-        message:
-          normalizedZones.length > 1
-            ? 'Seleccioná una zona de entrega válida para calcular el envío.'
-            : 'No se pudo resolver una zona de delivery válida.',
+        message: failure.message,
         externalPlatform: activePlatform?.platform,
       };
     }
@@ -196,23 +222,91 @@ export class DeliveryPricingService {
     };
   }
 
-  private resolveZone(
-    zones: ZoneSummary[],
-    zoneId?: string,
-    address?: string,
-  ): {
+  private toZoneCandidate(zone: {
+    id: string;
+    name: string;
+    deliveryFee: number;
+    minOrder: number;
+    estimatedTime: string | null;
+    areas: string[];
+    polygon?: unknown;
+  }): ZoneCandidate {
+    return {
+      id: zone.id,
+      name: zone.name,
+      deliveryFee: zone.deliveryFee,
+      minOrder: zone.minOrder,
+      estimatedTime: zone.estimatedTime,
+      areas: Array.isArray(zone.areas) ? zone.areas : [],
+      rings: parseStoredZonePolygon(zone.polygon),
+    };
+  }
+
+  private toZoneSummary(zone: ZoneCandidate): ZoneSummary {
+    return {
+      id: zone.id,
+      name: zone.name,
+      deliveryFee: zone.deliveryFee,
+      minOrder: zone.minOrder,
+      estimatedTime: zone.estimatedTime,
+      areas: zone.areas,
+    };
+  }
+
+  private async resolveZone(
+    zones: ZoneCandidate[],
+    input: QuoteInput,
+    context: { city?: string | null; country?: string | null },
+  ): Promise<{
     zone: ZoneSummary | null;
     matchedBy: DeliveryQuote['matchedBy'];
-  } {
-    if (zoneId) {
-      const zone = zones.find((candidate) => candidate.id === zoneId) ?? null;
+  }> {
+    if (input.zoneId) {
+      const zone =
+        zones.find((candidate) => candidate.id === input.zoneId) ?? null;
       return {
-        zone,
+        zone: zone ? this.toZoneSummary(zone) : null,
         matchedBy: zone ? 'zoneId' : 'none',
       };
     }
 
-    const normalizedAddress = this.normalizeText(address);
+    const coordinates = await this.resolveQuoteCoordinates(input, context);
+    const zonesWithPolygons = zones.filter(
+      (candidate) => candidate.rings.length > 0,
+    );
+
+    if (coordinates && zonesWithPolygons.length > 0) {
+      const polygonMatches = zones.filter((candidate) =>
+        candidate.rings.length > 0
+          ? isPointInZoneRings(coordinates, candidate.rings)
+          : false,
+      );
+
+      if (polygonMatches.length === 1) {
+        return {
+          zone: this.toZoneSummary(polygonMatches[0]),
+          matchedBy: 'coordinates',
+        };
+      }
+
+      if (polygonMatches.length > 1) {
+        const bestMatch = polygonMatches.reduce((best, current) =>
+          estimatePolygonAreaSqKm(current.rings) <
+          estimatePolygonAreaSqKm(best.rings)
+            ? current
+            : best,
+        );
+
+        return {
+          zone: this.toZoneSummary(bestMatch),
+          matchedBy: 'coordinates',
+        };
+      }
+
+      return { zone: null, matchedBy: 'out-of-zone' };
+    }
+
+    const normalizedAddress = this.normalizeText(input.address);
     if (normalizedAddress) {
       const zone = zones.find((candidate) =>
         [candidate.name, ...candidate.areas].some((value) => {
@@ -226,15 +320,48 @@ export class DeliveryPricingService {
       );
 
       if (zone) {
-        return { zone, matchedBy: 'address' };
+        return { zone: this.toZoneSummary(zone), matchedBy: 'address' };
       }
     }
 
     if (zones.length === 1) {
-      return { zone: zones[0], matchedBy: 'single-zone' };
+      return { zone: this.toZoneSummary(zones[0]), matchedBy: 'single-zone' };
     }
 
     return { zone: null, matchedBy: 'none' };
+  }
+
+  private async resolveQuoteCoordinates(
+    input: QuoteInput,
+    context: { city?: string | null; country?: string | null },
+  ): Promise<GeoPoint | null> {
+    if (Number.isFinite(input.lat) && Number.isFinite(input.lng)) {
+      return { lat: Number(input.lat), lng: Number(input.lng) };
+    }
+
+    const address = input.address?.trim();
+    if (!address) {
+      return null;
+    }
+
+    const coords = await this.geocodeService.coordinatesForDeliveryAddress(
+      address,
+      context,
+    );
+
+    if (
+      coords.deliveryLat == null ||
+      coords.deliveryLng == null ||
+      !Number.isFinite(coords.deliveryLat) ||
+      !Number.isFinite(coords.deliveryLng)
+    ) {
+      return null;
+    }
+
+    return {
+      lat: coords.deliveryLat,
+      lng: coords.deliveryLng,
+    };
   }
 
   private parseRestaurantDeliveryFlags(

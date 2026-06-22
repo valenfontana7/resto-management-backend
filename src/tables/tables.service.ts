@@ -6,7 +6,11 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
-import { TableStatus as PrismaTableStatus } from '@prisma/client';
+import {
+  TableStatus as PrismaTableStatus,
+  TableSessionStatus,
+  OrderStatus,
+} from '@prisma/client';
 import {
   CreateTableDto,
   UpdateTableDto,
@@ -193,6 +197,10 @@ export class TablesService {
 
   async findAll(restaurantId: string, userId: string) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    // Mesas OCCUPIED sin cuenta floor abierta (dato huérfano tras cierres/sync fallidos).
+    await this.repairOpenSessionTableLinks(restaurantId, userId);
+    await this.reconcileStaleOccupiedStatuses(restaurantId, userId);
 
     // Obtener todas las áreas con sus mesas
     const areas = await this.prisma.tableArea.findMany({
@@ -832,6 +840,95 @@ export class TablesService {
         `Invalid status transition from ${currentStatus} to ${newStatus}`,
       );
     }
+  }
+
+  async repairOpenSessionTableLinks(
+    restaurantId: string,
+    userId: string,
+  ): Promise<number> {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    const openSessions = await this.prisma.tableSession.findMany({
+      where: { restaurantId, status: TableSessionStatus.OPEN },
+      select: { id: true, tableId: true },
+    });
+
+    let repaired = 0;
+    for (const session of openSessions) {
+      const result = await this.prisma.table.updateMany({
+        where: { id: session.tableId, restaurantId },
+        data: {
+          status: PrismaTableStatus.OCCUPIED,
+          currentSessionId: session.id,
+        },
+      });
+      repaired += result.count;
+    }
+
+    return repaired;
+  }
+
+  async reconcileStaleOccupiedStatuses(
+    restaurantId: string,
+    userId: string,
+  ): Promise<number> {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    const openSessions = await this.prisma.tableSession.findMany({
+      where: { restaurantId, status: TableSessionStatus.OPEN },
+      select: { tableId: true },
+    });
+    const openTableIds = openSessions.map((s) => s.tableId);
+
+    const activeFloorOrders = await this.prisma.order.findMany({
+      where: {
+        restaurantId,
+        tableId: { not: null },
+        status: {
+          in: [
+            OrderStatus.PENDING,
+            OrderStatus.PAID,
+            OrderStatus.CONFIRMED,
+            OrderStatus.PREPARING,
+            OrderStatus.READY,
+          ],
+        },
+        OR: [
+          { tableSessionId: { not: null } },
+          { orderSource: { in: ['FLOOR_COMANDA', 'FLOOR_FINAL'] } },
+        ],
+      },
+      select: { tableId: true },
+    });
+
+    const protectedTableIds = [
+      ...new Set([
+        ...openTableIds,
+        ...activeFloorOrders
+          .map((o) => o.tableId)
+          .filter((id): id is string => Boolean(id)),
+      ]),
+    ];
+
+    const result = await this.prisma.table.updateMany({
+      where: {
+        restaurantId,
+        status: PrismaTableStatus.OCCUPIED,
+        currentSessionId: null,
+        currentOrderId: null,
+        ...(protectedTableIds.length > 0
+          ? { id: { notIn: protectedTableIds } }
+          : {}),
+      },
+      data: {
+        status: PrismaTableStatus.AVAILABLE,
+        waiter: null,
+        customerName: null,
+        occupiedSince: null,
+      },
+    });
+
+    return result.count;
   }
 
   private formatTableResponse(table: any) {

@@ -2,12 +2,17 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   CreateDeliveryZoneDto,
   UpdateDeliveryZoneDto,
+  UpdateDeliveryZonePolygonDto,
 } from '../dto/delivery.dto';
+import { GeocodeService } from './geocode.service';
+import { normalizeManualPolygonRings } from '../../common/utils/geo-polygon.util';
 
 /**
  * Servicio para gestión de zonas de delivery.
@@ -15,7 +20,10 @@ import {
  */
 @Injectable()
 export class DeliveryZonesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly geocodeService: GeocodeService,
+  ) {}
 
   /**
    * Obtener todas las zonas de delivery con estadísticas
@@ -67,6 +75,71 @@ export class DeliveryZonesService {
     );
 
     return { zones: zonesWithStats };
+  }
+
+  async syncZonePolygons(
+    restaurantId: string,
+    options?: { force?: boolean; zoneId?: string },
+  ) {
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { city: true, country: true },
+    });
+
+    if (!restaurant) {
+      throw new NotFoundException('Restaurante no encontrado');
+    }
+
+    const zones = await this.prisma.deliveryZone.findMany({
+      where: {
+        restaurantId,
+        isActive: true,
+        ...(options?.zoneId ? { id: options.zoneId } : {}),
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    let updated = 0;
+    let skipped = 0;
+
+    for (const zone of zones) {
+      if (zone.polygon && !options?.force) {
+        skipped += 1;
+        continue;
+      }
+
+      const areas = Array.isArray(zone.areas) ? zone.areas : [];
+      if (areas.length === 0) {
+        skipped += 1;
+        continue;
+      }
+
+      const polygon = await this.geocodeService.buildZonePolygonsFromAreas(
+        areas,
+        {
+          city: restaurant.city,
+          country: restaurant.country,
+        },
+      );
+
+      if (!polygon) {
+        skipped += 1;
+        continue;
+      }
+
+      await this.prisma.deliveryZone.update({
+        where: { id: zone.id },
+        data: { polygon: polygon as unknown as Prisma.InputJsonValue },
+      });
+      updated += 1;
+    }
+
+    return {
+      success: true,
+      updated,
+      skipped,
+      total: zones.length,
+    };
   }
 
   /**
@@ -137,10 +210,64 @@ export class DeliveryZonesService {
 
     const updated = await this.prisma.deliveryZone.update({
       where: { id: zoneId },
-      data: dto,
+      data: {
+        ...dto,
+        ...(dto.areas ? { polygon: Prisma.DbNull } : {}),
+      },
     });
 
     await this.syncRestaurantDeliveryAvailability(restaurantId);
+
+    return { success: true, zone: updated };
+  }
+
+  async updateZonePolygon(
+    restaurantId: string,
+    zoneId: string,
+    dto: UpdateDeliveryZonePolygonDto,
+  ) {
+    const zone = await this.prisma.deliveryZone.findFirst({
+      where: { id: zoneId, restaurantId },
+    });
+
+    if (!zone) {
+      throw new NotFoundException('Zona no encontrada');
+    }
+
+    const rings = normalizeManualPolygonRings(dto.rings);
+    if (!rings) {
+      throw new BadRequestException(
+        'El polígono debe tener al menos un anillo con 3 puntos válidos',
+      );
+    }
+
+    const polygon = {
+      rings,
+      source: 'manual',
+      updatedAt: new Date().toISOString(),
+    };
+
+    const updated = await this.prisma.deliveryZone.update({
+      where: { id: zoneId },
+      data: { polygon: polygon as unknown as Prisma.InputJsonValue },
+    });
+
+    return { success: true, zone: updated };
+  }
+
+  async clearZonePolygon(restaurantId: string, zoneId: string) {
+    const zone = await this.prisma.deliveryZone.findFirst({
+      where: { id: zoneId, restaurantId },
+    });
+
+    if (!zone) {
+      throw new NotFoundException('Zona no encontrada');
+    }
+
+    const updated = await this.prisma.deliveryZone.update({
+      where: { id: zoneId },
+      data: { polygon: Prisma.DbNull },
+    });
 
     return { success: true, zone: updated };
   }

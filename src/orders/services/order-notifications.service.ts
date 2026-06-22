@@ -340,6 +340,23 @@ export class OrderNotificationsService {
       }
     }
 
+    if (staff.size === 0) {
+      this.logger.warn(
+        `Sin destinatarios filtrados para restaurante ${restaurantId}; usando memberships activos como fallback`,
+      );
+      for (const membership of memberships) {
+        staff.set(membership.userId, {
+          id: membership.userId,
+          name: membership.role?.name ?? membership.user.role?.name ?? null,
+        });
+      }
+      for (const user of directUsers) {
+        if (!staff.has(user.id)) {
+          staff.set(user.id, { id: user.id, name: user.role?.name ?? null });
+        }
+      }
+    }
+
     return [...staff.values()];
   }
 

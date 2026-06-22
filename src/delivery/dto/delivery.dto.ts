@@ -88,6 +88,35 @@ export class UpdateDeliveryZoneDto {
   isActive?: boolean;
 }
 
+class GeoPointDto {
+  @ApiProperty({ example: -34.6037 })
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  lat: number;
+
+  @ApiProperty({ example: -58.3816 })
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  lng: number;
+}
+
+export class UpdateDeliveryZonePolygonDto {
+  @ApiProperty({
+    example: [
+      [
+        { lat: -34.6, lng: -58.4 },
+        { lat: -34.6, lng: -58.39 },
+        { lat: -34.61, lng: -58.39 },
+      ],
+    ],
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  rings: GeoPointDto[][];
+}
+
 // ============================================
 // DELIVERY DRIVERS
 // ============================================
@@ -174,6 +203,7 @@ export class UpdateDeliveryDriverDto {
 // ============================================
 
 export enum DeliveryStatus {
+  PENDING = 'PENDING',
   READY = 'READY',
   ASSIGNED = 'ASSIGNED',
   PICKED_UP = 'PICKED_UP',
@@ -263,6 +293,16 @@ export class QuoteDeliveryDto {
   @Min(0)
   @IsOptional()
   subtotal?: number;
+
+  @ApiPropertyOptional({ example: -34.6037 })
+  @IsNumber()
+  @IsOptional()
+  lat?: number;
+
+  @ApiPropertyOptional({ example: -58.3816 })
+  @IsNumber()
+  @IsOptional()
+  lng?: number;
 }
 
 export class DeliveryStatsFiltersDto {
@@ -343,4 +383,47 @@ export class DriverFiltersDto {
   @IsOptional()
   @Type(() => Boolean)
   isAvailable?: boolean;
+}
+
+// ============================================
+// GEOCODING
+// ============================================
+
+export class GeocodeBatchDto {
+  @ApiProperty({ type: [String], example: ['Av. Corrientes 1234, CABA'] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  queries: string[];
+}
+
+export class LinkDeliveryDriverDto {
+  @ApiProperty({ example: 'clxxx123' })
+  @IsString()
+  @IsNotEmpty()
+  driverId: string;
+}
+
+export class UpdateDriverWhatsappDto {
+  @ApiPropertyOptional({ example: '123456' })
+  @IsString()
+  @IsOptional()
+  apiKey?: string | null;
+
+  @ApiPropertyOptional({ default: true })
+  @IsBoolean()
+  @IsOptional()
+  enabled?: boolean;
+}
+
+export class TestDriverWhatsappDto {
+  @ApiProperty({ example: '+5491123456789' })
+  @IsString()
+  @IsNotEmpty()
+  phone: string;
+
+  @ApiProperty({ example: '123456' })
+  @IsString()
+  @IsNotEmpty()
+  apiKey: string;
 }

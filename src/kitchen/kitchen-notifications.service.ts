@@ -100,19 +100,25 @@ export class KitchenNotificationsService {
     restaurantId: string,
     notification: Omit<KitchenNotification, 'restaurantId' | 'timestamp'>,
   ) {
-    const subject = this.restaurantSubjects.get(restaurantId);
-    if (subject) {
-      const fullNotification: KitchenNotification = {
-        ...notification,
+    if (!this.restaurantSubjects.has(restaurantId)) {
+      this.restaurantSubjects.set(
         restaurantId,
-        timestamp: new Date(),
-      };
-
-      subject.next(fullNotification);
-      this.logger.log(
-        `Notificación emitida para restaurante ${restaurantId}: ${notification.type}`,
+        new Subject<KitchenNotification>(),
       );
+      this.restaurantConnections.set(restaurantId, []);
     }
+
+    const subject = this.restaurantSubjects.get(restaurantId)!;
+    const fullNotification: KitchenNotification = {
+      ...notification,
+      restaurantId,
+      timestamp: new Date(),
+    };
+
+    subject.next(fullNotification);
+    this.logger.log(
+      `Notificación emitida para restaurante ${restaurantId}: ${notification.type}`,
+    );
   }
 
   /**

@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DeliveryRunService } from './delivery-run.service';
 
 type ExternalPlatformConfig = {
   dispatchUrl?: string;
@@ -12,7 +13,10 @@ type ExternalPlatformConfig = {
 export class DeliveryDispatchService {
   private readonly logger = new Logger(DeliveryDispatchService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly deliveryRunService: DeliveryRunService,
+  ) {}
 
   async dispatchOrder(restaurantId: string, orderId: string) {
     const deliveryOrder = await this.prisma.deliveryOrder.findFirst({
@@ -34,6 +38,8 @@ export class DeliveryDispatchService {
       return { success: false, mode: 'skipped' as const };
     }
 
+    const orderSource = deliveryOrder.order.orderSource;
+
     const activePlatform = await this.prisma.deliveryPlatform.findFirst({
       where: { restaurantId, isActive: true },
       orderBy: { createdAt: 'asc' },
@@ -50,6 +56,10 @@ export class DeliveryDispatchService {
       }
     }
 
+    if (orderSource === 'SALON_PHONE') {
+      return { success: true, mode: 'manual' as const };
+    }
+
     return this.autoAssignDriver(restaurantId, deliveryOrder.id);
   }
 
@@ -57,6 +67,15 @@ export class DeliveryDispatchService {
     restaurantId: string,
     deliveryOrderId: string,
   ) {
+    const deliveryOrder = await this.prisma.deliveryOrder.findFirst({
+      where: { id: deliveryOrderId, order: { restaurantId } },
+      include: { order: true },
+    });
+
+    if (!deliveryOrder) {
+      return { success: false, mode: 'manual' as const };
+    }
+
     const drivers = await this.prisma.deliveryDriver.findMany({
       where: {
         restaurantId,
@@ -102,6 +121,16 @@ export class DeliveryDispatchService {
         ),
       },
     });
+
+    void this.deliveryRunService.notifyAssignment(
+      restaurantId,
+      candidate.driver.id,
+      {
+        orderId: deliveryOrder.orderId,
+        orderNumber: deliveryOrder.order.orderNumber,
+        deliveryAddress: deliveryOrder.deliveryAddress,
+      },
+    );
 
     return {
       success: true,

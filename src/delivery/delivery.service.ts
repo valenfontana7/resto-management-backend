@@ -10,6 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   CreateDeliveryZoneDto,
   UpdateDeliveryZoneDto,
+  UpdateDeliveryZonePolygonDto,
   CreateDeliveryDriverDto,
   UpdateDeliveryDriverDto,
   AssignDriverDto,
@@ -20,11 +21,16 @@ import {
   DriverStatsFiltersDto,
   DriverFiltersDto,
   DeliveryStatus,
+  UpdateDriverWhatsappDto,
+  TestDriverWhatsappDto,
 } from './dto/delivery.dto';
 import { Prisma } from '@prisma/client';
 import { DeliveryZonesService } from './services/delivery-zones.service';
 import { DeliveryDriversService } from './services/delivery-drivers.service';
 import { DeliveryPricingService } from './services/delivery-pricing.service';
+import { GeocodeService } from './services/geocode.service';
+import { DeliveryRunService } from './services/delivery-run.service';
+import { computeLiveDeliveryEta } from './utils/delivery-eta.util';
 
 @Injectable()
 export class DeliveryService {
@@ -35,6 +41,8 @@ export class DeliveryService {
     @Inject(forwardRef(() => DeliveryDriversService))
     private readonly driversService: DeliveryDriversService,
     private readonly pricingService: DeliveryPricingService,
+    private readonly geocodeService: GeocodeService,
+    private readonly deliveryRunService: DeliveryRunService,
   ) {}
 
   // ============================================
@@ -46,6 +54,25 @@ export class DeliveryService {
    */
   async getZones(restaurantId: string) {
     return this.zonesService.getZones(restaurantId);
+  }
+
+  async syncZonePolygons(
+    restaurantId: string,
+    options?: { force?: boolean; zoneId?: string },
+  ) {
+    return this.zonesService.syncZonePolygons(restaurantId, options);
+  }
+
+  async updateZonePolygon(
+    restaurantId: string,
+    zoneId: string,
+    dto: UpdateDeliveryZonePolygonDto,
+  ) {
+    return this.zonesService.updateZonePolygon(restaurantId, zoneId, dto);
+  }
+
+  async clearZonePolygon(restaurantId: string, zoneId: string) {
+    return this.zonesService.clearZonePolygon(restaurantId, zoneId);
   }
 
   /**
@@ -199,7 +226,14 @@ export class DeliveryService {
               },
             },
           },
-          driver: true,
+          driver: {
+            include: {
+              locations: {
+                orderBy: { timestamp: 'desc' },
+                take: 1,
+              },
+            },
+          },
           zone: true,
         },
         orderBy: { createdAt: 'desc' },
@@ -210,44 +244,63 @@ export class DeliveryService {
     ]);
 
     // Formatear respuesta
-    const formattedOrders = orders.map((delivery) => ({
-      id: delivery.id,
-      orderNumber: `ORD-${delivery.order.id.slice(-8).toUpperCase()}`,
-      orderId: delivery.orderId,
-      customerId: delivery.order.id,
-      customerName: delivery.order.customerName,
-      customerPhone: delivery.order.customerPhone,
-      deliveryAddress: delivery.deliveryAddress,
-      deliveryLat: delivery.deliveryLat,
-      deliveryLng: delivery.deliveryLng,
-      items: delivery.order.items.map((item) => ({
-        dishId: item.dishId,
-        dishName: item.dish.name,
-        quantity: item.quantity,
-        price: item.dish.price,
-        notes: item.notes,
-      })),
-      subtotal: delivery.order.subtotal,
-      deliveryFee: delivery.deliveryFee,
-      total: delivery.order.total,
-      status: delivery.status,
-      driverId: delivery.driverId,
-      driverName: delivery.driver?.name || null,
-      zoneId: delivery.zoneId,
-      zoneName: delivery.zone?.name || null,
-      estimatedDeliveryTime: delivery.estimatedDeliveryTime,
-      distanceKm: delivery.distanceKm,
-      paymentMethod: delivery.order.paymentMethod,
-      isPaid: delivery.order.paymentStatus === 'PAID',
-      readyAt: delivery.readyAt,
-      assignedAt: delivery.assignedAt,
-      pickedUpAt: delivery.pickedUpAt,
-      deliveredAt: delivery.deliveredAt,
-      customerNotes: delivery.customerNotes,
-      driverNotes: delivery.driverNotes,
-      createdAt: delivery.createdAt,
-      updatedAt: delivery.updatedAt,
-    }));
+    const formattedOrders = orders.map((delivery) => {
+      const latestLocation = delivery.driver?.locations?.[0];
+      const liveEta = computeLiveDeliveryEta({
+        status: delivery.status,
+        driverLat: latestLocation?.lat,
+        driverLng: latestLocation?.lng,
+        destinationLat:
+          delivery.deliveryLat != null ? Number(delivery.deliveryLat) : null,
+        destinationLng:
+          delivery.deliveryLng != null ? Number(delivery.deliveryLng) : null,
+        vehicle: delivery.driver?.vehicle,
+        locationUpdatedAt: latestLocation?.timestamp,
+      });
+
+      return {
+        id: delivery.id,
+        orderNumber: `ORD-${delivery.order.id.slice(-8).toUpperCase()}`,
+        orderId: delivery.orderId,
+        customerId: delivery.order.id,
+        customerName: delivery.order.customerName,
+        customerPhone: delivery.order.customerPhone,
+        deliveryAddress: delivery.deliveryAddress,
+        deliveryLat:
+          delivery.deliveryLat != null ? Number(delivery.deliveryLat) : null,
+        deliveryLng:
+          delivery.deliveryLng != null ? Number(delivery.deliveryLng) : null,
+        items: delivery.order.items.map((item) => ({
+          dishId: item.dishId,
+          dishName: item.dish.name,
+          quantity: item.quantity,
+          price: item.dish.price,
+          notes: item.notes,
+        })),
+        subtotal: delivery.order.subtotal,
+        deliveryFee: delivery.deliveryFee,
+        total: delivery.order.total,
+        status: delivery.status,
+        driverId: delivery.driverId,
+        driverName: delivery.driver?.name || null,
+        zoneId: delivery.zoneId,
+        zoneName: delivery.zone?.name || null,
+        estimatedDeliveryTime: delivery.estimatedDeliveryTime,
+        liveEtaMinutes: liveEta.liveEtaMinutes,
+        distanceKmRemaining: liveEta.distanceKmRemaining,
+        distanceKm: delivery.distanceKm,
+        paymentMethod: delivery.order.paymentMethod,
+        isPaid: delivery.order.paymentStatus === 'PAID',
+        readyAt: delivery.readyAt,
+        assignedAt: delivery.assignedAt,
+        pickedUpAt: delivery.pickedUpAt,
+        deliveredAt: delivery.deliveredAt,
+        customerNotes: delivery.customerNotes,
+        driverNotes: delivery.driverNotes,
+        createdAt: delivery.createdAt,
+        updatedAt: delivery.updatedAt,
+      };
+    });
 
     // Estadísticas de estados
     const stats = await this.getOrderStats(restaurantId);
@@ -342,8 +395,10 @@ export class DeliveryService {
         customerName: delivery.order.customerName,
         customerPhone: delivery.order.customerPhone,
         deliveryAddress: delivery.deliveryAddress,
-        deliveryLat: delivery.deliveryLat,
-        deliveryLng: delivery.deliveryLng,
+        deliveryLat:
+          delivery.deliveryLat != null ? Number(delivery.deliveryLat) : null,
+        deliveryLng:
+          delivery.deliveryLng != null ? Number(delivery.deliveryLng) : null,
         items: delivery.order.items.map((item) => ({
           dishId: item.dishId,
           dishName: item.dish.name,
@@ -447,6 +502,12 @@ export class DeliveryService {
       },
     });
 
+    void this.deliveryRunService.notifyAssignment(restaurantId, dto.driverId, {
+      orderId: updated.orderId,
+      orderNumber: updated.order.orderNumber,
+      deliveryAddress: updated.deliveryAddress,
+    });
+
     return {
       success: true,
       order: updated,
@@ -478,6 +539,10 @@ export class DeliveryService {
     };
 
     // Actualizar timestamps según el estado
+    if (dto.status === DeliveryStatus.READY && !delivery.readyAt) {
+      updateData.readyAt = new Date();
+    }
+
     if (dto.status === DeliveryStatus.PICKED_UP && !delivery.pickedUpAt) {
       updateData.pickedUpAt = new Date();
     }
@@ -525,9 +590,12 @@ export class DeliveryService {
       },
     };
 
-    const [total, pending, inTransit, delivered, cancelled] = await Promise.all(
-      [
+    const [total, preparing, pending, inTransit, delivered, cancelled] =
+      await Promise.all([
         this.prisma.deliveryOrder.count({ where }),
+        this.prisma.deliveryOrder.count({
+          where: { ...where, status: 'PENDING' },
+        }),
         this.prisma.deliveryOrder.count({
           where: { ...where, status: 'READY' },
         }),
@@ -543,8 +611,7 @@ export class DeliveryService {
         this.prisma.deliveryOrder.count({
           where: { ...where, status: 'CANCELLED' },
         }),
-      ],
-    );
+      ]);
 
     // Tiempo promedio de entrega
     const avgDelivery = await this.prisma.deliveryOrder.aggregate({
@@ -622,6 +689,7 @@ export class DeliveryService {
     return {
       stats: {
         totalOrders: total,
+        preparingOrders: preparing,
         pendingOrders: pending,
         inTransitOrders: inTransit,
         deliveredOrders: delivered,
@@ -643,23 +711,39 @@ export class DeliveryService {
   // ============================================
 
   async getPublicTracking(orderId: string, token?: string) {
-    // Validar token de tracking: HMAC del orderId
-    if (!token) {
+    const normalizedToken = String(token || '').trim();
+    if (!normalizedToken) {
       throw new ForbiddenException('Token de tracking requerido');
     }
-    const crypto = await import('crypto');
-    const secret = process.env.JWT_SECRET || 'default-secret';
-    const expected = crypto
-      .createHmac('sha256', secret)
-      .update(orderId)
-      .digest('hex')
-      .slice(0, 16);
-    const valid =
-      token.length === expected.length &&
-      crypto.timingSafeEqual(Buffer.from(token), Buffer.from(expected));
-    if (!valid) {
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      select: {
+        id: true,
+        orderNumber: true,
+        publicTrackingToken: true,
+        type: true,
+        status: true,
+        deliveryAddress: true,
+        createdAt: true,
+      },
+    });
+
+    if (
+      !order?.publicTrackingToken ||
+      order.publicTrackingToken !== normalizedToken
+    ) {
       throw new ForbiddenException('Token de tracking inválido');
     }
+
+    if (order.type !== 'DELIVERY') {
+      throw new NotFoundException(
+        'Este pedido no tiene seguimiento de delivery',
+      );
+    }
+
+    const orderNumber =
+      order.orderNumber || `ORD-${order.id.slice(-8).toUpperCase()}`;
 
     const delivery = await this.prisma.deliveryOrder.findFirst({
       where: { orderId },
@@ -677,22 +761,148 @@ export class DeliveryService {
     });
 
     if (!delivery) {
-      throw new NotFoundException('Pedido no encontrado');
+      return {
+        order: {
+          orderNumber,
+          status: 'PENDING',
+          orderStatus: order.status,
+          estimatedDeliveryTime: null,
+          deliveryAddress: order.deliveryAddress || '',
+          driver: null,
+          timeline: this.buildKitchenOnlyTimeline(order),
+        },
+      };
     }
 
-    // Construir timeline
+    const timeline = this.buildDeliveryTrackingTimeline(delivery);
+    const driverLocation = delivery.driver?.locations?.[0] ?? null;
+    const liveEta = computeLiveDeliveryEta({
+      status: delivery.status,
+      driverLat: driverLocation?.lat,
+      driverLng: driverLocation?.lng,
+      destinationLat:
+        delivery.deliveryLat != null ? Number(delivery.deliveryLat) : null,
+      destinationLng:
+        delivery.deliveryLng != null ? Number(delivery.deliveryLng) : null,
+      vehicle: delivery.driver?.vehicle,
+      locationUpdatedAt: driverLocation?.timestamp,
+    });
+
+    return {
+      order: {
+        orderNumber,
+        status: delivery.status,
+        orderStatus: delivery.order.status,
+        estimatedDeliveryTime: delivery.estimatedDeliveryTime,
+        liveEtaMinutes: liveEta.liveEtaMinutes,
+        distanceKmRemaining: liveEta.distanceKmRemaining,
+        liveEtaUpdatedAt: liveEta.liveEtaUpdatedAt,
+        deliveryAddress: delivery.deliveryAddress,
+        deliveryLat:
+          delivery.deliveryLat != null ? Number(delivery.deliveryLat) : null,
+        deliveryLng:
+          delivery.deliveryLng != null ? Number(delivery.deliveryLng) : null,
+        driver: delivery.driver
+          ? {
+              name: delivery.driver.name,
+              phone: this.maskPhone(delivery.driver.phone),
+              vehicle: [delivery.driver.vehicle, delivery.driver.licensePlate]
+                .filter(Boolean)
+                .join(' ')
+                .trim(),
+              location: driverLocation
+                ? {
+                    lat: driverLocation.lat,
+                    lng: driverLocation.lng,
+                    heading: driverLocation.heading,
+                    updatedAt: driverLocation.timestamp,
+                  }
+                : null,
+            }
+          : null,
+        timeline,
+      },
+    };
+  }
+
+  private buildKitchenOnlyTimeline(order: { createdAt: Date; status: string }) {
     const timeline: Array<{
       status: string;
       timestamp: Date;
       message: string;
-    }> = [];
+    }> = [
+      {
+        status: 'pending',
+        timestamp: order.createdAt,
+        message: 'Recibimos tu pedido',
+      },
+    ];
+
+    if (['CONFIRMED', 'PAID', 'PREPARING'].includes(order.status)) {
+      timeline.push({
+        status: 'pending',
+        timestamp: order.createdAt,
+        message: 'Tu pedido está en cocina',
+      });
+    }
+
+    if (order.status === 'READY') {
+      timeline.push({
+        status: 'ready',
+        timestamp: order.createdAt,
+        message: 'Tu pedido está listo y pronto saldrá a entrega',
+      });
+    }
+
+    if (order.status === 'DELIVERED') {
+      timeline.push({
+        status: 'delivered',
+        timestamp: order.createdAt,
+        message: 'Tu pedido fue entregado',
+      });
+    }
+
+    return timeline;
+  }
+
+  private buildDeliveryTrackingTimeline(delivery: {
+    status: string;
+    createdAt: Date;
+    readyAt: Date | null;
+    assignedAt: Date | null;
+    pickedUpAt: Date | null;
+    deliveredAt: Date | null;
+    updatedAt: Date;
+    driver: { name: string } | null;
+  }) {
+    const timeline: Array<{
+      status: string;
+      timestamp: Date;
+      message: string;
+    }> = [
+      {
+        status: 'pending',
+        timestamp: delivery.createdAt,
+        message: 'Recibimos tu pedido',
+      },
+    ];
+
+    if (delivery.status === 'PENDING' && !delivery.readyAt) {
+      timeline.push({
+        status: 'pending',
+        timestamp: delivery.createdAt,
+        message: 'Tu pedido está en cocina',
+      });
+    }
+
     if (delivery.readyAt) {
       timeline.push({
         status: 'ready',
         timestamp: delivery.readyAt,
-        message: 'Tu pedido está listo',
+        message: 'Tu pedido está listo para envío',
       });
     }
+
     if (delivery.assignedAt && delivery.driver) {
       timeline.push({
         status: 'assigned',
@@ -700,20 +910,23 @@ export class DeliveryService {
         message: `${delivery.driver.name} fue asignado a tu pedido`,
       });
     }
+
     if (delivery.pickedUpAt) {
       timeline.push({
         status: 'picked-up',
         timestamp: delivery.pickedUpAt,
-        message: `${delivery.driver?.name} retiró tu pedido`,
+        message: `${delivery.driver?.name || 'El repartidor'} retiró tu pedido`,
       });
     }
+
     if (delivery.status === 'IN_TRANSIT') {
       timeline.push({
         status: 'in-transit',
-        timestamp: new Date(),
+        timestamp: delivery.pickedUpAt || delivery.updatedAt,
         message: 'Tu pedido está en camino',
       });
     }
+
     if (delivery.deliveredAt) {
       timeline.push({
         status: 'delivered',
@@ -722,31 +935,17 @@ export class DeliveryService {
       });
     }
 
-    return {
-      order: {
-        orderNumber: `ORD-${delivery.order.id.slice(-8).toUpperCase()}`,
-        status: delivery.status,
-        estimatedDeliveryTime: delivery.estimatedDeliveryTime,
-        deliveryAddress: delivery.deliveryAddress,
-        driver: delivery.driver
-          ? {
-              name: delivery.driver.name,
-              phone: this.maskPhone(delivery.driver.phone),
-              vehicle: `${delivery.driver.vehicle} ${delivery.driver.licensePlate}`,
-              location:
-                delivery.driver.locations.length > 0
-                  ? {
-                      lat: delivery.driver.locations[0].lat,
-                      lng: delivery.driver.locations[0].lng,
-                      heading: delivery.driver.locations[0].heading,
-                      updatedAt: delivery.driver.locations[0].timestamp,
-                    }
-                  : null,
-            }
-          : null,
-        timeline,
-      },
-    };
+    if (delivery.status === 'CANCELLED') {
+      timeline.push({
+        status: 'cancelled',
+        timestamp: delivery.updatedAt,
+        message: 'La entrega fue cancelada',
+      });
+    }
+
+    timeline.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+    return timeline;
   }
 
   // ============================================
@@ -773,6 +972,7 @@ export class DeliveryService {
     newStatus: DeliveryStatus,
   ) {
     const validTransitions = {
+      PENDING: ['READY', 'CANCELLED'],
       READY: ['ASSIGNED', 'CANCELLED'],
       ASSIGNED: ['PICKED_UP', 'CANCELLED'],
       PICKED_UP: ['IN_TRANSIT', 'CANCELLED'],
@@ -882,6 +1082,136 @@ export class DeliveryService {
     ]);
 
     return { ready, assigned, inTransit, delivered };
+  }
+
+  async geocodeAddress(query: string) {
+    const coordinates = await this.geocodeService.geocode(query);
+    return {
+      query: query.trim(),
+      coordinates,
+    };
+  }
+
+  async geocodeAddressesBatch(queries: string[]) {
+    const results = await this.geocodeService.geocodeBatch(queries);
+    return { results };
+  }
+
+  async geocodeMissingOrderCoordinates(restaurantId: string, limit = 15) {
+    const missing = await this.prisma.deliveryOrder.findMany({
+      where: {
+        order: { restaurantId },
+        deliveryAddress: { not: '' },
+        OR: [{ deliveryLat: null }, { deliveryLng: null }],
+      },
+      include: {
+        order: {
+          select: {
+            restaurant: { select: { city: true, country: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+    });
+
+    let updated = 0;
+
+    for (const delivery of missing) {
+      const coordinates =
+        await this.geocodeService.coordinatesForDeliveryAddress(
+          delivery.deliveryAddress,
+          {
+            city: delivery.order.restaurant.city,
+            country: delivery.order.restaurant.country,
+          },
+        );
+
+      if (coordinates.deliveryLat == null || coordinates.deliveryLng == null) {
+        continue;
+      }
+
+      await this.prisma.deliveryOrder.update({
+        where: { id: delivery.id },
+        data: coordinates,
+      });
+      updated += 1;
+
+      if (updated < missing.length) {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      }
+    }
+
+    const remaining = await this.prisma.deliveryOrder.count({
+      where: {
+        order: { restaurantId },
+        deliveryAddress: { not: '' },
+        OR: [{ deliveryLat: null }, { deliveryLng: null }],
+      },
+    });
+
+    return { updated, remaining };
+  }
+
+  getRunSession(restaurantId: string, userId: string) {
+    return this.deliveryRunService.getSession(restaurantId, userId);
+  }
+
+  linkRunDriver(
+    restaurantId: string,
+    userId: string,
+    userRole: string | undefined,
+    driverId: string,
+  ) {
+    return this.deliveryRunService.linkDriver(restaurantId, userId, userRole, {
+      driverId,
+    });
+  }
+
+  updateRunOrderStatus(
+    restaurantId: string,
+    userId: string,
+    orderId: string,
+    dto: UpdateDeliveryStatusDto,
+  ) {
+    return this.deliveryRunService.updateOrderStatus(
+      restaurantId,
+      userId,
+      orderId,
+      dto,
+    );
+  }
+
+  updateRunLocation(
+    restaurantId: string,
+    userId: string,
+    dto: UpdateDriverLocationDto,
+  ) {
+    return this.deliveryRunService.updateLocation(restaurantId, userId, dto);
+  }
+
+  updateDriverWhatsapp(
+    restaurantId: string,
+    userId: string,
+    dto: UpdateDriverWhatsappDto,
+  ) {
+    return this.deliveryRunService.updateDriverWhatsapp(
+      restaurantId,
+      userId,
+      dto,
+    );
+  }
+
+  testDriverWhatsapp(
+    restaurantId: string,
+    userId: string,
+    dto: TestDriverWhatsappDto,
+  ) {
+    return this.deliveryRunService.testDriverWhatsapp(
+      restaurantId,
+      userId,
+      dto,
+    );
   }
 
   private maskPhone(phone: string): string {
