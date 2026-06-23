@@ -2887,6 +2887,14 @@ export class MetadataConfigDto {
   @IsString()
   createdAt?: string;
 
+  @ApiPropertyOptional({
+    description:
+      'ISO timestamp of the first successful publish (persists after unpublish)',
+  })
+  @IsOptional()
+  @IsString()
+  firstPublishedAt?: string;
+
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()

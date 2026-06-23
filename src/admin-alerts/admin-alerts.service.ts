@@ -247,7 +247,7 @@ export class AdminAlertsService {
     payload: EdgeSyncStaleAlertPayload,
   ): Promise<boolean> {
     const message =
-      `El servidor local de ${payload.restaurantName} lleva ${payload.minutesSinceActivity} minutos sin actividad de sync ` +
+      `La caja principal de ${payload.restaurantName} lleva ${payload.minutesSinceActivity} minutos sin sincronizar con la nube ` +
       `(umbral ${payload.staleThresholdMinutes} min). Revisá conectividad, servicio BentooSalonLocal o outbox pendiente.`;
 
     return this.notifyAdminEvent({

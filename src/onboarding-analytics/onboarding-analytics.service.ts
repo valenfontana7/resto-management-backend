@@ -266,4 +266,145 @@ export class OnboardingAnalyticsService {
       sampleUsersD7: sumUsersD7,
     };
   }
+
+  async getAttributionBreakdown(days = 30) {
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        channel: string;
+        source: string;
+        medium: string;
+        campaign: string;
+        sessions: number;
+        landings: number;
+        registrations: number;
+        publications: number;
+      }>
+    >`
+      WITH session_attr AS (
+        SELECT DISTINCT ON ("sessionId")
+          "sessionId",
+          COALESCE("props"->>'utm_campaign', '(sin campaña)') AS campaign,
+          COALESCE("props"->>'utm_source', 'direct') AS source,
+          COALESCE("props"->>'utm_medium', '-') AS medium,
+          CASE
+            WHEN "props"->>'gclid' IS NOT NULL THEN 'google'
+            WHEN "props"->>'fbclid' IS NOT NULL THEN 'meta'
+            WHEN "props"->>'utm_source' = 'google' THEN 'google'
+            WHEN "props"->>'utm_source' = 'meta' THEN 'meta'
+            ELSE COALESCE("props"->>'utm_source', 'direct')
+          END AS channel
+        FROM "OnboardingEvent"
+        WHERE "createdAt" >= ${since}
+          AND (
+            "props"->>'utm_campaign' IS NOT NULL
+            OR "props"->>'utm_source' IS NOT NULL
+            OR "props"->>'gclid' IS NOT NULL
+            OR "props"->>'fbclid' IS NOT NULL
+          )
+        ORDER BY "sessionId", "createdAt" ASC
+      ),
+      session_funnel AS (
+        SELECT
+          "sessionId",
+          MAX(CASE WHEN "event" = 'landing_viewed' THEN 1 ELSE 0 END) AS landed,
+          MAX(CASE WHEN "event" = 'register_completed' THEN 1 ELSE 0 END) AS registered,
+          MAX(CASE WHEN "event" = 'preview_published' THEN 1 ELSE 0 END) AS published
+        FROM "OnboardingEvent"
+        WHERE "createdAt" >= ${since}
+        GROUP BY "sessionId"
+      )
+      SELECT
+        sa.channel,
+        sa.source,
+        sa.medium,
+        sa.campaign,
+        COUNT(*)::int AS sessions,
+        SUM(sf.landed)::int AS landings,
+        SUM(sf.registered)::int AS registrations,
+        SUM(sf.published)::int AS publications
+      FROM session_attr sa
+      INNER JOIN session_funnel sf ON sf."sessionId" = sa."sessionId"
+      GROUP BY sa.channel, sa.source, sa.medium, sa.campaign
+      ORDER BY registrations DESC, sessions DESC
+      LIMIT 50
+    `;
+
+    const organicRow = await this.prisma.$queryRaw<
+      Array<{
+        landings: number;
+        registrations: number;
+        publications: number;
+      }>
+    >`
+      WITH attributed_sessions AS (
+        SELECT DISTINCT "sessionId"
+        FROM "OnboardingEvent"
+        WHERE "createdAt" >= ${since}
+          AND (
+            "props"->>'utm_campaign' IS NOT NULL
+            OR "props"->>'utm_source' IS NOT NULL
+            OR "props"->>'gclid' IS NOT NULL
+            OR "props"->>'fbclid' IS NOT NULL
+          )
+      ),
+      session_funnel AS (
+        SELECT
+          "sessionId",
+          MAX(CASE WHEN "event" = 'landing_viewed' THEN 1 ELSE 0 END) AS landed,
+          MAX(CASE WHEN "event" = 'register_completed' THEN 1 ELSE 0 END) AS registered,
+          MAX(CASE WHEN "event" = 'preview_published' THEN 1 ELSE 0 END) AS published
+        FROM "OnboardingEvent"
+        WHERE "createdAt" >= ${since}
+        GROUP BY "sessionId"
+      )
+      SELECT
+        SUM(sf.landed)::int AS landings,
+        SUM(sf.registered)::int AS registrations,
+        SUM(sf.published)::int AS publications
+      FROM session_funnel sf
+      WHERE sf."sessionId" NOT IN (SELECT "sessionId" FROM attributed_sessions)
+    `;
+
+    const organic = organicRow[0] ?? {
+      landings: 0,
+      registrations: 0,
+      publications: 0,
+    };
+
+    return {
+      sinceDays: days,
+      since: since.toISOString(),
+      campaigns: rows.map((row) => ({
+        channel: row.channel,
+        source: row.source,
+        medium: row.medium,
+        campaign: row.campaign,
+        sessions: Number(row.sessions),
+        landings: Number(row.landings),
+        registrations: Number(row.registrations),
+        publications: Number(row.publications),
+        registerRate:
+          row.landings > 0
+            ? Math.round(
+                (Number(row.registrations) / Number(row.landings)) * 1000,
+              ) / 10
+            : null,
+      })),
+      organic: {
+        landings: Number(organic.landings),
+        registrations: Number(organic.registrations),
+        publications: Number(organic.publications),
+        registerRate:
+          Number(organic.landings) > 0
+            ? Math.round(
+                (Number(organic.registrations) / Number(organic.landings)) *
+                  1000,
+              ) / 10
+            : null,
+      },
+    };
+  }
 }

@@ -54,6 +54,20 @@ export class EmailService {
       !!this.configService.get<string>('REDIS_URL') && !!this.emailQueue;
   }
 
+  private buildOrderTrackingUrl(
+    order: OrderData,
+    restaurant: RestaurantData,
+  ): string {
+    const token = order.publicTrackingToken
+      ? `?token=${encodeURIComponent(order.publicTrackingToken)}`
+      : '';
+    const slug = (restaurant.slug || '').trim();
+    const path = slug
+      ? `/${encodeURIComponent(slug)}/order/${encodeURIComponent(order.id)}`
+      : `/order/${encodeURIComponent(order.id)}`;
+    return `${this.frontendUrl}${path}${token}`;
+  }
+
   async sendOrderConfirmation(
     order: OrderData,
     restaurant: RestaurantData,
@@ -65,7 +79,7 @@ export class EmailService {
       return false;
     }
 
-    const trackingUrl = `${this.frontendUrl}/order/${order.id}?token=${order.publicTrackingToken}`;
+    const trackingUrl = this.buildOrderTrackingUrl(order, restaurant);
     const html = renderOrderConfirmationEmail(order, restaurant, trackingUrl);
 
     return this.sendEmail({
@@ -116,7 +130,7 @@ export class EmailService {
       return false;
     }
 
-    const trackingUrl = `${this.frontendUrl}/order/${order.id}?token=${order.publicTrackingToken}`;
+    const trackingUrl = this.buildOrderTrackingUrl(order, restaurant);
     const html = renderStatusUpdateEmail(order, restaurant, trackingUrl);
 
     return this.sendEmail({

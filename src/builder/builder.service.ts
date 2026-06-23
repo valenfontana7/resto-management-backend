@@ -546,6 +546,11 @@ export class BuilderService {
     }
 
     cleanedConfig.lastModified = new Date().toISOString();
+    const publishMetadata = { ...(cleanedConfig.metadata ?? {}) };
+    if (!publishMetadata.firstPublishedAt) {
+      publishMetadata.firstPublishedAt = new Date().toISOString();
+    }
+    cleanedConfig.metadata = publishMetadata;
 
     await this.prisma.builderConfig.update({
       where: { restaurantId },
@@ -563,16 +568,29 @@ export class BuilderService {
    * Unpublish configuration
    */
   async unpublishConfig(restaurantId: string): Promise<void> {
-    // Update builder config
-    await this.prisma.builderConfig.update({
+    const builderConfig = await this.prisma.builderConfig.findUnique({
       where: { restaurantId },
-      data: {
-        isPublished: false,
-        updatedAt: new Date(),
-      },
     });
 
-    // Update restaurant publish status
+    if (builderConfig) {
+      const config = builderConfig.config as unknown as BuilderConfiguration;
+      const metadata = { ...(config.metadata ?? {}) };
+
+      // Backfill for configs published before firstPublishedAt existed.
+      if (!metadata.firstPublishedAt) {
+        metadata.firstPublishedAt = new Date().toISOString();
+      }
+
+      await this.prisma.builderConfig.update({
+        where: { restaurantId },
+        data: {
+          isPublished: false,
+          config: { ...config, metadata } as any,
+          updatedAt: new Date(),
+        },
+      });
+    }
+
     await this.prisma.restaurant.update({
       where: { id: restaurantId },
       data: {
@@ -641,6 +659,8 @@ export class BuilderService {
   async getConfigMetadata(restaurantId: string): Promise<{
     version: string;
     isPublished: boolean;
+    hasPublishedBefore: boolean;
+    firstPublishedAt: string | null;
     createdAt: Date;
     updatedAt: Date;
     createdBy: string | null;
@@ -653,10 +673,27 @@ export class BuilderService {
         createdAt: true,
         updatedAt: true,
         createdBy: true,
+        config: true,
       },
     });
 
-    return builderConfig;
+    if (!builderConfig) {
+      return null;
+    }
+
+    const config = builderConfig.config as unknown as BuilderConfiguration;
+    const firstPublishedAt = config.metadata?.firstPublishedAt ?? null;
+
+    return {
+      version: builderConfig.version,
+      isPublished: builderConfig.isPublished,
+      hasPublishedBefore:
+        Boolean(firstPublishedAt) || builderConfig.isPublished,
+      firstPublishedAt,
+      createdAt: builderConfig.createdAt,
+      updatedAt: builderConfig.updatedAt,
+      createdBy: builderConfig.createdBy,
+    };
   }
 
   /**

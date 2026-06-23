@@ -933,6 +933,7 @@ export interface BuilderConfiguration {
   metadata?: {
     createdBy?: string;
     createdAt?: string;
+    firstPublishedAt?: string;
     templateName?: string;
     tags?: string[];
     notes?: string;

@@ -47,4 +47,15 @@ export class OnboardingAnalyticsAdminController {
       Number.isFinite(parsed) && parsed > 0 && parsed <= 90 ? parsed : 7;
     return this.activationDashboard.getDashboard(safeDays);
   }
+
+  @Get('attribution')
+  @ApiOperation({
+    summary: 'Desglose de campañas UTM (landings → registros → publicados)',
+  })
+  async getAttribution(@Query('days') days?: string) {
+    const parsed = days ? Number(days) : 30;
+    const safeDays =
+      Number.isFinite(parsed) && parsed > 0 && parsed <= 90 ? parsed : 30;
+    return this.service.getAttributionBreakdown(safeDays);
+  }
 }

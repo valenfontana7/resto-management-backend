@@ -57,6 +57,10 @@ class AdminAlertEventsDto {
   @IsBoolean()
   @IsOptional()
   billingControlsUpdated?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  edgeSyncStale?: boolean;
 }
 
 class NotificationsDto {

@@ -32,6 +32,7 @@ export interface OrderData {
 export interface RestaurantData {
   id: string;
   name: string;
+  slug?: string | null;
   email: string;
   phone: string;
   address: string;
@@ -741,6 +742,23 @@ ${emailHeader({
       ${emailParagraph(config.customerMessage)}
       ${emailParagraph(`<em style="font-size: 14px; color: ${C.textMuted};">${config.actionTip}</em>`, true)}
     </div>
+    ${
+      order.status !== 'CANCELLED' && order.items.length > 0
+        ? `
+    <div style="border: 1px solid ${C.border}; border-radius: 12px; overflow: hidden; margin-bottom: 24px;">
+      <div style="background: #FAFAF9; padding: 12px 18px; border-bottom: 1px solid ${C.border};">
+        ${emailSectionTitle('Tu pedido').replace('margin: 0 0 14px', 'margin: 0')}
+      </div>
+      <div style="padding: 4px 18px 12px;">
+        <table cellpadding="0" cellspacing="0" width="100%">${renderOrderItems(order.items, config.color)}</table>
+      </div>
+      <div style="padding: 12px 18px 16px; border-top: 1px dashed ${C.border}; text-align: right;">
+        <span style="font-size: 14px; color: ${C.textMuted}; margin-right: 8px;">Total</span>
+        <span style="font-size: 20px; font-weight: 700; color: ${config.color};">$${formatPrice(order.total)}</span>
+      </div>
+    </div>`
+        : ''
+    }
     <div style="background: #FAFAF9; border: 1px solid ${C.border}; border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;">
       <table cellpadding="0" cellspacing="0" width="100%">
         <tr>
@@ -755,6 +773,7 @@ ${emailHeader({
       </table>
     </div>
     ${emailCta(trackingUrl, 'Ver estado en tiempo real', config.color)}
+    ${emailSecondaryLink(trackingUrl, 'O abrí este enlace para seguir tu pedido:')}
   </td>
 </tr>
 ${emailFooterRestaurant(restaurant)}`;

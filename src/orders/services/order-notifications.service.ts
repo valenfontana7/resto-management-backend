@@ -67,6 +67,7 @@ export class OrderNotificationsService {
     return {
       id: restaurant.id,
       name: restaurant.name,
+      slug: restaurant.slug ?? null,
       email: restaurant.email,
       phone: restaurant.phone,
       address: restaurant.address,

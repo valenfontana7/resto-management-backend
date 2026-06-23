@@ -3,14 +3,14 @@ import { ConfigService } from '@nestjs/config';
 import type { DesktopReleaseManifest } from './salon-desktop.types';
 
 const DEFAULT_MANIFEST: DesktopReleaseManifest = {
-  version: '0.2.1',
+  version: '0.2.3',
   installerUrl: 'https://bentoo.com.ar/downloads/BentooSalon-Win7-Setup.exe',
   installerFileName: 'BentooSalon-Win7-Setup.exe',
   minWindowsVersion: '6.1',
   publishedAt: '2026-06-20T00:00:00.000Z',
   changelog: [
-    'Instalador unificado Desktop + Salon Local para Windows 7 SP1+',
-    'Aviso de actualización al iniciar el terminal de salón',
+    'Sync en background aunque cierres Bentoo Salón',
+    'Un icono para operar; servicio invisible del instalador',
   ],
   releaseNotesUrl: 'https://bentoo.com.ar/downloads/desktop-latest.json',
 };
