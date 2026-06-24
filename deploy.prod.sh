@@ -19,4 +19,4 @@ docker image prune -f
 echo "==> Espacio Docker"
 docker system df
 
-echo "✅ Deploy listo"
+echo "Deploy listo"
