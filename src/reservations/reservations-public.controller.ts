@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Req,
+  Query,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -127,9 +128,20 @@ export class ReservationsPublicController {
     },
   })
   @ApiResponse({ status: 404, description: 'Reserva no encontrada' })
-  async getReservation(@Param('reservationId') reservationId: string) {
-    const reservation =
-      await this.reservationsService.findOnePublic(reservationId);
+  async getReservation(
+    @Param('reservationId') reservationId: string,
+    @Query('token') token?: string,
+    @Req() req?: Request,
+  ) {
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req as Request),
+      scope: 'token_lookup',
+    });
+
+    const reservation = await this.reservationsService.findOnePublic(
+      reservationId,
+      token,
+    );
     return { reservation };
   }
 }

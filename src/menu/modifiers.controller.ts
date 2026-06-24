@@ -7,7 +7,10 @@ import {
   Body,
   Param,
   UseGuards,
+  Req,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import type { Request } from 'express';
 import { ModifiersService } from './modifiers.service';
 import {
   CreateModifierGroupDto,
@@ -17,15 +20,30 @@ import {
 } from './dto/modifier.dto';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
+import { getClientIp } from '../common/utils/client-ip.util';
 
 @Controller('restaurants/:restaurantId/dishes/:dishId/modifiers')
 export class ModifiersController {
-  constructor(private readonly modifiersService: ModifiersService) {}
+  constructor(
+    private readonly modifiersService: ModifiersService,
+    private readonly publicWriteAbuse: PublicWriteAbuseService,
+  ) {}
 
   /** Public: get modifier groups for a dish */
   @Public()
   @Get()
-  getGroups(@Param('dishId') dishId: string) {
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  async getGroups(
+    @Param('restaurantId') restaurantId: string,
+    @Param('dishId') dishId: string,
+    @Req() req: Request,
+  ) {
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req),
+      scope: 'public_read',
+      restaurantId,
+    });
     return this.modifiersService.getGroupsByDish(dishId);
   }
 

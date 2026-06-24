@@ -949,6 +949,42 @@ ${emailFooterBentoo()}`;
   return emailDocument('Acceso a Bentoo', C.bg, emailCard(content));
 }
 
+export function renderEmailVerificationEmail(params: {
+  name: string;
+  link: string;
+  expiresInHours: number;
+}): string {
+  const safeName = escapeHtml(params.name || 'Hola');
+  const safeLink = escapeHtml(params.link);
+
+  const content = `
+${emailHeader({
+  eyebrow: 'Bentoo',
+  title: 'Confirmá tu email',
+  subtitle: 'Un paso más para publicar tu restaurante',
+  accent: C.bentoo,
+  ...bentooHeaderBranding(),
+})}
+<tr>
+  <td class="email-content" style="padding: 32px 36px 36px;">
+    ${emailParagraph(`Hola <strong>${safeName}</strong>,`)}
+    ${emailParagraph(
+      `Para crear y publicar tu restaurante en Bentoo necesitamos confirmar que este email es tuyo. El enlace vence en <strong>${params.expiresInHours} horas</strong>.`,
+      true,
+    )}
+    ${emailCta(params.link, 'Confirmar email', C.accent)}
+    ${emailSecondaryLink(safeLink, 'Si el botón no funciona, copiá este enlace:')}
+    ${emailHighlightBox(
+      'Si no creaste una cuenta en Bentoo, podés ignorar este correo.',
+      'neutral',
+    )}
+  </td>
+</tr>
+${emailFooterBentoo()}`;
+
+  return emailDocument('Confirmá tu email en Bentoo', C.bg, emailCard(content));
+}
+
 export function renderPasswordResetEmail(params: {
   name: string;
   link: string;

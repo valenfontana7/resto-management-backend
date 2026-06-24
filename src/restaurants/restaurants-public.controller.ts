@@ -14,6 +14,7 @@ export class RestaurantsPublicController {
   @Public()
   @UseInterceptors(CacheInterceptor)
   @CacheTTL(300_000) // 5 min
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @ApiOperation({ summary: 'Listar restaurantes públicos para sitemap' })
   @ApiResponse({ status: 200, description: 'Lista de restaurantes' })
   async getPublicRestaurants() {

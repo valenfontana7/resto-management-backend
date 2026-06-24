@@ -360,6 +360,16 @@ export class WebhooksController {
         );
       }
 
+      if (
+        process.env.NODE_ENV === 'production' &&
+        !tenantWebhookSecret &&
+        !process.env.PAYWAY_WEBHOOK_SECRET?.trim()
+      ) {
+        throw new ForbiddenException(
+          'Payway webhook rejected: missing tenant webhook secret',
+        );
+      }
+
       const provider = this.paymentProviderFactory.getProvider('payway');
       const webhook = await provider.validateAndParseWebhook({
         headers,

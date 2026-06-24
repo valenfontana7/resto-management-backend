@@ -12,6 +12,7 @@ import { Logger, UseGuards } from '@nestjs/common';
 import { WsJwtGuard } from './ws-jwt.guard';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../prisma/prisma.service';
+import { OwnershipService } from '../common/services/ownership.service';
 
 export interface OrderUpdatePayload {
   id: string;
@@ -33,9 +34,20 @@ export interface OrderUpdatePayload {
 
 @WebSocketGateway({
   cors: {
-    origin: process.env.CORS_ORIGINS
-      ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim())
-      : true, // reflejar origin cuando no está configurado (seguro en dev)
+    origin: (() => {
+      const raw = (
+        process.env.CORS_ORIGINS ??
+        process.env.FRONTEND_URL ??
+        ''
+      ).trim();
+      if (!raw) {
+        return process.env.NODE_ENV === 'production' ? false : true;
+      }
+      return raw
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    })(),
     credentials: true,
   },
   namespace: '/orders',
@@ -52,6 +64,7 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
+    private readonly ownership: OwnershipService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -141,7 +154,12 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     // Validate user belongs to this restaurant
     const user = client.data.user;
-    if (user.role !== 'SUPER_ADMIN' && user.restaurantId !== restaurantId) {
+    try {
+      await this.ownership.verifyUserBelongsToRestaurant(
+        restaurantId,
+        user.userId,
+      );
+    } catch {
       this.logger.warn(
         `Client ${client.id} (user: ${user.email}) denied access to restaurant ${restaurantId}`,
       );
@@ -162,6 +180,7 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return { success: true, message: `Joined restaurant ${restaurantId}` };
   }
 
+  @UseGuards(WsJwtGuard)
   @SubscribeMessage('leave-restaurant')
   async handleLeaveRestaurant(
     @ConnectedSocket() client: Socket,

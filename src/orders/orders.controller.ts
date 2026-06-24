@@ -72,13 +72,21 @@ export class OrdersController {
   // Public endpoint para tracking de orden (sin datos sensibles)
   @Public()
   @Get('orders/:id/public')
+  @Throttle({ default: { ttl: 60_000, limit: 40 } })
   @ApiOperation({ summary: 'Get order status (public, token-based)' })
   @ApiResponse({ status: 200, description: 'Order public data retrieved' })
   async getPublicOrder(
     @Param('restaurantId') restaurantId: string,
     @Param('id') id: string,
     @Query('token') token?: string,
+    @Req() req?: Request,
   ) {
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req as Request),
+      scope: 'token_lookup',
+      restaurantId,
+    });
+
     const order = await this.ordersService.getPublicOrder(
       restaurantId,
       id,
@@ -239,16 +247,26 @@ export class OrdersController {
 @ApiTags('orders')
 @Controller('api/orders')
 export class PublicOrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly publicWriteAbuse: PublicWriteAbuseService,
+  ) {}
 
   @Public()
   @Get(':id/public')
+  @Throttle({ default: { ttl: 60_000, limit: 40 } })
   @ApiOperation({ summary: 'Get order status by public tracking token' })
   @ApiResponse({ status: 200, description: 'Order public data retrieved' })
   async getPublicOrderByToken(
     @Param('id') id: string,
     @Query('token') token?: string,
+    @Req() req?: Request,
   ) {
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req as Request),
+      scope: 'token_lookup',
+    });
+
     const order = await this.ordersService.getPublicOrderByToken(
       id,
       token ?? '',

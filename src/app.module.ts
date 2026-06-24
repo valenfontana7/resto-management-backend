@@ -55,6 +55,9 @@ import { isLocalMode } from './common/config/bentoo-mode.config';
 import { LocalDiscoveryModule } from './local-discovery/local-discovery.module';
 import { EdgeSyncModule } from './edge-sync/edge-sync.module';
 import { SalonDesktopModule } from './salon-desktop/salon-desktop.module';
+import { RedisModule } from './common/redis/redis.module';
+import { createKeyv } from '@keyv/redis';
+import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage';
 
 @Module({
   imports: [
@@ -82,18 +85,36 @@ import { SalonDesktopModule } from './salon-desktop/salon-desktop.module';
           }),
         ]
       : []),
-    // In-memory cache (swap to Redis store when ready)
-    CacheModule.register({
+    RedisModule,
+    CacheModule.registerAsync({
       isGlobal: true,
-      ttl: 60_000, // 60s default TTL
-      max: 500, // max 500 items in memory
-    }),
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60000, // 1 minuto
-        limit: 100, // 100 requests por minuto por IP
+      inject: [ConfigService],
+      useFactory: async (config: ConfigService) => {
+        const redisUrl = config.get<string>('REDIS_URL')?.trim();
+        if (redisUrl) {
+          return {
+            stores: [createKeyv(redisUrl)],
+          };
+        }
+        return {
+          ttl: 60_000,
+          max: 500,
+        };
       },
-    ]),
+    }),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService, RedisThrottlerStorage],
+      useFactory: (
+        config: ConfigService,
+        redisStorage: RedisThrottlerStorage,
+      ) => {
+        const redisUrl = config.get<string>('REDIS_URL')?.trim();
+        return {
+          throttlers: [{ ttl: 60_000, limit: 100 }],
+          ...(redisUrl ? { storage: redisStorage } : {}),
+        };
+      },
+    }),
     JwtModule.register({
       global: true,
       secret: getJwtSecret(process.env.JWT_SECRET),

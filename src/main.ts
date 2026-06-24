@@ -107,8 +107,9 @@ async function bootstrap() {
     const normalized = normalizeOrigin(origin).toLowerCase();
     if (!normalized) return false;
 
-    // Si la allowlist es solo de localhost (config típica de dev), no bloquear otras origins.
+    // En producción no aceptar cualquier origin solo porque la lista es localhost.
     const isLocalDevList =
+      process.env.NODE_ENV !== 'production' &&
       allowedOrigins.length > 0 &&
       allowedOrigins.every((raw) => {
         const entry = normalizeOrigin(raw).toLowerCase();
@@ -167,8 +168,13 @@ async function bootstrap() {
       // Allow non-browser requests (e.g., server-to-server, curl)
       if (!origin) return callback(null, true);
 
-      // If no CORS_ORIGINS/FRONTEND_URL configured, reflect origin (safe for local dev)
-      if (allowedOrigins.length === 0) return callback(null, true);
+      // If no CORS_ORIGINS/FRONTEND_URL configured, only allow in non-production
+      if (allowedOrigins.length === 0) {
+        if (process.env.NODE_ENV === 'production') {
+          return callback(new Error('Not allowed by CORS'), false);
+        }
+        return callback(null, true);
+      }
 
       if (isAllowedOrigin(origin)) return callback(null, true);
       return callback(new Error('Not allowed by CORS'));

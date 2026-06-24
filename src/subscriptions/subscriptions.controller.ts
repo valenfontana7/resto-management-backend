@@ -45,19 +45,23 @@ export class SubscriptionsController {
   @ApiResponse({ status: 404, description: 'No existe suscripción' })
   async getSubscription(
     @Param('restaurantId') restaurantId: string,
-    @CurrentUser() user?: RequestUser,
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.subscriptionsService.getSubscription(
-      restaurantId,
-      user?.userId,
-    );
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
+    return this.subscriptionsService.getSubscription(restaurantId, user.userId);
   }
 
   @Get('summary')
   @ApiOperation({ summary: 'Obtener resumen de suscripción con métricas' })
   @ApiParam({ name: 'restaurantId', description: 'ID del restaurante' })
   @ApiResponse({ status: 200, description: 'Resumen de suscripción' })
-  async getSubscriptionSummary(@Param('restaurantId') restaurantId: string) {
+  async getSubscriptionSummary(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
     return this.subscriptionsService.getSubscriptionSummary(restaurantId);
   }
 
@@ -70,7 +74,10 @@ export class SubscriptionsController {
   async createSubscription(
     @Param('restaurantId') restaurantId: string,
     @Body() dto: CreateSubscriptionDto,
+    @CurrentUser() user: RequestUser,
   ) {
+    const freshUser = await this.authService.validateUser(user.userId);
+    assertRestaurantAccess(freshUser, restaurantId);
     return this.subscriptionsService.createSubscription(restaurantId, dto);
   }
 

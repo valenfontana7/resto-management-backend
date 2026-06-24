@@ -7,8 +7,9 @@ import {
   IsEmail,
   MaxLength,
 } from 'class-validator';
+import { BotDefenseDto } from '../../common/dto/bot-defense.dto';
 
-export class CreateReviewDto {
+export class CreateReviewDto extends BotDefenseDto {
   @IsString()
   @MaxLength(100)
   customerName: string;

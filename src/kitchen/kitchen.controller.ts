@@ -9,6 +9,7 @@ import {
   Query,
   Logger,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -18,6 +19,7 @@ import {
 import { Observable } from 'rxjs';
 import { MessageEvent } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import type { Request } from 'express';
 import { Public } from '../auth/decorators/public.decorator';
 import { KitchenNotificationsService } from './kitchen-notifications.service';
 import { OrdersService } from '../orders/orders.service';
@@ -25,6 +27,18 @@ import { OrderFiltersDto } from '../orders/dto/order.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/strategies/jwt.strategy';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
+import { OwnershipService } from '../common/services/ownership.service';
+import { getClientIp } from '../common/utils/client-ip.util';
+import { normalizeRoleCode } from '../common/utils/role.utils';
+
+const KITCHEN_SSE_ROLES = new Set([
+  'SUPER_ADMIN',
+  'OWNER',
+  'MANAGER',
+  'CHEF',
+  'WAITER',
+]);
 
 @ApiTags('kitchen')
 @ApiBearerAuth()
@@ -36,39 +50,51 @@ export class KitchenController {
     private jwtService: JwtService,
     private kitchenNotifications: KitchenNotificationsService,
     private ordersService: OrdersService,
+    private readonly publicWriteAbuse: PublicWriteAbuseService,
+    private readonly ownership: OwnershipService,
   ) {}
 
   @Get('notifications')
   @Sse()
   @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 15 } })
   async notifications(
     @Param('restaurantId') restaurantId: string,
-    @Req() req: any,
+    @Req() req: Request,
   ): Promise<Observable<MessageEvent>> {
-    // Validar token manualmente antes de establecer conexión SSE
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req),
+      scope: 'kitchen_sse',
+      restaurantId,
+    });
+
     const authHeader = req.headers.authorization || req.headers.Authorization;
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (!authHeader || !String(authHeader).startsWith('Bearer ')) {
       throw new UnauthorizedException(
         'Se requiere token de autenticación en header Authorization',
       );
     }
 
-    const token = authHeader.substring(7);
+    const token = String(authHeader).substring(7);
 
     try {
-      // Verificar el token
       const payload = await this.jwtService.verifyAsync(token);
+      const roleName = normalizeRoleCode(payload.roleName);
 
-      // Validar que el usuario tenga acceso al restaurante
       if (
-        payload.restaurantId !== restaurantId &&
-        payload.roleName !== 'SUPER_ADMIN'
+        roleName !== 'SUPER_ADMIN' &&
+        !KITCHEN_SSE_ROLES.has(roleName ?? '')
       ) {
         throw new UnauthorizedException(
-          'No tienes acceso a las notificaciones de este restaurante',
+          'No tienes permiso para acceder a cocina',
         );
       }
+
+      await this.ownership.verifyUserBelongsToRestaurant(
+        restaurantId,
+        payload.sub,
+      );
 
       this.logger.log(
         `Conexión SSE autorizada para restaurante ${restaurantId} - Usuario: ${payload.email}`,
@@ -78,7 +104,9 @@ export class KitchenController {
         restaurantId,
       );
     } catch (error) {
-      this.logger.warn(`Error al verificar token SSE: ${error.message}`);
+      const message =
+        error instanceof Error ? error.message : 'Token inválido o expirado';
+      this.logger.warn(`Error al verificar token SSE: ${message}`);
       throw new UnauthorizedException('Token inválido o expirado');
     }
   }
@@ -95,7 +123,6 @@ export class KitchenController {
     @CurrentUser() user: RequestUser,
     @Query() filters: OrderFiltersDto,
   ) {
-    // Forzar filtro de status para cocina: CONFIRMED, PREPARING, READY
     const kitchenFilters = {
       ...filters,
       status: 'CONFIRMED,PREPARING,READY',

@@ -199,28 +199,19 @@ describe('AuthService', () => {
   });
 
   describe('login intent and password setup', () => {
-    it('should return password setup mode for active pending users', async () => {
-      prisma.user.findMany.mockResolvedValue([
-        {
-          ...mockUser,
-          passwordSetupRequired: true,
-        },
-      ]);
-
+    it('should always return password mode without enumerating account state', async () => {
       const result = await service.getLoginIntent({
         email: ' TEST@EXAMPLE.COM ',
       });
 
       expect(result).toEqual({
-        mode: 'password_setup',
+        mode: 'password',
         email: 'test@example.com',
-        name: 'Test User',
       });
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
     });
 
-    it('should return password mode for non-pending users', async () => {
-      prisma.user.findMany.mockResolvedValue([mockUser]);
-
+    it('should return password mode for all emails', async () => {
       const result = await service.getLoginIntent({
         email: 'test@example.com',
       });
@@ -229,18 +220,10 @@ describe('AuthService', () => {
         mode: 'password',
         email: 'test@example.com',
       });
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
     });
 
-    it('should prefer password mode when there is an active configured duplicate', async () => {
-      prisma.user.findMany.mockResolvedValue([
-        {
-          ...mockUser,
-          id: 'user-pending',
-          passwordSetupRequired: true,
-        },
-        mockUser,
-      ]);
-
+    it('should not query the database for duplicate account resolution', async () => {
       const result = await service.getLoginIntent({
         email: 'test@example.com',
       });
@@ -249,6 +232,7 @@ describe('AuthService', () => {
         mode: 'password',
         email: 'test@example.com',
       });
+      expect(prisma.user.findMany).not.toHaveBeenCalled();
     });
 
     it('should set password and complete login for pending users', async () => {

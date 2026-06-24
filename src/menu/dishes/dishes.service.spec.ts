@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DishesService } from './dishes.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { S3Service } from '../../storage/s3.service';
+import { OwnershipService } from '../../common/services/ownership.service';
+import { ImageProcessingService } from '../../common/services/image-processing.service';
+import { PlanEntitlementsService } from '../../subscriptions/plans/plan-entitlements.service';
 
 describe('DishesService', () => {
   let service: DishesService;
@@ -10,14 +12,13 @@ describe('DishesService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DishesService,
+        { provide: PrismaService, useValue: {} },
         {
-          provide: PrismaService,
-          useValue: {},
+          provide: OwnershipService,
+          useValue: { verifyUserOwnsRestaurant: jest.fn() },
         },
-        {
-          provide: S3Service,
-          useValue: { uploadObject: jest.fn(), deleteObjectByUrl: jest.fn() },
-        },
+        { provide: ImageProcessingService, useValue: {} },
+        { provide: PlanEntitlementsService, useValue: {} },
       ],
     }).compile();
 

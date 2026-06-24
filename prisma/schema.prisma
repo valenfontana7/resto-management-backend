@@ -435,6 +435,7 @@ model Reservation {
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   notes           String?
+  publicAccessToken String?           @unique
   customerProfile RestaurantCustomerProfile? @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
   restaurant      Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   table           Table?            @relation("TableReservations", fields: [tableId], references: [id])
@@ -678,6 +679,7 @@ model User {
   roleId             String?
   lastLogin          DateTime?
   avatar             String?
+  emailVerifiedAt    DateTime?
   deletedAt          DateTime?
   auditLogsPerformed AdminAuditLog[]
   notifications      Notification[]
@@ -686,6 +688,7 @@ model User {
   paymentMethods     UserPaymentMethod[]
   loginLinks         AuthLoginLink[]
   passwordResetLinks AuthPasswordResetLink[]
+  emailVerificationLinks AuthEmailVerificationLink[]
   memberships        RestaurantMembership[]
   deliveryDriverProfiles DeliveryDriver[]
 
@@ -731,6 +734,20 @@ model AuthLoginLink {
 }
 
 model AuthPasswordResetLink {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([usedAt])
+}
+
+model AuthEmailVerificationLink {
   id        String    @id @default(cuid())
   userId    String
   tokenHash String    @unique

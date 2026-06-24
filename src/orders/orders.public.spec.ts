@@ -19,8 +19,12 @@ import { CouponsService } from '../coupons/coupons.service';
 import { PaymentProviderFactory } from '../payment-providers/payment-provider.factory';
 import { DeliveryPricingService } from '../delivery/services/delivery-pricing.service';
 import { DeliveryDispatchService } from '../delivery/services/delivery-dispatch.service';
+import { DeliveryService } from '../delivery/delivery.service';
+import { GeocodeService } from '../delivery/services/geocode.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CustomersService } from '../customers/customers.service';
+import { BotDefenseService } from '../common/services/bot-defense.service';
+import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
 
 class InMemoryPrisma {
   restaurant = {
@@ -256,6 +260,14 @@ describe('Orders public tracking', () => {
           useValue: { dispatchOrder: jest.fn() },
         },
         {
+          provide: DeliveryService,
+          useValue: {},
+        },
+        {
+          provide: GeocodeService,
+          useValue: { geocodeAddress: jest.fn() },
+        },
+        {
           provide: LoyaltyService,
           useValue: {
             getOrCreateAccount: jest.fn(),
@@ -275,6 +287,18 @@ describe('Orders public tracking', () => {
         {
           provide: PrismaService,
           useClass: InMemoryPrisma,
+        },
+        {
+          provide: BotDefenseService,
+          useValue: {
+            isHoneypotTriggered: jest.fn().mockReturnValue(false),
+            applyBotDelayMs: jest.fn(),
+            logHoneypotHit: jest.fn(),
+          },
+        },
+        {
+          provide: PublicWriteAbuseService,
+          useValue: { assertPublicWriteAllowed: jest.fn() },
         },
       ],
     }).compile();

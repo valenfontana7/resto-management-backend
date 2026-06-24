@@ -319,10 +319,16 @@ export class PaywayProvider implements IPaymentProvider {
         : undefined;
     const webhookSecret =
       tenantSecret || this.configService.get<string>('PAYWAY_WEBHOOK_SECRET');
+    const isProduction =
+      this.configService.get<string>('NODE_ENV') === 'production';
+    const signature = input.headers['x-signature'];
+
+    if (isProduction && (!webhookSecret || !signature)) {
+      throw new Error('Payway webhook signature required in production');
+    }
 
     // Payway puede enviar notificaciones con HMAC
-    if (webhookSecret && input.headers['x-signature']) {
-      const signature = input.headers['x-signature'];
+    if (webhookSecret && signature) {
       const rawStr =
         typeof input.rawBody === 'string'
           ? input.rawBody
@@ -333,9 +339,16 @@ export class PaywayProvider implements IPaymentProvider {
         .update(rawStr)
         .digest('hex');
 
-      if (computed !== signature) {
+      const expected = Buffer.from(computed, 'utf8');
+      const received = Buffer.from(signature, 'utf8');
+      if (
+        expected.length !== received.length ||
+        !crypto.timingSafeEqual(expected, received)
+      ) {
         throw new Error('Invalid Payway webhook signature');
       }
+    } else if (webhookSecret && !signature) {
+      throw new Error('Missing Payway webhook signature');
     }
 
     const body =

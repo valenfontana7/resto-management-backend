@@ -1,6 +1,18 @@
-import { Controller, Post, Get, Body, Param, HttpCode } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  Controller,
+  Post,
+  Get,
+  Param,
+  Query,
+  HttpCode,
+  GoneException,
+  UnauthorizedException,
+} from '@nestjs/common';
+
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
+
 import { PaymentsService } from './payments.service';
+
 import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('payments')
@@ -10,26 +22,40 @@ export class PaymentsController {
 
   @Public()
   @Post('create-preference/:orderId')
-  @ApiOperation({ summary: 'Create MercadoPago preference for an order' })
-  @ApiResponse({ status: 201, description: 'Preference created successfully' })
-  async createPreference(@Param('orderId') orderId: string) {
-    return this.paymentsService.createPreference(orderId);
+  @HttpCode(410)
+  @ApiOperation({ summary: 'Deprecated MercadoPago preference endpoint' })
+  @ApiResponse({ status: 410, description: 'Endpoint deprecated' })
+  createPreference() {
+    throw new GoneException(
+      'Deprecated endpoint. Use checkout flow via POST /api/restaurants/:id/orders or POST /api/mercadopago/preference with publicTrackingToken',
+    );
   }
 
   @Post('webhook')
   @Public()
-  @HttpCode(200)
-  @ApiOperation({ summary: 'MercadoPago webhook endpoint' })
-  @ApiResponse({ status: 200, description: 'Webhook processed' })
-  async handleWebhook(@Body() body: any) {
-    return this.paymentsService.handleWebhook(body);
+  @HttpCode(410)
+  @ApiOperation({ summary: 'Deprecated MercadoPago webhook endpoint' })
+  @ApiResponse({ status: 410, description: 'Endpoint deprecated' })
+  handleWebhook() {
+    throw new GoneException(
+      'Deprecated webhook endpoint. Configure MercadoPago to use /api/webhooks/mercadopago',
+    );
   }
 
   @Public()
   @Get('status/:orderId')
-  @ApiOperation({ summary: 'Get payment status for an order' })
+  @ApiOperation({ summary: 'Get payment status for an order (token required)' })
+  @ApiQuery({ name: 'token', required: true })
   @ApiResponse({ status: 200, description: 'Payment status retrieved' })
-  async getPaymentStatus(@Param('orderId') orderId: string) {
-    return this.paymentsService.getPaymentStatus(orderId);
+  async getPaymentStatus(
+    @Param('orderId') orderId: string,
+
+    @Query('token') token?: string,
+  ) {
+    if (!token?.trim()) {
+      throw new UnauthorizedException('Token de pedido requerido');
+    }
+
+    return this.paymentsService.getPaymentStatus(orderId, token);
   }
 }

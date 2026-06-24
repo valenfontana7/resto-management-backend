@@ -4,12 +4,29 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateReviewDto } from './dto/create-review.dto';
 
 @Injectable()
 export class ReviewsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  buildDecoyReview(restaurantId: string, dto: CreateReviewDto) {
+    return {
+      id: `decoy-${randomBytes(8).toString('hex')}`,
+      restaurantId,
+      orderId: dto.orderId ?? null,
+      dishId: dto.dishId ?? null,
+      customerName: dto.customerName?.slice(0, 100) || 'Cliente',
+      customerEmail: dto.customerEmail ?? null,
+      rating: dto.rating,
+      comment: dto.comment ?? null,
+      isApproved: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  }
 
   async create(restaurantId: string, dto: CreateReviewDto) {
     await this.assertReviewTargetIsValid(restaurantId, dto);

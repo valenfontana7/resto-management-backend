@@ -10,6 +10,7 @@ import {
   Query,
   ForbiddenException,
   BadRequestException,
+  NotFoundException,
   UseInterceptors,
   UploadedFile,
   Res,
@@ -67,8 +68,12 @@ import {
 } from './dto/branding-v2.dto';
 import { UpdateRestaurantSettingsDto } from './dto/update-restaurant-settings.dto';
 import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
+import { OwnerEmailVerificationService } from '../auth/services/owner-email-verification.service';
 import { CallMeBotService } from '../notifications/callmebot.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { Throttle } from '@nestjs/throttler';
+import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
+import { getClientIp } from '../common/utils/client-ip.util';
 
 @ApiTags('Restaurants')
 @Controller('api/restaurants')
@@ -79,24 +84,43 @@ export class RestaurantsController {
     private readonly brandingService: RestaurantBrandingV2Service,
     private readonly settingsService: RestaurantSettingsService,
     private readonly authService: AuthService,
+    private readonly ownerEmailVerification: OwnerEmailVerificationService,
     private readonly callMeBot: CallMeBotService,
     private readonly prisma: PrismaService,
+    private readonly publicWriteAbuse: PublicWriteAbuseService,
     @Optional() private readonly adminAlerts?: AdminAlertsService,
   ) {}
 
+  private async assertPublicReadAllowed(
+    restaurantId: string,
+    req?: Request,
+  ): Promise<void> {
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req as Request),
+      scope: 'public_read',
+      restaurantId,
+    });
+  }
+
   @Public()
   @Get('slug/:slug/branding')
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
   @ApiOperation({ summary: 'Get restaurant branding by slug (public)' })
   @ApiParam({ name: 'slug', description: 'The slug of the restaurant' })
   @ApiResponse({ status: 200, description: 'Return the restaurant branding.' })
   @ApiResponse({ status: 404, description: 'Restaurant not found.' })
-  async getBrandingBySlug(@Param('slug') slug: string) {
+  async getBrandingBySlug(@Param('slug') slug: string, @Req() req: Request) {
     const restaurant = await this.restaurantsService.findBrandingBySlug(slug);
+    if (!restaurant?.id) {
+      throw new NotFoundException('Restaurant not found');
+    }
+    await this.assertPublicReadAllowed(restaurant.id, req);
     return { restaurant };
   }
 
   @Public()
   @Get('slug/:slug')
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
   @ApiOperation({ summary: 'Get restaurant by slug (public)' })
   @ApiParam({ name: 'slug', description: 'The slug of the restaurant' })
   @ApiResponse({ status: 200, description: 'Return the restaurant.' })
@@ -107,6 +131,10 @@ export class RestaurantsController {
     @Req() req?: Request,
   ) {
     const restaurant = await this.restaurantsService.findBySlug(slug);
+    if (!restaurant?.id) {
+      throw new NotFoundException('Restaurant not found');
+    }
+    await this.assertPublicReadAllowed(restaurant.id, req);
     try {
       if (restaurant?.id) {
         const meta = {
@@ -217,6 +245,8 @@ export class RestaurantsController {
     },
   })
   async create(@Body() createDto: any, @CurrentUser() user: RequestUser) {
+    await this.ownerEmailVerification.assertOwnerEmailVerified(user.userId);
+
     // Support frontend onboarding payloads under `onboardingData` or legacy flat payload
     let payload = createDto;
     if (createDto?.onboardingData) {

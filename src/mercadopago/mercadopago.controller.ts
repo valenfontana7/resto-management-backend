@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   HttpCode,
   Post,
   Query,
@@ -10,7 +11,9 @@ import {
   Res,
   BadRequestException,
   ForbiddenException,
+  GoneException,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { Public } from '../auth/decorators/public.decorator';
@@ -23,6 +26,9 @@ import { MercadoPagoWebhookService } from './mercadopago-webhook.service';
 import { MercadoPagoOAuthService } from './mercadopago-oauth.service';
 import { AuthService } from '../auth/auth.service';
 import type { PreferenceRequestBody } from './mercadopago.service';
+import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
+import { getClientIp } from '../common/utils/client-ip.util';
+import type { Request } from 'express';
 
 @ApiTags('mercadopago')
 @Controller('api/mercadopago')
@@ -33,6 +39,7 @@ export class MercadoPagoController {
     private readonly webhookService: MercadoPagoWebhookService,
     private readonly oauthService: MercadoPagoOAuthService,
     private readonly authService: AuthService,
+    private readonly publicWriteAbuse: PublicWriteAbuseService,
   ) {}
 
   // A) Tenant token
@@ -325,40 +332,36 @@ export class MercadoPagoController {
   @Post('preference')
   @Public()
   @HttpCode(200)
-  async createPreference(@Req() req: any, @Body() body: PreferenceRequestBody) {
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  async createPreference(
+    @Req() req: Request,
+    @Body() body: PreferenceRequestBody,
+  ) {
+    const restaurantId =
+      typeof body.restaurantId === 'string' ? body.restaurantId.trim() : '';
+    if (restaurantId) {
+      await this.publicWriteAbuse.assertPublicWriteAllowed({
+        ip: getClientIp(req),
+        scope: 'order',
+        restaurantId,
+      });
+    }
+
     const origin = this.getOrigin(req);
     return this.mercadoPagoService.createPreference(origin, body);
   }
 
-  // C) Webhook
+  // C) Webhook — usar /api/webhooks/mercadopago en producción
   @Post('webhook')
   @Public()
-  @HttpCode(200)
-  async webhook(
-    @Req() req: any,
-    @Body() body: any,
-    @Query() query: { type?: string; 'data.id'?: string },
-  ) {
-    const rawBody: Buffer | undefined = req?.rawBody;
-
-    // Registrar evento para idempotencia
-    const { isNew } = await this.webhookService.recordWebhookEvent(
-      rawBody,
-      body,
+  @HttpCode(410)
+  async webhook() {
+    throw new GoneException(
+      'Deprecated webhook endpoint. Configure MercadoPago to use /api/webhooks/mercadopago',
     );
-
-    if (!isNew) {
-      // Ya procesamos este evento
-      return { received: true, duplicate: true };
-    }
-
-    // Procesar el webhook
-    const result = await this.webhookService.handleWebhook(query, body);
-
-    return result;
   }
 
-  // D) Webhook handler alternativo en ruta /webhooks/mercadopago
+  // D) Webhook handler alternativo — redirigir al endpoint canónico
   @Post('webhooks/mercadopago')
   @Public()
   @HttpCode(200)
@@ -366,8 +369,43 @@ export class MercadoPagoController {
     @Req() req: any,
     @Body() body: any,
     @Query() query: { type?: string; 'data.id'?: string },
+    @Headers('x-signature') xSignature?: string,
+    @Headers('x-request-id') xRequestId?: string,
   ) {
-    return this.webhook(req, body, query);
+    const rawBody: Buffer | undefined = req?.rawBody;
+    const webhookInfo = this.webhookService.extractWebhookInfo(query, body);
+    const isLegacyIpn = this.webhookService.isLegacyIpnNotification(
+      query,
+      body,
+    );
+    const paymentId = webhookInfo.dataId;
+
+    if (!isLegacyIpn && process.env.NODE_ENV === 'production') {
+      const signatureValidation = this.webhookService.validateWebhookSignature(
+        xSignature,
+        xRequestId,
+        paymentId,
+        rawBody,
+      );
+
+      if (!signatureValidation.valid) {
+        throw new ForbiddenException({
+          message: 'Invalid MercadoPago webhook signature',
+          reason: signatureValidation.reason,
+        });
+      }
+    }
+
+    const { isNew } = await this.webhookService.recordWebhookEvent(
+      rawBody,
+      body,
+    );
+
+    if (!isNew) {
+      return { received: true, duplicate: true };
+    }
+
+    return this.webhookService.handleWebhook(query, body);
   }
 
   private getOrigin(req: any): string {

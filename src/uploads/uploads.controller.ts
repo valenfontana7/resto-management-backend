@@ -13,6 +13,11 @@ import {
   UseInterceptors,
   Logger,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { RequestUser } from '../auth/strategies/jwt.strategy';
+import { UploadQuotaService } from '../common/services/upload-quota.service';
+import { UploadOwnershipService } from '../common/services/upload-ownership.service';
 import {
   ApiBearerAuth,
   ApiConsumes,
@@ -48,14 +53,22 @@ export class UploadsController {
     'image/avif',
   ]);
 
-  constructor(private readonly s3: S3Service) {}
+  constructor(
+    private readonly s3: S3Service,
+    private readonly uploadQuota: UploadQuotaService,
+    private readonly uploadOwnership: UploadOwnershipService,
+  ) {}
 
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a presigned GET URL (optional)' })
   @ApiQuery({ name: 'key', required: true })
   @Get('presign-get')
-  async presignGet(@Query('key') keyParam: string) {
+  async presignGet(
+    @Query('key') keyParam: string,
+    @CurrentUser() user: RequestUser,
+  ) {
     const key = this.normalizeAndValidateKey(keyParam);
+    await this.uploadOwnership.assertUserCanManageKey(user, key, 'read');
     const url = await this.s3.createPresignedGetUrl({
       key,
       expiresInSeconds: 60,
@@ -64,12 +77,8 @@ export class UploadsController {
   }
 
   @Public()
-  @ApiOperation({ summary: 'Proxy (stream) an object from Spaces by key' })
-  @ApiParam({
-    name: 'key',
-    description: 'Object key inside the bucket (supports slashes)',
-  })
   @Get('*')
+  @Throttle({ default: { ttl: 60_000, limit: 120 } })
   async proxyGet(@Req() req, @Res() res: Response) {
     // El parámetro wildcard puede tener slashes reemplazados por comas, obtener la URL real
     const originalUrl = req.url;
@@ -78,6 +87,7 @@ export class UploadsController {
 
     try {
       const key = this.normalizeAndValidateKey(actualKey);
+      this.uploadOwnership.assertPublicProxyKeyAllowed(key);
       this.logger.debug(`Normalized key: ${key}`);
 
       let head;
@@ -183,18 +193,15 @@ export class UploadsController {
   }
 
   @Public()
-  @ApiOperation({ summary: 'HEAD object from Spaces by key (metadata only)' })
-  @ApiParam({
-    name: 'key',
-    description: 'Object key inside the bucket (supports slashes)',
-  })
   @Head('*')
+  @Throttle({ default: { ttl: 60_000, limit: 120 } })
   async proxyHead(@Req() req, @Res() res: Response) {
     try {
       const originalUrl = req.url;
       const keyFromUrl = originalUrl.replace(/^\/api\/uploads\//, '');
       const actualKey = keyFromUrl.split('?')[0];
       const key = this.normalizeAndValidateKey(actualKey);
+      this.uploadOwnership.assertPublicProxyKeyAllowed(key);
 
       let head;
 
@@ -253,12 +260,21 @@ export class UploadsController {
       'Optional folder/prefix (e.g., dishes, categories, restaurants)',
   })
   @Post('image')
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
   async uploadImage(
     @UploadedFile() file: Express.Multer.File,
     @Query('folder') folder?: string,
+    @CurrentUser() user?: RequestUser,
   ) {
     if (!file?.buffer || !file?.mimetype) {
       throw new BadRequestException('File is required');
+    }
+
+    if (user?.userId) {
+      await this.uploadQuota.assertUploadAllowed(
+        user.userId,
+        file.buffer.length,
+      );
     }
 
     const normalizedMimeType = file.mimetype.toLowerCase();
@@ -314,11 +330,16 @@ export class UploadsController {
     description: 'Object key inside the bucket (supports slashes)',
   })
   @Delete('image/*key')
-  async deleteImage(@Param('key') keyParam: string, @Res() res: Response) {
+  async deleteImage(
+    @Param('key') keyParam: string,
+    @CurrentUser() user: RequestUser,
+    @Res() res: Response,
+  ) {
     const originalUrl = res.req.url;
     const keyFromUrl = originalUrl.replace(/^\/api\/uploads\/image\//, '');
     const actualKey = keyFromUrl.split('?')[0];
     const key = this.normalizeAndValidateKey(actualKey);
+    await this.uploadOwnership.assertUserCanManageKey(user, key, 'delete');
     await this.s3.deleteObjectByUrl(key);
     return { success: true };
   }

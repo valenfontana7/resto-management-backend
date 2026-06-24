@@ -9,7 +9,10 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import type { Request } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -22,6 +25,8 @@ import { DishesService, DishFilters } from './dishes.service';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../../auth/decorators/current-user.decorator';
 import { Public } from '../../auth/decorators/public.decorator';
+import { PublicWriteAbuseService } from '../../common/services/public-write-abuse.service';
+import { getClientIp } from '../../common/utils/client-ip.util';
 import {
   CreateDishDto,
   UpdateDishDto,
@@ -31,18 +36,29 @@ import {
 @ApiTags('Menu - Dishes')
 @Controller()
 export class DishesController {
-  constructor(private dishesService: DishesService) {}
+  constructor(
+    private dishesService: DishesService,
+    private readonly publicWriteAbuse: PublicWriteAbuseService,
+  ) {}
 
   @Public()
   @Get('api/restaurants/:restaurantId/dishes/public')
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
   @ApiOperation({ summary: 'Get all dishes (public)' })
   @ApiParam({ name: 'restaurantId' })
   @ApiQuery({ name: 'categoryId', required: false })
   @ApiResponse({ status: 200, description: 'Dishes retrieved' })
   async getDishesPublic(
     @Param('restaurantId') restaurantId: string,
-    @Query('categoryId') categoryId?: string,
+    @Query('categoryId') categoryId: string | undefined,
+    @Req() req: Request,
   ) {
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req),
+      scope: 'public_read',
+      restaurantId,
+    });
+
     const filters: DishFilters = {
       categoryId,
       available: true, // Solo platos disponibles para público

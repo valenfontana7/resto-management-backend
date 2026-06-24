@@ -1,4 +1,10 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  Logger,
+  UnauthorizedException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import { PrismaService } from '../prisma/prisma.service';
@@ -172,10 +178,38 @@ export class PaymentsService {
     return { received: true };
   }
 
-  async getPaymentStatus(orderId: string) {
+  async getPaymentStatus(orderId: string, token: string) {
+    const normalizedToken = token.trim();
+    if (!normalizedToken) {
+      throw new UnauthorizedException('Token de pedido requerido');
+    }
+
+    const checkout = await this.prisma.checkoutSession.findUnique({
+      where: { id: orderId },
+      select: {
+        publicTrackingToken: true,
+        paymentStatus: true,
+        paymentId: true,
+        preferenceId: true,
+      },
+    });
+
+    if (checkout) {
+      if (checkout.publicTrackingToken !== normalizedToken) {
+        throw new UnauthorizedException('Token de pedido inválido');
+      }
+      return {
+        paymentStatus: checkout.paymentStatus,
+        paymentId: checkout.paymentId,
+        preferenceId: checkout.preferenceId,
+        status: 'PENDING',
+      };
+    }
+
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       select: {
+        publicTrackingToken: true,
         paymentStatus: true,
         paymentId: true,
         preferenceId: true,
@@ -184,9 +218,21 @@ export class PaymentsService {
     });
 
     if (!order) {
-      throw new BadRequestException('Order not found');
+      throw new NotFoundException('Pedido no encontrado');
     }
 
-    return order;
+    if (
+      !order.publicTrackingToken ||
+      order.publicTrackingToken !== normalizedToken
+    ) {
+      throw new UnauthorizedException('Token de pedido inválido');
+    }
+
+    return {
+      paymentStatus: order.paymentStatus,
+      paymentId: order.paymentId,
+      preferenceId: order.preferenceId,
+      status: order.status,
+    };
   }
 }

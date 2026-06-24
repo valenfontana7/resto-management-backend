@@ -94,9 +94,47 @@ export class LoyaltyService {
       include: this.accountInclude(),
     });
 
-    if (!account)
-      throw new NotFoundException('Cuenta de fidelización no encontrada');
+    if (!account) {
+      return this.buildEmptyAccountShell(restaurantId, normalizedEmail);
+    }
+
     return account;
+  }
+
+  buildDecoyEnrollment(
+    restaurantId: string,
+    customer: { email: string; name: string; phone?: string },
+  ) {
+    return {
+      id: null,
+      restaurantId,
+      customerEmail: this.normalizeEmail(customer.email),
+      customerName: customer.name?.trim() || 'Cliente',
+      customerPhone: customer.phone?.trim() || null,
+      points: 0,
+      lifetimePoints: 0,
+      tier: 'BRONZE',
+      enrolled: true,
+      transactions: [],
+      customerProfile: null,
+    };
+  }
+
+  private buildEmptyAccountShell(restaurantId: string, customerEmail: string) {
+    return {
+      id: null,
+      restaurantId,
+      customerEmail,
+      customerName: null,
+      customerPhone: null,
+      customerProfileId: null,
+      points: 0,
+      lifetimePoints: 0,
+      tier: 'BRONZE',
+      enrolled: false,
+      transactions: [],
+      customerProfile: null,
+    };
   }
 
   async getAccountForSession(restaurantId: string, authorization?: string) {

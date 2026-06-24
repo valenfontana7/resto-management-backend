@@ -15,6 +15,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { BotDefenseDto } from '../../common/dto/bot-defense.dto';
 
 // ============================================
 // DELIVERY ZONES
@@ -272,7 +273,7 @@ export class DeliveryOrderFiltersDto {
   limit?: number = 20;
 }
 
-export class QuoteDeliveryDto {
+export class QuoteDeliveryDto extends BotDefenseDto {
   @ApiPropertyOptional({ enum: ['pickup', 'delivery'], default: 'delivery' })
   @IsOptional()
   @IsEnum(['pickup', 'delivery'])

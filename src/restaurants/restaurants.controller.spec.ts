@@ -1,7 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RestaurantsController } from './restaurants.controller';
 import { RestaurantsService } from './restaurants.service';
+import { RestaurantUsersService } from './services/restaurant-users.service';
+import { RestaurantBrandingV2Service } from './services/restaurant-branding-v2.service';
+import { RestaurantSettingsService } from './services/restaurant-settings.service';
 import { AuthService } from '../auth/auth.service';
+import { OwnerEmailVerificationService } from '../auth/services/owner-email-verification.service';
+import { CallMeBotService } from '../notifications/callmebot.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
+import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
 
 describe('RestaurantsController', () => {
   let controller: RestaurantsController;
@@ -10,14 +18,19 @@ describe('RestaurantsController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [RestaurantsController],
       providers: [
+        { provide: RestaurantsService, useValue: {} },
+        { provide: RestaurantUsersService, useValue: {} },
+        { provide: RestaurantBrandingV2Service, useValue: {} },
+        { provide: RestaurantSettingsService, useValue: {} },
+        { provide: AuthService, useValue: {} },
+        { provide: OwnerEmailVerificationService, useValue: {} },
+        { provide: CallMeBotService, useValue: {} },
+        { provide: PrismaService, useValue: {} },
         {
-          provide: RestaurantsService,
-          useValue: {},
+          provide: PublicWriteAbuseService,
+          useValue: { assertPublicWriteAllowed: jest.fn() },
         },
-        {
-          provide: AuthService,
-          useValue: {},
-        },
+        { provide: AdminAlertsService, useValue: {} },
       ],
     }).compile();
 

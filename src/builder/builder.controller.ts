@@ -22,6 +22,9 @@ import { Permissions } from '../auth/decorators/permissions.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../auth/guards/permissions.guard';
 import { VerifyRestaurantAccess } from '../common/decorators/verify-restaurant-access.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { RequestUser } from '../auth/strategies/jwt.strategy';
+import { OwnerEmailVerificationService } from '../auth/services/owner-email-verification.service';
 import { BuilderService } from './builder.service';
 import {
   UpdateBuilderConfigDto,
@@ -45,7 +48,10 @@ import {
 @UseGuards(PermissionsGuard)
 @Permissions('branding')
 export class BuilderController {
-  constructor(private readonly builderService: BuilderService) {}
+  constructor(
+    private readonly builderService: BuilderService,
+    private readonly ownerEmailVerification: OwnerEmailVerificationService,
+  ) {}
 
   // ==================== MAIN CONFIG ENDPOINTS ====================
 
@@ -145,7 +151,9 @@ export class BuilderController {
   @ApiResponse({ status: 404, description: 'Configuration not found' })
   async publishConfig(
     @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
   ) {
+    await this.ownerEmailVerification.assertOwnerEmailVerified(user.userId);
     await this.builderService.publishConfig(restaurantId);
     return {
       success: true,

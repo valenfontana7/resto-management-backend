@@ -11,6 +11,7 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Public } from '../auth/decorators/public.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -25,6 +26,7 @@ export class PublicDemoExamplesController {
   constructor(private readonly demoExamplesService: DemoExamplesService) {}
 
   @Get()
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
   async findPublic() {
     return this.demoExamplesService.findPublic();
   }

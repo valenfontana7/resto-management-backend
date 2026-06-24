@@ -6,6 +6,7 @@ import {
   Res,
   UseGuards,
   Req,
+  UnauthorizedException,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -15,6 +16,10 @@ import {
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
+import { OwnerEmailVerificationService } from './services/owner-email-verification.service';
+import { AuthEmailAbuseService } from './services/auth-email-abuse.service';
+import { BotDefenseService } from '../common/services/bot-defense.service';
+import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
 import {
   RegisterDto,
   LoginDto,
@@ -26,6 +31,8 @@ import {
   ChangePasswordDto,
   RequestPasswordResetDto,
   ResetPasswordDto,
+  RequestEmailVerificationDto,
+  ConsumeEmailVerificationDto,
 } from './dto/auth.dto';
 import { ImpersonateDto } from './dto/impersonate.dto';
 import { SwitchRestaurantDto } from './dto/switch-restaurant.dto';
@@ -40,7 +47,13 @@ import type { Response, Request } from 'express';
 @ApiTags('Authentication')
 @Controller('api/auth')
 export class AuthController {
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    private readonly ownerEmailVerification: OwnerEmailVerificationService,
+    private readonly authEmailAbuse: AuthEmailAbuseService,
+    private readonly botDefense: BotDefenseService,
+    private readonly publicWriteAbuse: PublicWriteAbuseService,
+  ) {}
 
   private setAuthCookie(res: Response, token: string) {
     res.cookie('auth-token', token, {
@@ -103,8 +116,14 @@ export class AuthController {
   @Throttle({ default: { ttl: 60000, limit: 20 } })
   @ApiOperation({ summary: 'Resolve login mode for an email' })
   @ApiResponse({ status: 200, description: 'Login mode resolved' })
-  async loginIntent(@Body() dto: LoginIntentDto) {
-    return this.authService.getLoginIntent(dto);
+  async loginIntent(@Body() dto: LoginIntentDto, @Req() req: Request) {
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: this.getClientIp(req),
+      scope: 'login_intent',
+    });
+    return this.authService.getLoginIntent(dto, {
+      ip: this.getClientIp(req),
+    });
   }
 
   @Public()
@@ -112,8 +131,13 @@ export class AuthController {
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ApiOperation({ summary: 'Request a passwordless login link' })
   @ApiResponse({ status: 200, description: 'Magic link request accepted' })
-  async requestMagicLink(@Body() dto: RequestMagicLinkDto) {
-    return this.authService.requestMagicLink(dto);
+  async requestMagicLink(
+    @Body() dto: RequestMagicLinkDto,
+    @Req() req: Request,
+  ) {
+    return this.authService.requestMagicLink(dto, {
+      ip: this.getClientIp(req),
+    });
   }
 
   @Public()
@@ -140,11 +164,22 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Login completed' })
   async consumeMagicLink(
     @Body() dto: ConsumeMagicLinkDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.authService.consumeMagicLink(dto);
-    this.setAuthCookie(res, result.token);
-    return result;
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: this.getClientIp(req),
+      scope: 'token_lookup',
+    });
+
+    try {
+      const result = await this.authService.consumeMagicLink(dto);
+      this.setAuthCookie(res, result.token);
+      return result;
+    } catch (err) {
+      await this.botDefense.applyBotDelayMs();
+      throw err;
+    }
   }
 
   @Public()
@@ -155,11 +190,31 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
   async login(
     @Body() dto: LoginDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.authService.login(dto);
-    this.setAuthCookie(res, result.token);
-    return result;
+    if (this.botDefense.isHoneypotTriggered(dto.companyWebsite)) {
+      this.botDefense.logHoneypotHit('auth.login', {
+        ip: this.getClientIp(req),
+        email: dto.email,
+      });
+      await this.botDefense.applyBotDelayMs();
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: this.getClientIp(req),
+      scope: 'login_attempt',
+    });
+
+    try {
+      const result = await this.authService.login(dto);
+      this.setAuthCookie(res, result.token);
+      return result;
+    } catch (err) {
+      await this.botDefense.applyBotDelayMs();
+      throw err;
+    }
   }
 
   @Public()
@@ -172,11 +227,31 @@ export class AuthController {
   })
   async completePasswordSetup(
     @Body() dto: CompletePasswordSetupDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.authService.completePasswordSetup(dto);
-    this.setAuthCookie(res, result.token);
-    return result;
+    if (this.botDefense.isHoneypotTriggered(dto.companyWebsite)) {
+      this.botDefense.logHoneypotHit('auth.password-setup', {
+        ip: this.getClientIp(req),
+        email: dto.email,
+      });
+      await this.botDefense.applyBotDelayMs();
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: this.getClientIp(req),
+      scope: 'activation_code',
+    });
+
+    try {
+      const result = await this.authService.completePasswordSetup(dto);
+      this.setAuthCookie(res, result.token);
+      return result;
+    } catch (err) {
+      await this.botDefense.applyBotDelayMs();
+      throw err;
+    }
   }
 
   @Post('change-password')
@@ -197,8 +272,13 @@ export class AuthController {
   @Throttle({ default: { ttl: 60000, limit: 5 } })
   @ApiOperation({ summary: 'Request a password reset link by email' })
   @ApiResponse({ status: 200, description: 'Reset request accepted' })
-  async forgotPassword(@Body() dto: RequestPasswordResetDto) {
-    return this.authService.requestPasswordReset(dto);
+  async forgotPassword(
+    @Body() dto: RequestPasswordResetDto,
+    @Req() req: Request,
+  ) {
+    return this.authService.requestPasswordReset(dto, {
+      ip: this.getClientIp(req),
+    });
   }
 
   @Public()
@@ -207,8 +287,96 @@ export class AuthController {
   @ApiOperation({ summary: 'Reset password using a one-time token' })
   @ApiResponse({ status: 200, description: 'Password reset successfully' })
   @ApiResponse({ status: 401, description: 'Invalid or expired reset link' })
-  async resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto);
+  async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: this.getClientIp(req),
+      scope: 'token_lookup',
+    });
+
+    try {
+      return await this.authService.resetPassword(dto);
+    } catch (err) {
+      await this.botDefense.applyBotDelayMs();
+      throw err;
+    }
+  }
+
+  @Public()
+  @Post('verify-email/consume')
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @ApiOperation({ summary: 'Confirm owner email with one-time token' })
+  async consumeEmailVerification(
+    @Body() dto: ConsumeEmailVerificationDto,
+    @Req() req: Request,
+  ) {
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: this.getClientIp(req),
+      scope: 'token_lookup',
+    });
+
+    try {
+      return await this.ownerEmailVerification.consumeVerificationToken(
+        dto.token,
+      );
+    } catch (err) {
+      await this.botDefense.applyBotDelayMs();
+      throw err;
+    }
+  }
+
+  @Public()
+  @Post('verify-email/request')
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @ApiOperation({ summary: 'Resend owner email verification link' })
+  async requestEmailVerification(
+    @Body() dto: RequestEmailVerificationDto,
+    @Req() req: Request,
+  ) {
+    if (this.botDefense.isHoneypotTriggered(dto.companyWebsite)) {
+      this.botDefense.logHoneypotHit('auth.verify-email.request', {
+        ip: this.getClientIp(req),
+        email: dto.email,
+      });
+      await this.botDefense.applyBotDelayMs();
+      return { sent: true, expiresInHours: 24 };
+    }
+
+    if (!dto.email?.trim()) {
+      return { sent: true, expiresInHours: 24 };
+    }
+
+    await this.authEmailAbuse.assertEmailDeliveryAllowed({
+      ip: this.getClientIp(req),
+      email: dto.email,
+      scope: 'email_verification',
+    });
+
+    return this.ownerEmailVerification.requestVerificationByEmail(dto.email);
+  }
+
+  @Post('verify-email/resend')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @ApiOperation({ summary: 'Resend verification email for current user' })
+  async resendEmailVerification(@CurrentUser() user: RequestUser) {
+    return this.ownerEmailVerification.sendVerificationEmail(user.userId);
+  }
+
+  @Get('verify-email/status')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get email verification status for current user' })
+  async getEmailVerificationStatus(@CurrentUser() user: RequestUser) {
+    const { user: me } = await this.authService.getMe(user.userId);
+    const emailVerified = this.ownerEmailVerification.isEmailVerified({
+      emailVerifiedAt: me.emailVerifiedAt ?? null,
+      role: me.role ? { name: me.role.name } : null,
+    });
+    return {
+      emailVerified,
+      emailVerificationRequired: !emailVerified,
+    };
   }
 
   @Get('me')

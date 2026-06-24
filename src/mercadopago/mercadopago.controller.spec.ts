@@ -2,8 +2,11 @@ import { CanActivate, INestApplication } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { ConfigModule } from '@nestjs/config';
+import { CacheModule } from '@nestjs/cache-manager';
 import request from 'supertest';
 import { MercadoPagoModule } from './mercadopago.module';
+import { CommonModule } from '../common/common.module';
+import { S3Service } from '../storage/s3.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthService } from '../auth/auth.service';
 
@@ -26,6 +29,47 @@ class InMemoryPrisma {
   private credentials = new Map<string, CredentialRow>();
   private webhookKeys = new Set<string>();
   private restaurantsBySlug = new Map<string, RestaurantRow>();
+  private checkouts = new Map<string, Record<string, unknown>>();
+
+  seedCheckout(checkout: {
+    id: string;
+    restaurantId: string;
+    publicTrackingToken: string;
+    items: Array<{ name: string; quantity: number; unitPrice: number }>;
+    isSandbox?: boolean;
+    restaurantSlug?: string;
+  }) {
+    this.checkouts.set(checkout.id, checkout);
+  }
+
+  checkoutSession = {
+    findUnique: ({
+      where,
+      include,
+    }: {
+      where: { id: string };
+      include?: { restaurant?: { select?: Record<string, boolean> } };
+    }) => {
+      const row = this.checkouts.get(where.id);
+      if (!row) return null;
+
+      if (include?.restaurant) {
+        return {
+          ...row,
+          restaurant: {
+            id: row.restaurantId,
+            slug: row.restaurantSlug ?? 'mi-resto',
+          },
+        };
+      }
+
+      return row;
+    },
+  };
+
+  order = {
+    findUnique: () => null,
+  };
 
   mercadoPagoCredential = {
     findUnique: ({
@@ -156,8 +200,42 @@ class MockAuthGuard implements CanActivate {
 
 describe('MercadoPagoController (tenant-token + preference)', () => {
   let app: INestApplication;
+  let fetchMock: jest.SpyInstance;
 
   beforeAll(async () => {
+    fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(async (input) => {
+        const target =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : typeof input === 'object' &&
+                  input !== null &&
+                  'url' in input &&
+                  typeof input.url === 'string'
+                ? input.url
+                : '';
+        if (target.includes('/users/me')) {
+          return {
+            ok: true,
+            json: async () => ({ id: 1 }),
+          } as Response;
+        }
+        if (target.includes('/checkout/preferences')) {
+          return {
+            ok: true,
+            json: async () => ({
+              id: 'pref_1',
+              init_point: 'https://mp/init',
+              sandbox_init_point: 'https://mp/sandbox',
+            }),
+          } as Response;
+        }
+        throw new Error(`Unexpected fetch URL in test: ${target}`);
+      });
+
     process.env.MP_TOKEN_ENCRYPTION_KEY = Buffer.from('a'.repeat(32)).toString(
       'base64',
     );
@@ -166,10 +244,18 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
     const moduleBuilder = Test.createTestingModule({
       imports: [
         ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
+        CacheModule.register({ isGlobal: true }),
+        CommonModule,
         MercadoPagoModule,
       ],
       providers: [{ provide: APP_GUARD, useClass: MockAuthGuard }],
     })
+      .overrideProvider(S3Service)
+      .useValue({
+        toClientUrl: (key: string) => key,
+        headObject: jest.fn(),
+        getObjectStream: jest.fn(),
+      })
       .overrideProvider(PrismaService)
       .useClass(InMemoryPrisma)
       .overrideProvider(AuthService)
@@ -203,10 +289,19 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
         country: 'Argentina',
       },
     });
+    prisma.seedCheckout({
+      id: 'o1',
+      restaurantId: 'r1',
+      publicTrackingToken: 'public-token-o1',
+      items: [{ name: 'X', quantity: 1, unitPrice: 10 }],
+    });
   });
 
   afterAll(async () => {
-    await app.close();
+    fetchMock?.mockRestore();
+    if (app) {
+      await app.close();
+    }
   });
 
   it('POST tenant-token missing restaurantId => 400 exact error', async () => {
@@ -252,15 +347,19 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
     expect(getAfter.status).toBe(200);
     expect(getAfter.body).toEqual({
       connected: false,
+      connectedVia: null,
       createdAt: null,
       updatedAt: null,
       isSandbox: false,
       accessTokenLast4: null,
       publishableKeyConfigured: false,
+      expiresAt: null,
+      livemode: null,
+      mpUserId: null,
     });
   });
 
-  it('preference validates orderId/items and does not call MP when invalid', async () => {
+  it('preference validates orderId and rejects unknown checkout', async () => {
     const res1 = await request(app.getHttpServer())
       .post('/api/mercadopago/preference')
       .send({ items: [{ title: 'X', quantity: 1, unit_price: 10 }] });
@@ -271,48 +370,27 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
     const res2 = await request(app.getHttpServer())
       .post('/api/mercadopago/preference')
       .send({
-        orderId: 'o1',
-        items: [{ title: '', quantity: 1, unit_price: 10 }],
+        orderId: 'missing-checkout',
+        publicTrackingToken: 'public-token-o1',
       });
 
-    expect(res2.status).toBe(400);
-    expect(res2.body).toEqual({ error: 'items inválidos' });
+    expect(res2.status).toBe(404);
   });
 
-  it('preference missing token => 400 exact error (no global fallback)', async () => {
+  it('preference missing token => 401', async () => {
     const res = await request(app.getHttpServer())
       .post('/api/mercadopago/preference')
       .send({
         restaurantId: 'r1',
         orderId: 'o1',
-        items: [{ title: 'X', quantity: 1, unit_price: 10 }],
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body).toEqual({
-      error:
-        'MercadoPago no conectado para este restaurante (falta token) y no hay MERCADOPAGO_ACCESS_TOKEN global',
-    });
+    expect(res.status).toBe(401);
   });
 
   it('preference success uses fetch (mocked)', async () => {
     process.env.MERCADOPAGO_ACCESS_TOKEN = 'GLOBAL_TOKEN';
     process.env.FRONTEND_URL = 'http://localhost:3000';
-
-    if (!(global as any).fetch) {
-      (global as any).fetch = () => {
-        throw new Error('fetch not mocked');
-      };
-    }
-
-    const fetchMock = jest.spyOn(global as any, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        id: 'pref_1',
-        init_point: 'https://mp/init',
-        sandbox_init_point: 'https://mp/sandbox',
-      }),
-    });
 
     const res = await request(app.getHttpServer())
       .post('/api/mercadopago/preference')
@@ -321,7 +399,7 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
         slug: 'mi-resto',
         restaurantId: 'r1',
         orderId: 'o1',
-        items: [{ title: 'X', quantity: 2, unit_price: 10 }],
+        publicTrackingToken: 'public-token-o1',
       });
 
     expect(res.status).toBe(200);
@@ -334,11 +412,25 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
       isSandbox: false,
     });
 
-    const call = fetchMock.mock.calls[0];
-    expect(call[0]).toBe('https://api.mercadopago.com/checkout/preferences');
+    const call = fetchMock.mock.calls.find(([url]) =>
+      (typeof url === 'string'
+        ? url
+        : url instanceof URL
+          ? url.toString()
+          : ''
+      ).includes('/checkout/preferences'),
+    );
+    expect(call).toBeDefined();
 
-    const options = call[1] as any;
-    const sent = JSON.parse(options.body);
+    const options = call![1] as RequestInit;
+    const rawBody = options.body;
+    const sent = JSON.parse(
+      typeof rawBody === 'string'
+        ? rawBody
+        : Buffer.isBuffer(rawBody)
+          ? rawBody.toString('utf8')
+          : '{}',
+    );
 
     expect(sent.external_reference).toBe('o1');
     expect(sent.items[0].currency_id).toBe('ARS');
@@ -350,41 +442,31 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
     expect(sent.back_urls.success).toBe(
       'http://localhost:3000/mi-resto/order/o1',
     );
-    // For http localhost, auto_return should be omitted to avoid MercadoPago rejecting
     expect(sent.auto_return).toBeUndefined();
-
-    fetchMock.mockRestore();
   });
 
   it('preference uses tenant token when provided via admin and request only includes slug', async () => {
     delete process.env.MERCADOPAGO_ACCESS_TOKEN;
     delete process.env.MERCADOPAGO_SANDBOX_ACCESS_TOKEN;
 
-    if (!(global as any).fetch) {
-      (global as any).fetch = () => {
-        throw new Error('fetch not mocked');
-      };
-    }
+    const prisma = app.get(PrismaService);
+    prisma.seedCheckout({
+      id: 'o2',
+      restaurantId: 'r1',
+      publicTrackingToken: 'public-token-o2',
+      items: [{ name: 'X', quantity: 1, unitPrice: 10 }],
+      isSandbox: true,
+    });
 
-    // admin config: set tenant token for restaurant r1
     const postRes = await request(app.getHttpServer())
       .post('/api/mercadopago/tenant-token')
       .send({
         restaurantId: 'r1',
-        accessToken: 'TENANT_TOKEN_123',
+        accessToken: 'TEST-TENANT-TOKEN-1234567890',
         isSandbox: true,
       });
 
     expect(postRes.status).toBe(200);
-
-    const fetchMock = jest.spyOn(global as any, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        id: 'pref_tenant',
-        init_point: 'https://mp/init',
-        sandbox_init_point: 'https://mp/sandbox',
-      }),
-    });
 
     const res = await request(app.getHttpServer())
       .post('/api/mercadopago/preference')
@@ -392,44 +474,63 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
       .send({
         slug: 'mi-resto',
         orderId: 'o2',
-        items: [{ title: 'X', quantity: 1, unit_price: 10 }],
+        publicTrackingToken: 'public-token-o2',
         sandbox: true,
       });
 
     expect(res.status).toBe(200);
 
-    const call = fetchMock.mock.calls[0];
-    const options = call[1] as any;
-    expect(options.headers.Authorization).toBe('Bearer TENANT_TOKEN_123');
+    const call = fetchMock.mock.calls.find(
+      ([url, options]) =>
+        (typeof url === 'string'
+          ? url
+          : url instanceof URL
+            ? url.toString()
+            : ''
+        ).includes('/checkout/preferences') &&
+        String(
+          (options as RequestInit)?.headers &&
+            typeof (options as RequestInit).headers === 'object' &&
+            'Authorization' in (options as RequestInit).headers!
+            ? (options as RequestInit).headers!.Authorization
+            : '',
+        ).includes('TEST-TENANT-TOKEN'),
+    );
+    expect(call).toBeDefined();
 
-    const sent = JSON.parse(options.body);
+    const options = call![1] as RequestInit;
+    const rawBody = options.body;
+    const sent = JSON.parse(
+      typeof rawBody === 'string'
+        ? rawBody
+        : Buffer.isBuffer(rawBody)
+          ? rawBody.toString('utf8')
+          : '{}',
+    );
     expect(sent.metadata).toEqual({
       slug: 'mi-resto',
       restaurantId: 'r1',
       orderId: 'o2',
     });
-
-    fetchMock.mockRestore();
   });
 
   it('preference uses global sandbox token when tenant sandbox missing', async () => {
-    // ensure no tenant token for r1
     const delRes = await request(app.getHttpServer())
       .delete('/api/mercadopago/tenant-token')
       .send({ restaurantId: 'r1' });
 
     expect(delRes.status).toBe(200);
 
-    process.env.MERCADOPAGO_SANDBOX_ACCESS_TOKEN = 'GLOBAL_SANDBOX';
-
-    const fetchMock = jest.spyOn(global as any, 'fetch').mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        id: 'pref_global_sandbox',
-        init_point: 'https://mp/init',
-        sandbox_init_point: 'https://mp/sandbox',
-      }),
+    const prisma = app.get(PrismaService);
+    prisma.seedCheckout({
+      id: 'o3',
+      restaurantId: 'r1',
+      publicTrackingToken: 'public-token-o3',
+      items: [{ name: 'X', quantity: 1, unitPrice: 10 }],
+      isSandbox: true,
     });
+
+    process.env.MERCADOPAGO_SANDBOX_ACCESS_TOKEN = 'GLOBAL_SANDBOX';
 
     const res = await request(app.getHttpServer())
       .post('/api/mercadopago/preference')
@@ -437,15 +538,27 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
       .send({
         slug: 'mi-resto',
         orderId: 'o3',
-        items: [{ title: 'X', quantity: 1, unit_price: 10 }],
+        publicTrackingToken: 'public-token-o3',
         sandbox: true,
       });
 
     expect(res.status).toBe(200);
-    const call = fetchMock.mock.calls[0];
-    const options = call[1] as any;
-    expect(options.headers.Authorization).toBe('Bearer GLOBAL_SANDBOX');
-
-    fetchMock.mockRestore();
+    const call = fetchMock.mock.calls.find(
+      ([url, options]) =>
+        (typeof url === 'string'
+          ? url
+          : url instanceof URL
+            ? url.toString()
+            : ''
+        ).includes('/checkout/preferences') &&
+        String(
+          (options as RequestInit)?.headers &&
+            typeof (options as RequestInit).headers === 'object' &&
+            'Authorization' in (options as RequestInit).headers!
+            ? (options as RequestInit).headers!.Authorization
+            : '',
+        ).includes('GLOBAL_SANDBOX'),
+    );
+    expect(call).toBeDefined();
   });
 });

@@ -9,11 +9,12 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { BotDefenseDto } from '../../common/dto/bot-defense.dto';
 
 const EVENT_MAX = 64;
 const SESSION_MAX = 64;
 
-export class TrackOnboardingEventDto {
+export class TrackOnboardingEventDto extends BotDefenseDto {
   @IsString()
   @Length(1, SESSION_MAX)
   sessionId!: string;

@@ -6,7 +6,9 @@ import {
   MaxLength,
 } from 'class-validator';
 
-export class UpsertCustomerProfileDto {
+import { BotDefenseDto } from '../../common/dto/bot-defense.dto';
+
+export class UpsertCustomerProfileDto extends BotDefenseDto {
   @IsOptional()
   @IsEmail()
   email?: string;

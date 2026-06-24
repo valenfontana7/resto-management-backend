@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { DishesController } from './dishes.controller';
 import { DishesService } from './dishes.service';
+import { PublicWriteAbuseService } from '../../common/services/public-write-abuse.service';
 
 describe('DishesController', () => {
   let controller: DishesController;
@@ -12,6 +13,10 @@ describe('DishesController', () => {
         {
           provide: DishesService,
           useValue: {},
+        },
+        {
+          provide: PublicWriteAbuseService,
+          useValue: { assertPublicWriteAllowed: jest.fn() },
         },
       ],
     }).compile();

@@ -8,7 +8,9 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { Public } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
@@ -23,11 +25,27 @@ import {
   EdgeSyncPushDto,
 } from './dto/edge-sync.dto';
 import { EdgeSyncService } from './edge-sync.service';
+import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
+import { getClientIp } from '../common/utils/client-ip.util';
 
 @ApiTags('edge-sync')
 @Controller('api/restaurants/:restaurantId/edge')
 export class EdgeSyncController {
-  constructor(private readonly edgeSync: EdgeSyncService) {}
+  constructor(
+    private readonly edgeSync: EdgeSyncService,
+    private readonly publicWriteAbuse: PublicWriteAbuseService,
+  ) {}
+
+  private async assertEdgeRateLimit(
+    restaurantId: string,
+    req: Request,
+  ): Promise<void> {
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req),
+      scope: 'edge_sync',
+      restaurantId,
+    });
+  }
 
   @Post('register')
   @UseGuards(JwtAuthGuard)
@@ -44,24 +62,28 @@ export class EdgeSyncController {
   @Public()
   @Post('heartbeat')
   @UseGuards(EdgeSyncAuthGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 120 } })
   @ApiOperation({ summary: 'Local server heartbeat' })
   async heartbeat(
     @Param('restaurantId') restaurantId: string,
-    @Req() req: { edgeLocal?: { localId: string } },
+    @Req() req: Request & { edgeLocal?: { localId: string } },
     @Body() dto: EdgeHeartbeatDto,
   ) {
+    await this.assertEdgeRateLimit(restaurantId, req);
     return this.edgeSync.heartbeat(restaurantId, req.edgeLocal!.localId, dto);
   }
 
   @Public()
   @Get('sync/pull')
   @UseGuards(EdgeSyncAuthGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 90 } })
   @ApiOperation({ summary: 'Pull cloud deltas for local server' })
   async pull(
     @Param('restaurantId') restaurantId: string,
-    @Req() req: { edgeLocal?: { localId: string } },
+    @Req() req: Request & { edgeLocal?: { localId: string } },
     @Query() query: EdgeSyncPullQueryDto,
   ) {
+    await this.assertEdgeRateLimit(restaurantId, req);
     return this.edgeSync.pull(
       restaurantId,
       req.edgeLocal!.localId,
@@ -73,12 +95,14 @@ export class EdgeSyncController {
   @Public()
   @Post('sync/push')
   @UseGuards(EdgeSyncAuthGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 90 } })
   @ApiOperation({ summary: 'Push local floor mutations to cloud' })
   async push(
     @Param('restaurantId') restaurantId: string,
-    @Req() req: { edgeLocal?: { localId: string } },
+    @Req() req: Request & { edgeLocal?: { localId: string } },
     @Body() dto: EdgeSyncPushDto,
   ) {
+    await this.assertEdgeRateLimit(restaurantId, req);
     return this.edgeSync.push(restaurantId, req.edgeLocal!.localId, dto);
   }
 

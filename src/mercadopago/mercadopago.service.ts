@@ -3,6 +3,8 @@ import {
   HttpException,
   Injectable,
   Logger,
+  NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -19,9 +21,23 @@ export type PreferenceRequestBody = {
   slug?: string;
   restaurantId?: string;
   orderId: string;
-  items: PreferenceItem[];
+  /** Ignorado: los ítems se resuelven desde la base de datos */
+  items?: PreferenceItem[];
   sandbox?: boolean;
+  publicTrackingToken?: string;
 };
+
+export type PreferenceCreateOptions = {
+  trusted?: boolean;
+};
+
+interface ResolvedPreferenceSource {
+  restaurantId: string;
+  slug?: string;
+  orderId: string;
+  items: PreferenceItem[];
+  isSandboxHint?: boolean;
+}
 
 @Injectable()
 export class MercadoPagoService {
@@ -371,20 +387,14 @@ export class MercadoPagoService {
   async createPreference(
     origin: string,
     body: PreferenceRequestBody,
+    options?: PreferenceCreateOptions,
   ): Promise<{
     preference: { id: string; init_point: string; sandbox_init_point?: string };
     isSandbox: boolean;
   }> {
-    const orderId = (body?.orderId ?? '').trim();
-    if (!orderId) {
-      throw new BadRequestException({ error: 'orderId es requerido' });
-    }
+    const source = await this.resolvePreferenceSource(body, options);
 
-    if (!Array.isArray(body?.items) || body.items.length === 0) {
-      throw new BadRequestException({ error: 'items inválidos' });
-    }
-
-    const mappedItems = body.items.map((item) => {
+    const mappedItems = source.items.map((item) => {
       const title = (item?.title ?? '').trim();
       const quantity = Number(item?.quantity);
       const unit_price = Number(item?.unit_price);
@@ -393,7 +403,8 @@ export class MercadoPagoService {
         !!title &&
         Number.isFinite(quantity) &&
         quantity > 0 &&
-        Number.isFinite(unit_price);
+        Number.isFinite(unit_price) &&
+        unit_price >= 0;
 
       return {
         isValid,
@@ -406,25 +417,37 @@ export class MercadoPagoService {
       };
     });
 
-    if (mappedItems.some((x) => !x.isValid)) {
+    if (mappedItems.length === 0 || mappedItems.some((x) => !x.isValid)) {
       throw new BadRequestException({ error: 'items inválidos' });
     }
 
-    const slug = typeof body.slug === 'string' ? body.slug.trim() : '';
-    const providedRestaurantId =
-      typeof body.restaurantId === 'string' ? body.restaurantId.trim() : '';
-
-    let effectiveRestaurantId = providedRestaurantId;
-    if (!effectiveRestaurantId && slug) {
-      const restaurant = await this.prisma.restaurant.findUnique({
-        where: { slug },
-        select: { id: true },
-      });
-      effectiveRestaurantId = restaurant?.id ?? '';
+    if (
+      Array.isArray(body?.items) &&
+      body.items.length > 0 &&
+      !options?.trusted
+    ) {
+      const clientTotal = body.items.reduce(
+        (sum, item) =>
+          sum + Number(item.unit_price || 0) * Number(item.quantity || 0),
+        0,
+      );
+      const serverTotal = source.items.reduce(
+        (sum, item) => sum + item.unit_price * item.quantity,
+        0,
+      );
+      if (Math.abs(clientTotal - serverTotal) > 1) {
+        this.logger.warn(
+          `Preference price mismatch ignored for orderId=${source.orderId} client=${clientTotal} server=${serverTotal}`,
+        );
+      }
     }
 
+    const effectiveRestaurantId = source.restaurantId;
+    const slug =
+      source.slug ?? (typeof body.slug === 'string' ? body.slug.trim() : '');
+
     // Determinar si está en modo sandbox basándose en las credenciales del restaurante
-    let isSandbox = !!body.sandbox;
+    let isSandbox = !!body.sandbox || !!source.isSandboxHint;
     if (effectiveRestaurantId) {
       const credential = await this.prisma.mercadoPagoCredential.findUnique({
         where: { restaurantId: effectiveRestaurantId },
@@ -440,7 +463,9 @@ export class MercadoPagoService {
       isSandbox,
     );
 
-    const orderPath = slug ? `/${slug}/order/${orderId}` : `/order/${orderId}`;
+    const orderPath = slug
+      ? `/${slug}/order/${source.orderId}`
+      : `/order/${source.orderId}`;
 
     // Prefer FRONTEND_URL for back_urls (user-facing), fallback to BASE_URL or request origin
     const frontendRaw = (
@@ -479,11 +504,11 @@ export class MercadoPagoService {
       },
       ...(autoReturn ? { auto_return: autoReturn } : {}),
       notification_url: notificationUrl,
-      external_reference: orderId,
+      external_reference: source.orderId,
       metadata: {
         slug: slug || null,
         restaurantId: effectiveRestaurantId || null,
-        orderId,
+        orderId: source.orderId,
       },
     };
 
@@ -523,6 +548,146 @@ export class MercadoPagoService {
       },
       isSandbox,
     };
+  }
+
+  private async resolvePreferenceSource(
+    body: PreferenceRequestBody,
+    options?: PreferenceCreateOptions,
+  ): Promise<ResolvedPreferenceSource> {
+    const orderId = (body?.orderId ?? '').trim();
+    if (!orderId) {
+      throw new BadRequestException({ error: 'orderId es requerido' });
+    }
+
+    const checkout = await this.prisma.checkoutSession.findUnique({
+      where: { id: orderId },
+      include: {
+        restaurant: { select: { id: true, slug: true } },
+      },
+    });
+
+    if (checkout) {
+      this.assertPreferenceAccessToken(
+        checkout.publicTrackingToken,
+        body.publicTrackingToken,
+        options?.trusted,
+      );
+      this.assertPreferenceRestaurantMatch(
+        body,
+        checkout.restaurantId,
+        checkout.restaurant.slug,
+      );
+
+      const rawItems = Array.isArray(checkout.items)
+        ? (checkout.items as Array<{
+            name?: string;
+            quantity?: number;
+            unitPrice?: number;
+          }>)
+        : [];
+
+      const items = rawItems
+        .map((item) => ({
+          title: String(item.name ?? '').trim(),
+          quantity: Number(item.quantity ?? 0),
+          unit_price: Number(item.unitPrice ?? 0),
+        }))
+        .filter((item) => item.title && item.quantity > 0);
+
+      if (items.length === 0) {
+        throw new BadRequestException({ error: 'Checkout sin ítems válidos' });
+      }
+
+      return {
+        restaurantId: checkout.restaurantId,
+        slug: checkout.restaurant.slug,
+        orderId: checkout.id,
+        items,
+        isSandboxHint: checkout.isSandbox,
+      };
+    }
+
+    const order = await this.prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        restaurant: { select: { id: true, slug: true } },
+        items: {
+          include: {
+            dish: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    if (order) {
+      this.assertPreferenceAccessToken(
+        order.publicTrackingToken,
+        body.publicTrackingToken,
+        options?.trusted,
+      );
+      this.assertPreferenceRestaurantMatch(
+        body,
+        order.restaurantId,
+        order.restaurant.slug,
+      );
+
+      const items = order.items
+        .map((item) => ({
+          title: (item.dish?.name ?? 'Ítem').trim(),
+          quantity: item.quantity,
+          unit_price: item.unitPrice,
+        }))
+        .filter((item) => item.title && item.quantity > 0);
+
+      if (items.length === 0) {
+        throw new BadRequestException({ error: 'Pedido sin ítems válidos' });
+      }
+
+      return {
+        restaurantId: order.restaurantId,
+        slug: order.restaurant.slug,
+        orderId: order.id,
+        items,
+      };
+    }
+
+    throw new NotFoundException('Pedido o checkout no encontrado');
+  }
+
+  private assertPreferenceAccessToken(
+    expected: string | null | undefined,
+    provided: string | undefined,
+    trusted?: boolean,
+  ): void {
+    if (trusted) return;
+
+    const normalizedExpected = (expected ?? '').trim();
+    const normalizedProvided = (provided ?? '').trim();
+
+    if (
+      !normalizedExpected ||
+      !normalizedProvided ||
+      normalizedExpected !== normalizedProvided
+    ) {
+      throw new UnauthorizedException('Token de pedido inválido');
+    }
+  }
+
+  private assertPreferenceRestaurantMatch(
+    body: PreferenceRequestBody,
+    restaurantId: string,
+    slug?: string | null,
+  ): void {
+    const providedRestaurantId =
+      typeof body.restaurantId === 'string' ? body.restaurantId.trim() : '';
+    if (providedRestaurantId && providedRestaurantId !== restaurantId) {
+      throw new BadRequestException({ error: 'restaurantId inválido' });
+    }
+
+    const providedSlug = typeof body.slug === 'string' ? body.slug.trim() : '';
+    if (providedSlug && slug && providedSlug !== slug) {
+      throw new BadRequestException({ error: 'slug inválido' });
+    }
   }
 
   async recordWebhookEvent(

@@ -13,6 +13,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { BotDefenseDto } from '../../common/dto/bot-defense.dto';
 
 export enum CouponType {
   PERCENTAGE = 'PERCENTAGE',
@@ -168,7 +169,7 @@ export class CouponFiltersDto {
   code?: string;
 }
 
-export class ValidateCouponDto {
+export class ValidateCouponDto extends BotDefenseDto {
   @ApiProperty({ example: 'DESCUENTO20' })
   @IsString()
   code: string;

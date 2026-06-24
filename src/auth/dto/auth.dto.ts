@@ -28,7 +28,7 @@ export class RegisterDto extends BotDefenseDto {
   restaurantName?: string;
 }
 
-export class LoginDto {
+export class LoginDto extends BotDefenseDto {
   @ApiProperty({ example: 'john@example.com' })
   @IsEmail()
   email: string;
@@ -38,13 +38,13 @@ export class LoginDto {
   password: string;
 }
 
-export class LoginIntentDto {
+export class LoginIntentDto extends BotDefenseDto {
   @ApiProperty({ example: 'john@example.com' })
   @IsEmail()
   email: string;
 }
 
-export class CompletePasswordSetupDto {
+export class CompletePasswordSetupDto extends BotDefenseDto {
   @ApiProperty({ example: 'john@example.com' })
   @IsEmail()
   email: string;
@@ -66,7 +66,7 @@ export class CompletePasswordSetupDto {
   password: string;
 }
 
-export class RequestMagicLinkDto {
+export class RequestMagicLinkDto extends BotDefenseDto {
   @ApiProperty({ example: 'john@example.com' })
   @IsEmail()
   email: string;
@@ -119,7 +119,7 @@ export class ChangePasswordDto {
   newPassword: string;
 }
 
-export class RequestPasswordResetDto {
+export class RequestPasswordResetDto extends BotDefenseDto {
   @ApiProperty({ example: 'john@example.com' })
   @IsEmail()
   email: string;
@@ -138,4 +138,17 @@ export class ResetPasswordDto {
       'Password must contain at least one uppercase letter, one lowercase letter, and one number',
   })
   newPassword: string;
+}
+
+export class RequestEmailVerificationDto extends BotDefenseDto {
+  @ApiProperty({ example: 'john@example.com', required: false })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+}
+
+export class ConsumeEmailVerificationDto {
+  @ApiProperty({ example: 'raw-token-from-email' })
+  @IsString()
+  token: string;
 }

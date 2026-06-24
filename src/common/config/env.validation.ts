@@ -82,6 +82,10 @@ export function validateEnvironment(config: Record<string, unknown>) {
   }
 
   const corsOrigins = env.CORS_ORIGINS?.trim();
+  const frontendUrl = env.FRONTEND_URL?.trim();
+  if (nodeEnv === 'production' && !corsOrigins && !frontendUrl) {
+    errors.push('CORS_ORIGINS or FRONTEND_URL is required in production');
+  }
   if (corsOrigins) {
     const invalidOrigins = corsOrigins
       .split(',')

@@ -9,6 +9,8 @@ import { ImageTransformInterceptor } from './interceptors/image-transform.interc
 import { BotDefenseService } from './services/bot-defense.service';
 import { PublicWriteAbuseService } from './services/public-write-abuse.service';
 import { OnboardingAiQuotaService } from './services/onboarding-ai-quota.service';
+import { UploadQuotaService } from './services/upload-quota.service';
+import { UploadOwnershipService } from './services/upload-ownership.service';
 
 /**
  * Módulo global que provee servicios compartidos a toda la aplicación.
@@ -36,6 +38,8 @@ import { OnboardingAiQuotaService } from './services/onboarding-ai-quota.service
     BotDefenseService,
     PublicWriteAbuseService,
     OnboardingAiQuotaService,
+    UploadQuotaService,
+    UploadOwnershipService,
   ],
   exports: [
     OwnershipService,
@@ -46,6 +50,8 @@ import { OnboardingAiQuotaService } from './services/onboarding-ai-quota.service
     BotDefenseService,
     PublicWriteAbuseService,
     OnboardingAiQuotaService,
+    UploadQuotaService,
+    UploadOwnershipService,
   ],
 })
 export class CommonModule {}

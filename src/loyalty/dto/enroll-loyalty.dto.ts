@@ -1,6 +1,7 @@
 import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
+import { BotDefenseDto } from '../../common/dto/bot-defense.dto';
 
-export class EnrollLoyaltyDto {
+export class EnrollLoyaltyDto extends BotDefenseDto {
   @IsEmail()
   email: string;
 

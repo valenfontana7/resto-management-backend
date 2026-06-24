@@ -10,7 +10,10 @@ import {
   HttpCode,
   HttpStatus,
   UseInterceptors,
+  Req,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import type { Request } from 'express';
 import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import {
   ApiTags,
@@ -23,6 +26,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CategoriesService } from './categories.service';
 import { S3Service } from '../../storage/s3.service';
 import { Public } from '../../auth/decorators/public.decorator';
+import { PublicWriteAbuseService } from '../../common/services/public-write-abuse.service';
+import { getClientIp } from '../../common/utils/client-ip.util';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../../auth/decorators/current-user.decorator';
 import {
@@ -38,14 +43,14 @@ export class CategoriesController {
     private prisma: PrismaService,
     private categoriesService: CategoriesService,
     private s3: S3Service,
+    private readonly publicWriteAbuse: PublicWriteAbuseService,
   ) {}
-
-  // ========== ENDPOINT PÚBLICO ==========
 
   @Public()
   @Get('api/public/:slug/menu')
   @UseInterceptors(CacheInterceptor)
   @CacheTTL(120_000) // 2 min — menu updates are semi-frequent
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
   @ApiOperation({ summary: 'Get menu by restaurant slug (public)' })
   @ApiParam({ name: 'slug', description: 'The slug of the restaurant' })
   @ApiResponse({
@@ -53,7 +58,7 @@ export class CategoriesController {
     description: 'Return the menu categories with dishes.',
   })
   @ApiResponse({ status: 404, description: 'Restaurant not found.' })
-  async getMenu(@Param('slug') slug: string) {
+  async getMenu(@Param('slug') slug: string, @Req() req: Request) {
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { slug },
     });
@@ -61,6 +66,12 @@ export class CategoriesController {
     if (!restaurant) {
       throw new NotFoundException('Restaurant not found');
     }
+
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req),
+      scope: 'public_read',
+      restaurantId: restaurant.id,
+    });
 
     const categories = await this.prisma.category.findMany({
       where: {
@@ -105,6 +116,7 @@ export class CategoriesController {
 
   @Public()
   @Get('api/restaurants/:restaurantId/menu')
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
   @ApiOperation({ summary: 'Get menu by restaurant ID (public)' })
   @ApiParam({ name: 'restaurantId', description: 'The ID of the restaurant' })
   @ApiResponse({
@@ -112,7 +124,16 @@ export class CategoriesController {
     description: 'Return the menu categories with dishes.',
   })
   @ApiResponse({ status: 404, description: 'Restaurant not found.' })
-  async getMenuById(@Param('restaurantId') restaurantId: string) {
+  async getMenuById(
+    @Param('restaurantId') restaurantId: string,
+    @Req() req: Request,
+  ) {
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req),
+      scope: 'public_read',
+      restaurantId,
+    });
+
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { id: restaurantId },
     });
@@ -166,10 +187,20 @@ export class CategoriesController {
 
   @Public()
   @Get('api/restaurants/:restaurantId/categories/public')
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
   @ApiOperation({ summary: 'Get all categories (public)' })
   @ApiParam({ name: 'restaurantId' })
   @ApiResponse({ status: 200, description: 'Categories retrieved' })
-  async getCategoriesPublic(@Param('restaurantId') restaurantId: string) {
+  async getCategoriesPublic(
+    @Param('restaurantId') restaurantId: string,
+    @Req() req: Request,
+  ) {
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req),
+      scope: 'public_read',
+      restaurantId,
+    });
+
     const categories = await this.prisma.category.findMany({
       where: {
         restaurantId,

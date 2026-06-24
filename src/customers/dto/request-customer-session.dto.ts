@@ -1,7 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsEmail, IsOptional, IsString } from 'class-validator';
+import { BotDefenseDto } from '../../common/dto/bot-defense.dto';
 
-export class RequestCustomerSessionDto {
+export class RequestCustomerSessionDto extends BotDefenseDto {
   @ApiProperty({ example: 'cliente@ejemplo.com', required: false })
   @IsOptional()
   @IsEmail()

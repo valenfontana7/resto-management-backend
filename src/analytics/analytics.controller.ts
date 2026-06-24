@@ -11,6 +11,9 @@ import type { Response } from 'express';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsPdfService } from './analytics-pdf.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { RequestUser } from '../auth/strategies/jwt.strategy';
+import { OwnershipService } from '../common/services/ownership.service';
 import { AnalyticsQueryDto, TopItemsQueryDto } from './dto/analytics.dto';
 
 @Controller('api/analytics')
@@ -19,14 +22,25 @@ export class AnalyticsController {
   constructor(
     private readonly analyticsService: AnalyticsService,
     private readonly pdfService: AnalyticsPdfService,
+    private readonly ownership: OwnershipService,
   ) {}
+
+  private async assertAccess(restaurantId: string, user: RequestUser) {
+    await this.ownership.verifyUserBelongsToRestaurant(
+      restaurantId,
+      user.userId,
+    );
+  }
 
   @Get('restaurant/:restaurantId/visits')
   async getVisits(
     @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
+    await this.assertAccess(restaurantId, user);
+
     const fromDate = from ? new Date(from) : undefined;
     const toDate = to ? new Date(to) : undefined;
 
@@ -49,8 +63,10 @@ export class AnalyticsController {
   @Get('restaurant/:restaurantId/sales')
   async getSales(
     @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
     @Query() query: AnalyticsQueryDto,
   ) {
+    await this.assertAccess(restaurantId, user);
     return this.analyticsService.getSales(
       restaurantId,
       query.period,
@@ -62,8 +78,10 @@ export class AnalyticsController {
   @Get('restaurant/:restaurantId/categories')
   async getCategoryBreakdown(
     @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
     @Query() query: AnalyticsQueryDto,
   ) {
+    await this.assertAccess(restaurantId, user);
     return this.analyticsService.getCategoryBreakdown(
       restaurantId,
       query.period,
@@ -75,8 +93,10 @@ export class AnalyticsController {
   @Get('restaurant/:restaurantId/hourly')
   async getHourlyData(
     @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
     @Query() query: AnalyticsQueryDto,
   ) {
+    await this.assertAccess(restaurantId, user);
     return this.analyticsService.getHourlyData(
       restaurantId,
       query.period,
@@ -88,8 +108,10 @@ export class AnalyticsController {
   @Get('restaurant/:restaurantId/top-customers')
   async getTopCustomers(
     @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
     @Query() query: TopItemsQueryDto,
   ) {
+    await this.assertAccess(restaurantId, user);
     return this.analyticsService.getTopCustomers(
       restaurantId,
       query.period,
@@ -102,8 +124,10 @@ export class AnalyticsController {
   @Get('restaurant/:restaurantId/top-tables')
   async getTopTables(
     @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
     @Query() query: TopItemsQueryDto,
   ) {
+    await this.assertAccess(restaurantId, user);
     return this.analyticsService.getTopTables(
       restaurantId,
       query.period,
@@ -116,8 +140,10 @@ export class AnalyticsController {
   @Get('restaurant/:restaurantId/performance')
   async getPerformance(
     @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
     @Query() query: AnalyticsQueryDto,
   ) {
+    await this.assertAccess(restaurantId, user);
     return this.analyticsService.getPerformance(
       restaurantId,
       query.period,
@@ -129,8 +155,10 @@ export class AnalyticsController {
   @Get('restaurant/:restaurantId/comparison')
   async getComparison(
     @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
     @Query() query: AnalyticsQueryDto,
   ) {
+    await this.assertAccess(restaurantId, user);
     return this.analyticsService.getComparison(
       restaurantId,
       query.period,
@@ -142,8 +170,10 @@ export class AnalyticsController {
   @Get('restaurant/:restaurantId/top-dishes')
   async getTopDishes(
     @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
     @Query() query: TopItemsQueryDto,
   ) {
+    await this.assertAccess(restaurantId, user);
     return this.analyticsService.getTopDishes(
       restaurantId,
       query.period,
@@ -156,8 +186,10 @@ export class AnalyticsController {
   @Get('restaurant/:restaurantId/revenue-breakdown')
   async getRevenueBreakdown(
     @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
     @Query() query: AnalyticsQueryDto,
   ) {
+    await this.assertAccess(restaurantId, user);
     return this.analyticsService.getRevenueBreakdown(
       restaurantId,
       query.period,
@@ -169,9 +201,12 @@ export class AnalyticsController {
   @Get('restaurant/:restaurantId/export-pdf')
   async exportPdf(
     @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
     @Query() query: AnalyticsQueryDto,
     @Res() res: Response,
   ) {
+    await this.assertAccess(restaurantId, user);
+
     const [sales, topDishes, categories, performance] = await Promise.all([
       this.analyticsService.getSales(
         restaurantId,

@@ -4,7 +4,9 @@ import {
   BadRequestException,
   Logger,
   Optional,
+  UnauthorizedException,
 } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
 import { CustomersService } from '../customers/customers.service';
@@ -67,6 +69,8 @@ export class ReservationsService {
       },
     );
 
+    const publicAccessToken = crypto.randomBytes(32).toString('base64url');
+
     const reservation = await this.prisma.reservation.create({
       data: {
         restaurantId,
@@ -80,6 +84,7 @@ export class ReservationsService {
         notes: createDto.notes || null,
         status: ReservationStatus.PENDING,
         tableId: null, // Las reservas públicas no especifican mesa
+        publicAccessToken,
       },
     });
 
@@ -87,7 +92,10 @@ export class ReservationsService {
       `Reserva creada: ${reservation.id} para ${createDto.customer.name} en ${restaurant.name}`,
     );
 
-    return this.formatReservation(reservation);
+    return {
+      ...this.formatReservation(reservation),
+      publicAccessToken,
+    };
   }
 
   buildDecoyPublicReservation(
@@ -111,6 +119,7 @@ export class ReservationsService {
       notes: createDto.notes || null,
       createdAt: now,
       updatedAt: now,
+      publicAccessToken: crypto.randomBytes(32).toString('base64url'),
     };
   }
 
@@ -311,9 +320,9 @@ export class ReservationsService {
   }
 
   /**
-   * Obtener una reserva por ID (público - no requiere autenticación)
+   * Obtener una reserva por ID (público — requiere token si la reserva lo tiene)
    */
-  async findOnePublic(id: string) {
+  async findOnePublic(id: string, token?: string) {
     const reservation = await this.prisma.reservation.findUnique({
       where: { id },
       include: {
@@ -337,6 +346,15 @@ export class ReservationsService {
 
     if (!reservation) {
       throw new NotFoundException('Reserva no encontrada');
+    }
+
+    const normalizedToken = (token ?? '').trim();
+    if (
+      !reservation.publicAccessToken ||
+      !normalizedToken ||
+      reservation.publicAccessToken !== normalizedToken
+    ) {
+      throw new UnauthorizedException('Token de acceso inválido');
     }
 
     return this.formatReservation(reservation);

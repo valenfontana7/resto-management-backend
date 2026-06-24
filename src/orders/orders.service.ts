@@ -442,7 +442,9 @@ export class OrdersService {
               quantity: item.quantity,
               unit_price: item.unitPrice,
             })),
+            publicTrackingToken: checkout.publicTrackingToken,
           },
+          { trusted: true },
         );
 
         await this.prisma.checkoutSession.update({

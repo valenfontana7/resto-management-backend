@@ -7,9 +7,16 @@ import { CallMeBotModule } from './callmebot.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { EmailModule } from '../email/email.module';
 import { KitchenModule } from '../kitchen/kitchen.module';
+import { CommonModule } from '../common/common.module';
 
 @Module({
-  imports: [PrismaModule, EmailModule, KitchenModule, CallMeBotModule],
+  imports: [
+    PrismaModule,
+    EmailModule,
+    KitchenModule,
+    CallMeBotModule,
+    CommonModule,
+  ],
   controllers: [NotificationsController, PushNotificationsController],
   providers: [NotificationsService, PushNotificationService],
   exports: [NotificationsService, PushNotificationService, CallMeBotModule],

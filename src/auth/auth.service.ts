@@ -37,7 +37,9 @@ import {
 } from '../common/utils/role.utils';
 import { normalizeEmailForStorage } from '../common/utils/email-identity.util';
 import { RegistrationAbuseService } from './services/registration-abuse.service';
+import { AuthEmailAbuseService } from './services/auth-email-abuse.service';
 import { BotDefenseService } from '../common/services/bot-defense.service';
+import { OwnerEmailVerificationService } from './services/owner-email-verification.service';
 
 export interface JwtPayload {
   sub: string; // userId
@@ -61,6 +63,8 @@ export interface AuthResponse {
   token: string;
   expiresAt: string;
   needsSetup?: boolean;
+  emailVerified?: boolean;
+  emailVerificationRequired?: boolean;
 }
 
 export interface LoginIntentResponse {
@@ -87,7 +91,10 @@ export class AuthService {
     @Optional() private readonly adminAlerts?: AdminAlertsService,
     @Optional() private readonly emailService?: EmailService,
     @Optional() private readonly registrationAbuse?: RegistrationAbuseService,
+    @Optional() private readonly authEmailAbuse?: AuthEmailAbuseService,
     @Optional() private readonly botDefense?: BotDefenseService,
+    @Optional()
+    private readonly ownerEmailVerification?: OwnerEmailVerificationService,
   ) {}
 
   private normalizeEmail(email: string): string {
@@ -222,6 +229,8 @@ export class AuthService {
         restaurantName: null,
       });
 
+      void this.ownerEmailVerification?.sendVerificationEmail(user.id);
+
       // Use generateAuthResponse to include proper claims (roleName, restaurantSlug)
       return await this.generateAuthResponse(user as any);
     }
@@ -282,47 +291,32 @@ export class AuthService {
       ownerEmail: result.user.email,
     });
 
+    void this.ownerEmailVerification?.sendVerificationEmail(result.user.id);
+
     return await this.generateAuthResponse(result.user);
   }
 
-  async getLoginIntent(dto: LoginIntentDto): Promise<LoginIntentResponse> {
-    const normalizedEmail = this.normalizeEmail(dto.email);
+  async getLoginIntent(
+    dto: LoginIntentDto,
+    meta?: { ip?: string },
+  ): Promise<LoginIntentResponse> {
+    if (this.botDefense?.isHoneypotTriggered(dto.companyWebsite)) {
+      this.botDefense.logHoneypotHit('auth.login-intent', {
+        ip: meta?.ip,
+        email: dto.email,
+      });
+      await this.botDefense.applyBotDelayMs();
+      return { mode: 'password', email: this.normalizeEmail(dto.email) };
+    }
 
-    const users = await this.prisma.user.findMany({
-      where: {
-        email: { equals: normalizedEmail, mode: 'insensitive' },
-        deletedAt: null,
-      },
-      select: {
-        email: true,
-        name: true,
-        isActive: true,
-        passwordSetupRequired: true,
-      },
-      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+    await this.authEmailAbuse?.assertEmailDeliveryAllowed({
+      ip: meta?.ip ?? 'unknown',
+      email: dto.email,
+      scope: 'login_intent',
     });
 
-    const hasConfiguredActiveUser = users.some(
-      (user) => user.isActive && !user.passwordSetupRequired,
-    );
-
-    if (hasConfiguredActiveUser) {
-      return { mode: 'password', email: normalizedEmail };
-    }
-
-    const pendingUser = users.find(
-      (user) => user.isActive && user.passwordSetupRequired,
-    );
-
-    if (!pendingUser) {
-      return { mode: 'password', email: normalizedEmail };
-    }
-
-    return {
-      mode: 'password_setup',
-      email: normalizedEmail,
-      name: pendingUser.name,
-    };
+    const normalizedEmail = this.normalizeEmail(dto.email);
+    return { mode: 'password', email: normalizedEmail };
   }
 
   async registerWithMagicLink(
@@ -395,15 +389,37 @@ export class AuthService {
       });
     }
 
-    return this.requestMagicLink({
-      email: normalizedEmail,
-      redirect: dto.redirect,
-    });
+    return this.requestMagicLink(
+      {
+        email: normalizedEmail,
+        redirect: dto.redirect,
+      },
+      meta,
+    );
   }
 
   async requestMagicLink(
     dto: RequestMagicLinkDto,
+    meta?: { ip?: string },
   ): Promise<MagicLinkRequestResponse> {
+    if (this.botDefense?.isHoneypotTriggered(dto.companyWebsite)) {
+      this.botDefense.logHoneypotHit('auth.magic-link.request', {
+        ip: meta?.ip,
+        email: dto.email,
+      });
+      await this.botDefense.applyBotDelayMs();
+      return {
+        sent: true,
+        expiresInMinutes: MAGIC_LINK_EXPIRY_MINUTES,
+      };
+    }
+
+    await this.authEmailAbuse?.assertEmailDeliveryAllowed({
+      ip: meta?.ip ?? 'unknown',
+      email: dto.email,
+      scope: 'magic_link',
+    });
+
     const normalizedEmail = this.normalizeEmail(dto.email);
     const response: MagicLinkRequestResponse = {
       sent: true,
@@ -524,7 +540,7 @@ export class AuthService {
 
       return tx.user.update({
         where: { id: link.userId },
-        data: { lastLogin: now },
+        data: { lastLogin: now, emailVerifiedAt: now },
         include: {
           restaurant: {
             include: {
@@ -595,11 +611,11 @@ export class AuthService {
 
     if (configuredActiveUsers.length === 0) {
       if (activeUsers.some((user) => user.passwordSetupRequired)) {
-        throw new UnauthorizedException('Password setup required');
+        throw new UnauthorizedException('Invalid credentials');
       }
 
       if (users.some((user) => !user.isActive)) {
-        throw new UnauthorizedException('User account is inactive');
+        throw new UnauthorizedException('Invalid credentials');
       }
     }
 
@@ -628,11 +644,7 @@ export class AuthService {
     );
 
     if (activePendingUsers.length === 0) {
-      if (users.some((user) => !user.isActive)) {
-        throw new UnauthorizedException('User account is inactive');
-      }
-
-      throw new BadRequestException('Password already configured');
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     const primaryPendingUser = activePendingUsers[0];
@@ -641,15 +653,15 @@ export class AuthService {
       !primaryPendingUser.activationCodeHash ||
       !primaryPendingUser.activationCodeExpiresAt
     ) {
-      throw new BadRequestException('Activation code is not available');
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     if (primaryPendingUser.activationCodeExpiresAt.getTime() < Date.now()) {
-      throw new BadRequestException('Activation code expired');
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     if (primaryPendingUser.activationCodeAttempts >= 5) {
-      throw new BadRequestException('Activation code locked');
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     let matchedPendingUser: (typeof activePendingUsers)[number] | null = null;
@@ -683,7 +695,7 @@ export class AuthService {
         data: { activationCodeAttempts: { increment: 1 } },
       });
 
-      throw new UnauthorizedException('Invalid activation code');
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
@@ -764,7 +776,26 @@ export class AuthService {
 
   async requestPasswordReset(
     dto: RequestPasswordResetDto,
+    meta?: { ip?: string },
   ): Promise<MagicLinkRequestResponse> {
+    if (this.botDefense?.isHoneypotTriggered(dto.companyWebsite)) {
+      this.botDefense.logHoneypotHit('auth.forgot-password', {
+        ip: meta?.ip,
+        email: dto.email,
+      });
+      await this.botDefense.applyBotDelayMs();
+      return {
+        sent: true,
+        expiresInMinutes: PASSWORD_RESET_EXPIRY_MINUTES,
+      };
+    }
+
+    await this.authEmailAbuse?.assertEmailDeliveryAllowed({
+      ip: meta?.ip ?? 'unknown',
+      email: dto.email,
+      scope: 'password_reset',
+    });
+
     const normalizedEmail = this.normalizeEmail(dto.email);
     const response: MagicLinkRequestResponse = {
       sent: true,
@@ -925,6 +956,7 @@ export class AuthService {
         createdAt: true,
         updatedAt: true,
         isActive: true,
+        emailVerifiedAt: true,
       },
     });
 
@@ -1030,6 +1062,11 @@ export class AuthService {
       token,
       expiresAt: expiresAt.toISOString(),
       needsSetup: this.needsRestaurantSetup(fullUser.restaurant),
+      emailVerified:
+        this.ownerEmailVerification?.isEmailVerified(fullUser) ?? true,
+      emailVerificationRequired: !(
+        this.ownerEmailVerification?.isEmailVerified(fullUser) ?? true
+      ),
     };
   }
 

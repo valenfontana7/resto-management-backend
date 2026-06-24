@@ -9,7 +9,10 @@ import {
   Body,
   Param,
   Query,
+  Req,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import type { Request } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -18,6 +21,9 @@ import {
 } from '@nestjs/swagger';
 import { DeliveryService } from './delivery.service';
 import { Public } from '../auth/decorators/public.decorator';
+import { BotDefenseService } from '../common/services/bot-defense.service';
+import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
+import { getClientIp } from '../common/utils/client-ip.util';
 import { VerifyRestaurantAccess } from '../common/decorators/verify-restaurant-access.decorator';
 import {
   CurrentUser,
@@ -47,17 +53,45 @@ import {
 @Controller('api/restaurants/:restaurantId/delivery')
 @ApiBearerAuth()
 export class DeliveryController {
-  constructor(private deliveryService: DeliveryService) {}
+  constructor(
+    private deliveryService: DeliveryService,
+    private readonly botDefense: BotDefenseService,
+    private readonly publicWriteAbuse: PublicWriteAbuseService,
+  ) {}
 
   @Public()
   @Post('quote')
   @HttpCode(200)
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @ApiOperation({ summary: 'Cotizar delivery públicamente' })
   @ApiResponse({ status: 200, description: 'Cotización calculada' })
   async quoteDelivery(
     @Param('restaurantId') restaurantId: string,
     @Body() dto: QuoteDeliveryDto,
+    @Req() req: Request,
   ) {
+    if (this.botDefense.isHoneypotTriggered(dto.companyWebsite)) {
+      this.botDefense.logHoneypotHit('delivery.quote', { restaurantId });
+      await this.botDefense.applyBotDelayMs();
+      return {
+        available: false,
+        type: dto.type === 'pickup' ? 'pickup' : 'delivery',
+        provider: 'internal',
+        deliveryFee: 0,
+        estimatedTime: null,
+        zone: null,
+        zones: [],
+        requiresZoneSelection: false,
+        matchedBy: 'none',
+      };
+    }
+
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req),
+      scope: 'delivery_quote',
+      restaurantId,
+    });
+
     return this.deliveryService.quoteDelivery(restaurantId, dto);
   }
 

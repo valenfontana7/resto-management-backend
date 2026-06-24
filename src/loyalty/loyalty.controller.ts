@@ -7,7 +7,10 @@ import {
   Param,
   Query,
   UseGuards,
+  Req,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import type { Request } from 'express';
 import { LoyaltyService } from './loyalty.service';
 import { RedeemPointsDto } from './dto/redeem-points.dto';
 import { EnrollLoyaltyDto } from './dto/enroll-loyalty.dto';
@@ -16,24 +19,41 @@ import {
   FeatureGuard,
   RequireFeature,
 } from '../subscriptions/guards/feature.guard';
+import { VerifyRestaurantAccess } from '../common/decorators/verify-restaurant-access.decorator';
+import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
+import { BotDefenseService } from '../common/services/bot-defense.service';
+import { getClientIp } from '../common/utils/client-ip.util';
 
 @Controller('api/restaurants/:restaurantId/loyalty')
 export class LoyaltyController {
-  constructor(private readonly loyaltyService: LoyaltyService) {}
+  constructor(
+    private readonly loyaltyService: LoyaltyService,
+    private readonly publicWriteAbuse: PublicWriteAbuseService,
+    private readonly botDefense: BotDefenseService,
+  ) {}
 
   /** Public: consultar puntos por email */
   @Public()
   @Get('account')
-  getAccount(
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  async getAccount(
     @Param('restaurantId') restaurantId: string,
     @Query('email') email: string,
+    @Req() req: Request,
   ) {
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req),
+      scope: 'loyalty_lookup',
+      restaurantId,
+    });
+
     return this.loyaltyService.getAccount(restaurantId, email);
   }
 
   /** Public: consultar puntos de la sesión verificada del cliente */
   @Public()
   @Get('account/me')
+  @Throttle({ default: { ttl: 60_000, limit: 40 } })
   getOwnAccount(
     @Param('restaurantId') restaurantId: string,
     @Headers('authorization') authorization?: string,
@@ -47,10 +67,24 @@ export class LoyaltyController {
   /** Public: registrarse en programa de fidelización */
   @Public()
   @Post('enroll')
-  enroll(
+  @Throttle({ default: { ttl: 60_000, limit: 8 } })
+  async enroll(
     @Param('restaurantId') restaurantId: string,
     @Body() body: EnrollLoyaltyDto,
+    @Req() req: Request,
   ) {
+    if (this.botDefense.isHoneypotTriggered(body.companyWebsite)) {
+      this.botDefense.logHoneypotHit('loyalty.enroll', { restaurantId });
+      await this.botDefense.applyBotDelayMs();
+      return this.loyaltyService.buildDecoyEnrollment(restaurantId, body);
+    }
+
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req),
+      scope: 'loyalty_lookup',
+      restaurantId,
+    });
+
     return this.loyaltyService.getOrCreateAccount(restaurantId, body);
   }
 
@@ -59,7 +93,7 @@ export class LoyaltyController {
   @RequireFeature('loyalty')
   @Get('accounts')
   listAccounts(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -74,7 +108,7 @@ export class LoyaltyController {
   @UseGuards(FeatureGuard)
   @RequireFeature('loyalty')
   @Get('stats')
-  getStats(@Param('restaurantId') restaurantId: string) {
+  getStats(@VerifyRestaurantAccess('restaurantId') restaurantId: string) {
     return this.loyaltyService.getStats(restaurantId);
   }
 
@@ -83,7 +117,7 @@ export class LoyaltyController {
   @RequireFeature('loyalty')
   @Post('redeem')
   redeem(
-    @Param('restaurantId') restaurantId: string,
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
     @Body() dto: RedeemPointsDto,
   ) {
     return this.loyaltyService.redeemPoints(
