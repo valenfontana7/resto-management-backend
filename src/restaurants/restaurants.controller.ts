@@ -36,7 +36,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { RestaurantsService } from './restaurants.service';
 import {
-  featuresForProductIntent,
+  resolveOnboardingFeatures,
   businessRulesPatchForIntent,
   type OnboardingProductIntent,
 } from './onboarding-product-intent';
@@ -257,10 +257,16 @@ export class RestaurantsController {
 
       const productIntent = (d.productIntent ??
         'both') as OnboardingProductIntent;
-      const intentFeatures = featuresForProductIntent(productIntent);
-      const intentRules = businessRulesPatchForIntent(productIntent);
       const selectedPlan = d.planSelection?.selectedPlan || 'STARTER';
       const isStarter = selectedPlan === 'STARTER';
+      const deliveryZonesEnabled = d.deliveryZones?.enabled ?? false;
+      const hasDeliveryZones = (d.deliveryZones?.zones?.length ?? 0) > 0;
+      const intentFeatures = resolveOnboardingFeatures(productIntent, {
+        deliveryZonesEnabled,
+        hasDeliveryZones,
+        isStarter,
+      });
+      const intentRules = businessRulesPatchForIntent(productIntent);
 
       payload = {
         planSelection: d.planSelection,
@@ -290,7 +296,7 @@ export class RestaurantsController {
           delivery: {
             enabled:
               !isStarter &&
-              (d.deliveryZones?.enabled ?? false) &&
+              deliveryZonesEnabled &&
               intentFeatures.delivery !== false,
           },
           pickup: {

@@ -4,18 +4,25 @@ import { normalizeRoleCode } from '../utils/role.utils';
 
 const PUBLIC_PROXY_PREFIXES = ['images/', 'branding/', 'logos/', 'categories/'];
 
+/** Assets de marca del restaurante (logo, portada, favicon) bajo S3. */
+const PUBLIC_RESTAURANT_ASSET_PREFIX = /^restaurants\/[^/]+\//;
+
 @Injectable()
 export class UploadOwnershipService {
   constructor(private readonly prisma: PrismaService) {}
 
   assertPublicProxyKeyAllowed(key: string): void {
-    const normalized = key.replace(/^\/+/, '');
-    const allowed = PUBLIC_PROXY_PREFIXES.some((prefix) =>
-      normalized.startsWith(prefix),
-    );
-    if (!allowed) {
+    if (!this.isPublicProxyKey(key)) {
       throw new ForbiddenException('Object key is not publicly accessible');
     }
+  }
+
+  private isPublicProxyKey(key: string): boolean {
+    const normalized = key.replace(/^\/+/, '');
+    if (PUBLIC_PROXY_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
+      return true;
+    }
+    return PUBLIC_RESTAURANT_ASSET_PREFIX.test(normalized);
   }
 
   async assertUserCanManageKey(
@@ -61,7 +68,7 @@ export class UploadOwnershipService {
   }
 
   private isAllowedAssetPrefix(key: string): boolean {
-    return PUBLIC_PROXY_PREFIXES.some((prefix) => key.startsWith(prefix));
+    return this.isPublicProxyKey(key);
   }
 
   private async isKeyReferencedByRestaurant(

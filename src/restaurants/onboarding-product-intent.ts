@@ -36,6 +36,31 @@ export function featuresForProductIntent(intent?: OnboardingProductIntent) {
   }
 }
 
+type OnboardingFeatureOptions = {
+  deliveryZonesEnabled?: boolean;
+  hasDeliveryZones?: boolean;
+  isStarter?: boolean;
+};
+
+export function resolveOnboardingFeatures(
+  intent?: OnboardingProductIntent,
+  options: OnboardingFeatureOptions = {},
+) {
+  const base = featuresForProductIntent(intent);
+  const wantsDelivery =
+    intent !== 'operations' &&
+    !options.isStarter &&
+    Boolean(options.deliveryZonesEnabled) &&
+    Boolean(options.hasDeliveryZones);
+
+  if (!wantsDelivery) return base;
+
+  return {
+    ...base,
+    delivery: true,
+  };
+}
+
 export function businessRulesPatchForIntent(intent?: OnboardingProductIntent) {
   return {
     onboarding: {
