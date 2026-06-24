@@ -61,6 +61,10 @@ class AdminAlertEventsDto {
   @IsBoolean()
   @IsOptional()
   edgeSyncStale?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  registrationAbuseSpike?: boolean;
 }
 
 class NotificationsDto {
@@ -102,6 +106,12 @@ class MaintenanceDto {
   message?: string;
 }
 
+class SecurityDto {
+  @IsBoolean()
+  @IsOptional()
+  registrationDisabled?: boolean;
+}
+
 export class UpdateSettingsDto {
   @IsString()
   @IsOptional()
@@ -130,4 +140,9 @@ export class UpdateSettingsDto {
   @Type(() => MaintenanceDto)
   @IsOptional()
   maintenance?: MaintenanceDto;
+
+  @ValidateNested()
+  @Type(() => SecurityDto)
+  @IsOptional()
+  security?: SecurityDto;
 }

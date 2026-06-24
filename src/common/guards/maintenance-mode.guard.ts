@@ -54,6 +54,10 @@ export class MaintenanceModeGuard implements CanActivate {
       return true;
     }
 
+    if (this.isPublicReadAllowedDuringMaintenance(path, method)) {
+      return true;
+    }
+
     response?.setHeader?.('Retry-After', '120');
 
     throw new ServiceUnavailableException({
@@ -76,6 +80,7 @@ export class MaintenanceModeGuard implements CanActivate {
       path === '/api/health' ||
       path === '/api/system/status' ||
       path === '/api/auth/login' ||
+      path === '/api/auth/magic-link/consume' ||
       path.startsWith('/api/docs') ||
       path.startsWith('/api/webhooks') ||
       path === '/api/payments/webhook' ||
@@ -83,6 +88,29 @@ export class MaintenanceModeGuard implements CanActivate {
       path === '/api/mercadopago/webhooks/mercadopago' ||
       path === '/api/integrations/webhooks/delivery-platform'
     );
+  }
+
+  private isPublicReadAllowedDuringMaintenance(
+    path: string,
+    method: string,
+  ): boolean {
+    if (method !== 'GET' && method !== 'HEAD') {
+      return false;
+    }
+
+    if (path === '/api/plans' || path.startsWith('/api/plans/')) {
+      return true;
+    }
+
+    if (path === '/api/demo-examples') {
+      return true;
+    }
+
+    if (path.startsWith('/api/public/')) {
+      return true;
+    }
+
+    return false;
   }
 
   private isMercadoPagoRootWebhookRequest(

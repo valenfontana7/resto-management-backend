@@ -249,6 +249,9 @@ export class SuperAdminService {
         enabled: settings.maintenanceEnabled,
         message: settings.maintenanceMessage || '',
       },
+      security: {
+        registrationDisabled: settings.registrationDisabled ?? false,
+      },
     };
   }
 
@@ -323,6 +326,12 @@ export class SuperAdminService {
       }
     }
 
+    if (dto.security) {
+      if (dto.security.registrationDisabled !== undefined) {
+        updateData.registrationDisabled = dto.security.registrationDisabled;
+      }
+    }
+
     if (settings) {
       settings = await this.prisma.systemSettings.update({
         where: { id: settings.id },
@@ -369,6 +378,9 @@ export class SuperAdminService {
         maintenance: {
           enabled: settings.maintenanceEnabled,
           message: settings.maintenanceMessage || '',
+        },
+        security: {
+          registrationDisabled: settings.registrationDisabled ?? false,
         },
       },
     };

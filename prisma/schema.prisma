@@ -1105,6 +1105,7 @@ model SystemSettings {
   webhookUrl             String?
   maintenanceEnabled     Boolean  @default(false)
   maintenanceMessage     String?
+  registrationDisabled   Boolean  @default(false)
   updatedAt              DateTime @updatedAt
   updatedBy              String?
 

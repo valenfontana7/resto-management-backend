@@ -1,4 +1,12 @@
-import { Controller, Post, Get, Body, Res, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Res,
+  UseGuards,
+  Req,
+} from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -27,7 +35,7 @@ import { Roles } from './decorators/roles.decorator';
 import { RolesGuard } from './guards/roles.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import type { RequestUser } from './decorators/current-user.decorator';
-import type { Response } from 'express';
+import type { Response, Request } from 'express';
 
 @ApiTags('Authentication')
 @Controller('api/auth')
@@ -51,6 +59,14 @@ export class AuthController {
     });
   }
 
+  private getClientIp(req: Request): string {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.trim()) {
+      return forwarded.split(',')[0].trim();
+    }
+    return req.ip || req.socket?.remoteAddress || 'unknown';
+  }
+
   @Post('impersonate')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SUPER_ADMIN')
@@ -72,9 +88,12 @@ export class AuthController {
   @ApiResponse({ status: 409, description: 'Email already exists' })
   async register(
     @Body() dto: RegisterDto,
+    @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.authService.register(dto);
+    const result = await this.authService.register(dto, {
+      ip: this.getClientIp(req),
+    });
     this.setAuthCookie(res, result.token);
     return result;
   }
@@ -105,8 +124,13 @@ export class AuthController {
     status: 200,
     description: 'Magic link sent (account created if missing)',
   })
-  async registerWithMagicLink(@Body() dto: RegisterMagicLinkDto) {
-    return this.authService.registerWithMagicLink(dto);
+  async registerWithMagicLink(
+    @Body() dto: RegisterMagicLinkDto,
+    @Req() req: Request,
+  ) {
+    return this.authService.registerWithMagicLink(dto, {
+      ip: this.getClientIp(req),
+    });
   }
 
   @Public()

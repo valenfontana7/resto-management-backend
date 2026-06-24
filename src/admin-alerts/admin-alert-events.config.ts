@@ -12,6 +12,7 @@ export const ADMIN_ALERT_EVENT_TOGGLE_DEFAULTS = {
   trialDisabled: true,
   billingControlsUpdated: true,
   edgeSyncStale: true,
+  registrationAbuseSpike: true,
 } as const;
 
 export type AdminAlertEventToggleKey =
@@ -36,6 +37,7 @@ export const ADMIN_ALERT_EVENT_KEY_MAP: Record<
   TRIAL_DISABLED: 'trialDisabled',
   BILLING_CONTROLS_UPDATED: 'billingControlsUpdated',
   EDGE_SYNC_STALE: 'edgeSyncStale',
+  REGISTRATION_ABUSE_SPIKE: 'registrationAbuseSpike',
 };
 
 export const REGISTRATION_ADMIN_ALERT_EVENT_KEYS =
@@ -45,6 +47,7 @@ export const REGISTRATION_ADMIN_ALERT_EVENT_KEYS =
     'userUpdated',
     'restaurantStatusChanged',
     'restaurantDeactivated',
+    'registrationAbuseSpike',
   ]);
 
 export const PAYMENT_ADMIN_ALERT_EVENT_KEYS = new Set<AdminAlertEventToggleKey>(

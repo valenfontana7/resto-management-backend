@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { CallMeBotService } from '../notifications/callmebot.service';
 import {
   ADMIN_ALERT_EVENT_KEY_MAP,
   REGISTRATION_ADMIN_ALERT_EVENT_KEYS,
@@ -49,6 +50,18 @@ export interface AdminEventAlertPayload {
   data?: Record<string, unknown>;
 }
 
+export interface RegistrationAbuseAlertPayload {
+  source: string;
+  reason: string;
+  ip: string;
+  email: string;
+  name?: string;
+  globalCount?: number;
+  ipCount?: number;
+  identityCount?: number;
+  limit?: number;
+}
+
 interface ResolvedAdminAlertSettings {
   notifyNewRegistrations: boolean;
   notifyPaymentAlerts: boolean;
@@ -70,6 +83,7 @@ export class AdminAlertsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
+    @Optional() private readonly callMeBot?: CallMeBotService,
   ) {}
 
   private async getSuperAdminRecipients(): Promise<string[]> {
@@ -198,6 +212,81 @@ export class AdminAlertsService {
     }
 
     return settings.adminEvents[eventKey];
+  }
+
+  private getPlatformWhatsAppConfig(): {
+    phone: string;
+    apiKey: string;
+  } | null {
+    const phone = process.env.PLATFORM_ALERT_WHATSAPP_PHONE?.trim();
+    const apiKey = process.env.PLATFORM_ALERT_WHATSAPP_API_KEY?.trim();
+    if (!phone || !apiKey) return null;
+    return { phone, apiKey };
+  }
+
+  private async notifyPlatformWhatsApp(text: string): Promise<boolean> {
+    const config = this.getPlatformWhatsAppConfig();
+    if (!config || !this.callMeBot) return false;
+    return this.callMeBot.sendMessage(config.phone, config.apiKey, text);
+  }
+
+  private buildRegistrationAbuseMessage(
+    payload: RegistrationAbuseAlertPayload,
+  ): string {
+    const lines = [
+      '🚨 Bentoo · actividad sospechosa en registros',
+      `Motivo: ${payload.reason}`,
+      `Email: ${payload.email}`,
+    ];
+
+    if (payload.name) lines.push(`Nombre: ${payload.name}`);
+    lines.push(`IP: ${payload.ip}`);
+    if (payload.globalCount != null) {
+      lines.push(`Registros recientes: ${payload.globalCount}`);
+    }
+    if (payload.ipCount != null) {
+      lines.push(`Intentos desde IP: ${payload.ipCount}`);
+    }
+    if (payload.identityCount != null) {
+      lines.push(`Intentos misma identidad: ${payload.identityCount}`);
+    }
+    if (payload.limit != null) {
+      lines.push(`Umbral: ${payload.limit}`);
+    }
+
+    lines.push('');
+    lines.push('Acción sugerida: /master/settings → Modo mantenimiento ON');
+    lines.push('Panel: bentoo.com.ar/master/users');
+
+    return lines.join('\n');
+  }
+
+  async notifyRegistrationAbuse(
+    payload: RegistrationAbuseAlertPayload,
+  ): Promise<boolean> {
+    const message = this.buildRegistrationAbuseMessage(payload);
+    const whatsappSent = await this.notifyPlatformWhatsApp(message);
+
+    const emailSent = await this.notifyAdminEvent({
+      source: payload.source,
+      event: 'REGISTRATION_ABUSE_SPIKE',
+      subject: '🚨 Registros sospechosos detectados',
+      title: 'Posible abuso de registro',
+      message,
+      data: {
+        reason: payload.reason,
+        ip: payload.ip,
+        email: payload.email,
+        name: payload.name ?? null,
+        globalCount: payload.globalCount ?? null,
+        ipCount: payload.ipCount ?? null,
+        identityCount: payload.identityCount ?? null,
+        limit: payload.limit ?? null,
+        whatsappSent,
+      },
+    });
+
+    return whatsappSent || emailSent;
   }
 
   async notifyUserRegistered(

@@ -35,6 +35,8 @@ import {
   normalizeRoleCode,
   normalizePermissionList,
 } from '../common/utils/role.utils';
+import { normalizeEmailForStorage } from '../common/utils/email-identity.util';
+import { RegistrationAbuseService } from './services/registration-abuse.service';
 
 export interface JwtPayload {
   sub: string; // userId
@@ -83,10 +85,11 @@ export class AuthService {
     private readonly rolesCatalog: RolesCatalogService,
     @Optional() private readonly adminAlerts?: AdminAlertsService,
     @Optional() private readonly emailService?: EmailService,
+    @Optional() private readonly registrationAbuse?: RegistrationAbuseService,
   ) {}
 
   private normalizeEmail(email: string): string {
-    return email.trim().toLowerCase();
+    return normalizeEmailForStorage(email);
   }
 
   private hashLoginToken(token: string): string {
@@ -136,13 +139,23 @@ export class AuthService {
     return url.toString();
   }
 
-  async register(dto: RegisterDto): Promise<AuthResponse> {
+  async register(
+    dto: RegisterDto,
+    meta?: { ip?: string },
+  ): Promise<AuthResponse> {
+    await this.registrationAbuse?.assertRegistrationAllowed({
+      ip: meta?.ip ?? 'unknown',
+      email: dto.email,
+      name: dto.name,
+      source: 'auth.register',
+    });
+
     const normalizedEmail = this.normalizeEmail(dto.email);
 
-    // Verificar si el email ya existe
     const existingUser = await this.prisma.user.findFirst({
       where: {
         email: { equals: normalizedEmail, mode: 'insensitive' },
+        deletedAt: null,
       },
     });
 
@@ -183,7 +196,7 @@ export class AuthService {
         },
       });
 
-      void this.adminAlerts?.notifyUserRegistered({
+      void this.maybeNotifyUserRegistered({
         source: 'auth.register',
         userId: user.id,
         name: user.name,
@@ -235,7 +248,7 @@ export class AuthService {
       return { user, restaurant };
     });
 
-    void this.adminAlerts?.notifyUserRegistered({
+    void this.maybeNotifyUserRegistered({
       source: 'auth.register',
       userId: result.user.id,
       name: result.user.name,
@@ -297,7 +310,15 @@ export class AuthService {
 
   async registerWithMagicLink(
     dto: RegisterMagicLinkDto,
+    meta?: { ip?: string },
   ): Promise<MagicLinkRequestResponse> {
+    await this.registrationAbuse?.assertRegistrationAllowed({
+      ip: meta?.ip ?? 'unknown',
+      email: dto.email,
+      name: dto.name,
+      source: 'auth.register-magic-link',
+    });
+
     const normalizedEmail = this.normalizeEmail(dto.email);
     const name = dto.name?.trim();
     if (!name) {
@@ -324,7 +345,7 @@ export class AuthService {
         },
       });
 
-      void this.adminAlerts?.notifyUserRegistered({
+      void this.maybeNotifyUserRegistered({
         source: 'auth.register-magic-link',
         userId: created.id,
         name: created.name,
@@ -1274,6 +1295,19 @@ export class AuthService {
     });
 
     return await this.generateAuthResponse(updatedUser as User);
+  }
+
+  private async maybeNotifyUserRegistered(
+    payload: Parameters<AdminAlertsService['notifyUserRegistered']>[0],
+  ): Promise<void> {
+    if (!this.adminAlerts) return;
+
+    const suppress =
+      (await this.registrationAbuse?.shouldSuppressRoutineRegistrationAlerts()) ??
+      false;
+    if (suppress) return;
+
+    void this.adminAlerts.notifyUserRegistered(payload);
   }
 
   private generateSlug(name: string): string {

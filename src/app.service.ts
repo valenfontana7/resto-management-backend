@@ -55,6 +55,7 @@ export class AppService {
       select: {
         maintenanceEnabled: true,
         maintenanceMessage: true,
+        registrationDisabled: true,
         updatedAt: true,
       },
     });
@@ -65,6 +66,9 @@ export class AppService {
         message:
           settings?.maintenanceMessage?.trim() ||
           'El sistema esta en mantenimiento. Intenta nuevamente en unos minutos.',
+      },
+      security: {
+        registrationDisabled: settings?.registrationDisabled ?? false,
       },
       updatedAt: settings?.updatedAt?.toISOString?.() ?? null,
       timestamp: new Date().toISOString(),
