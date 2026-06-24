@@ -11,6 +11,7 @@ import {
   IsNumber,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { BotDefenseDto } from '../../common/dto/bot-defense.dto';
 
 export enum OrderType {
   DINE_IN = 'DINE_IN',
@@ -77,7 +78,7 @@ export class OrderItemDto {
   selectedModifiers?: SelectedModifierDto[];
 }
 
-export class CreateOrderDto {
+export class CreateOrderDto extends BotDefenseDto {
   @IsString()
   @IsNotEmpty()
   customerName: string;

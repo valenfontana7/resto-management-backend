@@ -6,8 +6,9 @@ import {
   Matches,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
+import { BotDefenseDto } from '../../common/dto/bot-defense.dto';
 
-export class RegisterDto {
+export class RegisterDto extends BotDefenseDto {
   @ApiProperty({ example: 'john@example.com' })
   @IsEmail()
   email: string;
@@ -76,7 +77,7 @@ export class RequestMagicLinkDto {
   redirect?: string;
 }
 
-export class RegisterMagicLinkDto {
+export class RegisterMagicLinkDto extends BotDefenseDto {
   @ApiProperty({ example: 'john@example.com' })
   @IsEmail()
   email: string;

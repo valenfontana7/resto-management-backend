@@ -15,6 +15,8 @@ import {
   ApiOperation,
   ApiResponse,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import type { Request } from 'express';
 import { OrdersService } from './orders.service';
 import {
   CreateOrderDto,
@@ -27,22 +29,42 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/strategies/jwt.strategy';
+import { BotDefenseService } from '../common/services/bot-defense.service';
+import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
+import { getClientIp } from '../common/utils/client-ip.util';
 
 @ApiTags('orders')
 @Controller('api/restaurants/:restaurantId')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly botDefense: BotDefenseService,
+    private readonly publicWriteAbuse: PublicWriteAbuseService,
+  ) {}
 
   // Public endpoint para crear órdenes (desde el menú público)
   @Public()
   @Post('orders')
+  @Throttle({ default: { ttl: 60_000, limit: 15 } })
   @ApiOperation({ summary: 'Create a new order (public)' })
   @ApiResponse({ status: 201, description: 'Order created successfully' })
   async create(
     @Param('restaurantId') restaurantId: string,
     @Body() createDto: CreateOrderDto,
-    @Req() req: any,
+    @Req() req: Request,
   ) {
+    if (this.botDefense.isHoneypotTriggered(createDto.companyWebsite)) {
+      this.botDefense.logHoneypotHit('orders.create', { restaurantId });
+      await this.botDefense.applyBotDelayMs();
+      return this.ordersService.buildDecoyPublicOrder(restaurantId, createDto);
+    }
+
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req),
+      scope: 'order',
+      restaurantId,
+    });
+
     const origin = this.getOrigin(req);
     return this.ordersService.create(restaurantId, createDto, origin);
   }

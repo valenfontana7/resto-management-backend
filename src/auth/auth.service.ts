@@ -37,6 +37,7 @@ import {
 } from '../common/utils/role.utils';
 import { normalizeEmailForStorage } from '../common/utils/email-identity.util';
 import { RegistrationAbuseService } from './services/registration-abuse.service';
+import { BotDefenseService } from '../common/services/bot-defense.service';
 
 export interface JwtPayload {
   sub: string; // userId
@@ -86,6 +87,7 @@ export class AuthService {
     @Optional() private readonly adminAlerts?: AdminAlertsService,
     @Optional() private readonly emailService?: EmailService,
     @Optional() private readonly registrationAbuse?: RegistrationAbuseService,
+    @Optional() private readonly botDefense?: BotDefenseService,
   ) {}
 
   private normalizeEmail(email: string): string {
@@ -143,6 +145,21 @@ export class AuthService {
     dto: RegisterDto,
     meta?: { ip?: string },
   ): Promise<AuthResponse> {
+    if (this.botDefense?.isHoneypotTriggered(dto.companyWebsite)) {
+      this.botDefense.logHoneypotHit('auth.register', {
+        ip: meta?.ip,
+        email: dto.email,
+      });
+      await this.botDefense.applyBotDelayMs();
+      return this.botDefense.buildDecoyAuthResponse({
+        email: dto.email,
+        name: dto.name,
+      });
+    }
+
+    await this.botDefense?.assertTurnstileToken(dto.turnstileToken);
+    this.botDefense?.assertRegistrationEmailPolicy(dto.email);
+
     await this.registrationAbuse?.assertRegistrationAllowed({
       ip: meta?.ip ?? 'unknown',
       email: dto.email,
@@ -312,6 +329,18 @@ export class AuthService {
     dto: RegisterMagicLinkDto,
     meta?: { ip?: string },
   ): Promise<MagicLinkRequestResponse> {
+    if (this.botDefense?.isHoneypotTriggered(dto.companyWebsite)) {
+      this.botDefense.logHoneypotHit('auth.register-magic-link', {
+        ip: meta?.ip,
+        email: dto.email,
+      });
+      await this.botDefense.applyBotDelayMs();
+      return this.botDefense.buildDecoyMagicLinkResponse();
+    }
+
+    await this.botDefense?.assertTurnstileToken(dto.turnstileToken);
+    this.botDefense?.assertRegistrationEmailPolicy(dto.email);
+
     await this.registrationAbuse?.assertRegistrationAllowed({
       ip: meta?.ip ?? 'unknown',
       email: dto.email,

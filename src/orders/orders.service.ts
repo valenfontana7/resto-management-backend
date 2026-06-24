@@ -1808,6 +1808,27 @@ export class OrdersService {
     await this.deliveryDispatchService.dispatchOrder(restaurantId, orderId);
   }
 
+  buildDecoyPublicOrder(restaurantId: string, createDto: CreateOrderDto) {
+    void restaurantId;
+    void createDto;
+    const decoyToken = crypto.randomBytes(16).toString('hex');
+    const now = new Date();
+
+    return {
+      order: {
+        id: `decoy-${crypto.randomBytes(8).toString('hex')}`,
+        orderNumber: `DEC-${now.getTime()}`,
+        status: OrderStatus.PENDING,
+        publicToken: decoyToken,
+        createdAt: now,
+      },
+      paymentUrl: undefined,
+      sandboxPaymentUrl: undefined,
+      isSandbox: false,
+      publicTrackingToken: decoyToken,
+    };
+  }
+
   private parseEstimatedTime(value?: string | null): number | undefined {
     if (!value) return undefined;
 

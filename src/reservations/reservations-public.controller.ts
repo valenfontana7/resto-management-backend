@@ -6,11 +6,17 @@ import {
   Param,
   HttpCode,
   HttpStatus,
+  Req,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import type { Request } from 'express';
 import { ReservationsService } from './reservations.service';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { Public } from '../auth/decorators/public.decorator';
+import { BotDefenseService } from '../common/services/bot-defense.service';
+import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
+import { getClientIp } from '../common/utils/client-ip.util';
 
 /**
  * Controlador público para reservas (endpoints sin autenticación)
@@ -19,10 +25,15 @@ import { Public } from '../auth/decorators/public.decorator';
 @Controller()
 @Public() // Marcar todo el controlador como público
 export class ReservationsPublicController {
-  constructor(private readonly reservationsService: ReservationsService) {}
+  constructor(
+    private readonly reservationsService: ReservationsService,
+    private readonly botDefense: BotDefenseService,
+    private readonly publicWriteAbuse: PublicWriteAbuseService,
+  ) {}
 
   @Post('api/restaurants/:restaurantId/reservations')
   @HttpCode(HttpStatus.CREATED)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @ApiOperation({
     summary: 'Crear nueva reserva (público - no requiere autenticación)',
   })
@@ -58,7 +69,25 @@ export class ReservationsPublicController {
   async createReservation(
     @Param('restaurantId') restaurantId: string,
     @Body() createDto: CreateReservationDto,
+    @Req() req: Request,
   ) {
+    if (this.botDefense.isHoneypotTriggered(createDto.companyWebsite)) {
+      this.botDefense.logHoneypotHit('reservations.create', { restaurantId });
+      await this.botDefense.applyBotDelayMs();
+      return {
+        reservation: this.reservationsService.buildDecoyPublicReservation(
+          restaurantId,
+          createDto,
+        ),
+      };
+    }
+
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req),
+      scope: 'reservation',
+      restaurantId,
+    });
+
     const reservation = await this.reservationsService.createPublic(
       restaurantId,
       createDto,
@@ -67,6 +96,7 @@ export class ReservationsPublicController {
   }
 
   @Get('api/reservations/:reservationId')
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
   @ApiOperation({
     summary: 'Obtener reserva por ID (público - no requiere autenticación)',
   })

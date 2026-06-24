@@ -90,6 +90,30 @@ export class ReservationsService {
     return this.formatReservation(reservation);
   }
 
+  buildDecoyPublicReservation(
+    restaurantId: string,
+    createDto: CreateReservationDtoPublic,
+  ) {
+    const now = new Date();
+    return {
+      id: `decoy-${now.getTime()}`,
+      restaurantId,
+      customer: {
+        name: createDto.customer.name,
+        email: createDto.customer.email || null,
+        phone: createDto.customer.phone,
+      },
+      date: createDto.date,
+      time: createDto.time,
+      partySize: createDto.partySize,
+      tableId: null,
+      status: 'pending',
+      notes: createDto.notes || null,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
   async create(
     restaurantId: string,
     userId: string,

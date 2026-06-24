@@ -12,6 +12,7 @@ import {
   IsDateString,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { BotDefenseDto } from '../../common/dto/bot-defense.dto';
 
 class CustomerDto {
   @ApiProperty({ example: 'Juan Pérez', minLength: 3 })
@@ -30,7 +31,7 @@ class CustomerDto {
   phone: string;
 }
 
-export class CreateReservationDto {
+export class CreateReservationDto extends BotDefenseDto {
   @ApiProperty({ type: CustomerDto })
   @ValidateNested()
   @Type(() => CustomerDto)

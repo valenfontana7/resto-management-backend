@@ -6,6 +6,9 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { StorageModule } from '../storage/storage.module';
 import { RestaurantOwnerGuard } from './guards/restaurant-owner.guard';
 import { ImageTransformInterceptor } from './interceptors/image-transform.interceptor';
+import { BotDefenseService } from './services/bot-defense.service';
+import { PublicWriteAbuseService } from './services/public-write-abuse.service';
+import { OnboardingAiQuotaService } from './services/onboarding-ai-quota.service';
 
 /**
  * Módulo global que provee servicios compartidos a toda la aplicación.
@@ -30,6 +33,9 @@ import { ImageTransformInterceptor } from './interceptors/image-transform.interc
     RolesCatalogService,
     RestaurantOwnerGuard,
     ImageTransformInterceptor,
+    BotDefenseService,
+    PublicWriteAbuseService,
+    OnboardingAiQuotaService,
   ],
   exports: [
     OwnershipService,
@@ -37,6 +43,9 @@ import { ImageTransformInterceptor } from './interceptors/image-transform.interc
     RolesCatalogService,
     RestaurantOwnerGuard,
     ImageTransformInterceptor,
+    BotDefenseService,
+    PublicWriteAbuseService,
+    OnboardingAiQuotaService,
   ],
 })
 export class CommonModule {}
