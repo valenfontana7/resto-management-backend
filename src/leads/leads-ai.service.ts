@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
 import { Lead, LeadAnalysisType, LeadStatus, Prisma } from '@prisma/client';
@@ -29,7 +34,7 @@ const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash-lite';
 const DEFAULT_DISCOVERY_MODEL = 'gemini-2.5-flash';
 
 @Injectable()
-export class LeadsAiService {
+export class LeadsAiService implements OnModuleInit {
   private readonly logger = new Logger(LeadsAiService.name);
   private readonly gemini: GoogleGenAI | null;
   private readonly geminiModel: string;
@@ -57,6 +62,17 @@ export class LeadsAiService {
     if (!apiKey) {
       this.logger.warn(
         'GEMINI_API_KEY not configured - leads AI will use heuristic responses',
+      );
+    }
+  }
+
+  onModuleInit(): void {
+    this.logger.log(
+      `Leads AI models — diagnosis/messages: ${this.geminiModel}, discovery: ${this.discoveryModel}`,
+    );
+    if (this.discoveryModel.includes('lite')) {
+      this.logger.warn(
+        'LEADS_DISCOVERY_MODEL apunta a un modelo lite; la prospección puede fallar más seguido. Usá gemini-2.5-flash.',
       );
     }
   }
@@ -185,32 +201,9 @@ export class LeadsAiService {
     let errorMessage: string | undefined;
 
     try {
-      const response = await this.gemini.models.generateContent({
-        model: this.discoveryModel,
-        contents: buildDiscoveryPrompt(promptDto),
-        config: {
-          tools: [{ googleSearch: {} }],
-          systemInstruction:
-            'Sos un investigador comercial para Bentoo (SaaS restaurantes Argentina). Usa Google Search para encontrar negocios gastronomicos REALES. Respondé solo con JSON valido segun el esquema pedido en el prompt. No inventes locales. Espanol rioplatense.',
-          temperature: 0.2,
-          maxOutputTokens: 4096,
-        },
-      });
-
-      const raw = response.text?.trim();
-      if (!raw) throw new Error('Empty Gemini discovery response');
-
-      try {
-        parsed = parseDiscoveryResponse(raw);
-      } catch (parseError) {
-        const message =
-          parseError instanceof Error ? parseError.message : String(parseError);
-        throw new Error(`PARSE_FAILED: ${message}`);
-      }
-
-      sources = extractGroundingSources(
-        response.candidates?.[0]?.groundingMetadata,
-      );
+      const discoveryResult = await this.runDiscoveryAttempt(promptDto);
+      parsed = discoveryResult.parsed;
+      sources = discoveryResult.sources;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`Gemini discovery failed: ${message}`);
@@ -302,6 +295,67 @@ export class LeadsAiService {
         },
       },
     });
+  }
+
+  private async runDiscoveryAttempt(dto: DiscoverLeadsDto): Promise<{
+    parsed: {
+      searchSummary: string;
+      candidates: LeadDiscoveryCandidateRaw[];
+    };
+    sources: string[];
+  }> {
+    const maxAttempts = 2;
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await this.gemini!.models.generateContent({
+          model: this.discoveryModel,
+          contents: buildDiscoveryPrompt(dto),
+          config: {
+            tools: [{ googleSearch: {} }],
+            systemInstruction:
+              'Sos un investigador comercial para Bentoo (SaaS restaurantes Argentina). Usa Google Search para encontrar negocios gastronomicos REALES. Respondé solo con JSON valido segun el esquema pedido en el prompt. No inventes locales. Espanol rioplatense.',
+            temperature: attempt === 1 ? 0.2 : 0.1,
+            maxOutputTokens: 4096,
+          },
+        });
+
+        const raw = response.text?.trim();
+        if (!raw) throw new Error('Empty Gemini discovery response');
+
+        let parsed: {
+          searchSummary: string;
+          candidates: LeadDiscoveryCandidateRaw[];
+        };
+        try {
+          parsed = parseDiscoveryResponse(raw);
+        } catch (parseError) {
+          const message =
+            parseError instanceof Error
+              ? parseError.message
+              : String(parseError);
+          throw new Error(`PARSE_FAILED: ${message}`);
+        }
+
+        return {
+          parsed,
+          sources: extractGroundingSources(
+            response.candidates?.[0]?.groundingMetadata,
+          ),
+        };
+      } catch (error) {
+        lastError = error;
+        const message = error instanceof Error ? error.message : String(error);
+        if (attempt < maxAttempts) {
+          this.logger.warn(
+            `Discovery attempt ${attempt}/${maxAttempts} failed (${this.discoveryModel}): ${message}`,
+          );
+        }
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
   private async generateDiagnosis(lead: Lead): Promise<LeadBusinessDiagnosis> {

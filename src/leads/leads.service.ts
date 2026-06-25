@@ -6,7 +6,10 @@ import { UpdateLeadDto } from './dto/update-lead.dto';
 import { LeadFiltersDto } from './dto/lead-filters.dto';
 import { LeadScoringService } from './lead-scoring.service';
 import { getLeadPriority } from './lead-scoring.rules';
-import { findLeadDuplicateMatch } from './leads-discovery.helpers';
+import {
+  findLeadDuplicateMatch,
+  normalizeInstagramHandle,
+} from './leads-discovery.helpers';
 import type {
   ImportLeadsResult,
   CheckImportDuplicatesResult,
@@ -83,7 +86,7 @@ export class LeadsService {
         email: dto.email?.trim() || null,
         phone: dto.phone?.trim() || null,
         whatsapp: dto.whatsapp?.trim() || null,
-        instagram: dto.instagram?.trim() || null,
+        instagram: normalizeInstagramHandle(dto.instagram) ?? null,
         website: dto.website?.trim() || null,
         city: dto.city?.trim() || null,
         notes: dto.notes?.trim() || null,
@@ -142,7 +145,7 @@ export class LeadsService {
           whatsapp: dto.whatsapp?.trim() || null,
         }),
         ...(dto.instagram !== undefined && {
-          instagram: dto.instagram?.trim() || null,
+          instagram: normalizeInstagramHandle(dto.instagram) ?? null,
         }),
         ...(dto.website !== undefined && {
           website: dto.website?.trim() || null,

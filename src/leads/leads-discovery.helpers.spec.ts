@@ -1,6 +1,7 @@
 import {
   buildLeadDedupKey,
   normalizeConfidence,
+  normalizeInstagramHandle,
   parseDiscoveryResponse,
   nameSimilarity,
   findLeadDuplicateMatch,
@@ -15,6 +16,13 @@ describe('leads-discovery.helpers', () => {
   it('normalizes confidence values', () => {
     expect(normalizeConfidence('high')).toBe('high');
     expect(normalizeConfidence('invalid')).toBe('medium');
+  });
+
+  it('normalizes instagram handles from full URLs', () => {
+    expect(
+      normalizeInstagramHandle('https://www.instagram.com/tres.cafe/'),
+    ).toBe('tres.cafe');
+    expect(normalizeInstagramHandle('@tres.cafe')).toBe('tres.cafe');
   });
 
   it('parses raw JSON discovery response', () => {

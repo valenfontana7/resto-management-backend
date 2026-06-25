@@ -112,6 +112,43 @@ export function findLeadDuplicateMatch(
   return best;
 }
 
+/** Handle limpio para guardar y mostrar (sin URL ni @). */
+export function normalizeInstagramHandle(
+  value?: string | null,
+): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+
+  if (/instagram\.com/i.test(trimmed)) {
+    const withProtocol = /^https?:\/\//i.test(trimmed)
+      ? trimmed
+      : `https://${trimmed}`;
+    try {
+      const url = new URL(withProtocol);
+      const segments = url.pathname.split('/').filter(Boolean);
+      const handle = segments[0];
+      if (
+        handle &&
+        handle !== 'p' &&
+        handle !== 'reel' &&
+        handle !== 'stories'
+      ) {
+        return handle;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  const handle = trimmed
+    .replace(/^@/, '')
+    .replace(/^\/+/, '')
+    .split('/')
+    .filter(Boolean)[0];
+
+  return handle || undefined;
+}
+
 export function buildDiscoveryPrompt(dto: DiscoverLeadsDto): string {
   const maxResults = dto.maxResults ?? 10;
   const parts = [
@@ -127,6 +164,7 @@ export function buildDiscoveryPrompt(dto: DiscoverLeadsDto): string {
     `Incluye whyFit explicando por qué serían buenos clientes para Bentoo (SaaS de restaurantes: web, menú digital, pedidos, reservas, MercadoPago).`,
     `confidence: high si hay datos claros de la web, medium si parcial, low si inferido.`,
     `sourceUrl: URL de referencia si está disponible.`,
+    `instagram: solo el usuario/handle (ej: tres.cafe o @tres.cafe), sin URL completa de instagram.com.`,
     `No inventes negocios. Si no encontrás suficientes, devuelve menos candidatos.`,
     '',
     'Respondé ÚNICAMENTE con JSON válido (sin markdown ni texto extra) con esta forma:',
@@ -204,6 +242,7 @@ export function enrichDiscoveryCandidates(
 
     return {
       ...candidate,
+      instagram: normalizeInstagramHandle(candidate.instagram),
       id: randomUUID(),
       confidence: normalizeConfidence(candidate.confidence),
       score,
@@ -231,7 +270,7 @@ export function toCreateLeadFromCandidate(
     category: candidate.category?.trim() || undefined,
     city: candidate.city?.trim() || undefined,
     website: candidate.website?.trim() || undefined,
-    instagram: candidate.instagram?.trim() || undefined,
+    instagram: normalizeInstagramHandle(candidate.instagram),
     whatsapp: candidate.whatsapp?.trim() || undefined,
     hasWebsite: candidate.hasWebsite ?? false,
     hasOnlineMenu: candidate.hasOnlineMenu ?? false,
