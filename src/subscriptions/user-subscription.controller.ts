@@ -27,6 +27,13 @@ export class UserSubscriptionController {
     return this.subscriptionsService.getAccountSubscription(user.userId);
   }
 
+  @Get('subscription/invoices')
+  @ApiOperation({ summary: 'Facturas de la suscripción de la cuenta' })
+  async getAccountInvoices(@CurrentUser() user: RequestUser) {
+    await this.authService.validateUser(user.userId);
+    return this.subscriptionsService.getAccountInvoices(user.userId);
+  }
+
   @Get('subscription/summary')
   @ApiOperation({ summary: 'Resumen de suscripción de la cuenta' })
   async getAccountSubscriptionSummary(@CurrentUser() user: RequestUser) {

@@ -9,9 +9,16 @@ import { AuthModule } from '../auth/auth.module';
 import { KitchenModule } from '../kitchen/kitchen.module';
 import { AdminAlertsModule } from '../admin-alerts/admin-alerts.module';
 import { StorageModule } from '../storage/storage.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
-  imports: [AuthModule, KitchenModule, AdminAlertsModule, StorageModule],
+  imports: [
+    AuthModule,
+    KitchenModule,
+    AdminAlertsModule,
+    StorageModule,
+    SubscriptionsModule,
+  ],
   controllers: [SuperAdminController],
   providers: [
     SuperAdminService,

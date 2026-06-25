@@ -56,6 +56,68 @@ export class SubscriptionsService {
     }
   }
 
+  private async findBillingSubscription(
+    restaurantId: string,
+    args?: Parameters<SubscriptionResolverService['resolveForRestaurant']>[1],
+  ) {
+    return this.subscriptionResolver.resolveForRestaurant(restaurantId, args);
+  }
+
+  private async requireBillingSubscription(
+    restaurantId: string,
+    args?: Parameters<SubscriptionResolverService['resolveForRestaurant']>[1],
+  ) {
+    const subscription = await this.findBillingSubscription(restaurantId, args);
+    if (!subscription) {
+      throw new NotFoundException('No existe suscripción para esta cuenta');
+    }
+    return subscription;
+  }
+
+  private async syncOwnedRestaurantFeatures(
+    restaurantId: string,
+    planType: PlanType,
+  ) {
+    const ownerUserId =
+      await this.subscriptionResolver.getBillingUserIdForRestaurant(
+        restaurantId,
+      );
+    const targetRestaurantIds: string[] = [];
+
+    if (ownerUserId) {
+      const memberships = await this.prisma.restaurantMembership.findMany({
+        where: { userId: ownerUserId },
+        include: { role: { select: { name: true } } },
+      });
+      for (const membership of memberships) {
+        const roleName = membership.role?.name ?? '';
+        if (roleName === 'OWNER' || roleName === 'Admin') {
+          targetRestaurantIds.push(membership.restaurantId);
+        }
+      }
+    }
+
+    if (targetRestaurantIds.length === 0) {
+      targetRestaurantIds.push(restaurantId);
+    }
+
+    for (const id of targetRestaurantIds) {
+      const restaurant = await this.prisma.restaurant.findUnique({
+        where: { id },
+        select: { features: true },
+      });
+      if (!restaurant) continue;
+      const adjustedFeatures = adjustFeaturesForPlan(
+        (restaurant.features as Record<string, unknown>) || {},
+        planType,
+      );
+      await this.prisma.restaurant.update({
+        where: { id },
+        data: { features: adjustedFeatures },
+      });
+    }
+  }
+
   /**
    * Crea (o retorna) el mpCustomerId para la suscripción del restaurante.
    */
@@ -63,19 +125,16 @@ export class SubscriptionsService {
     restaurantId: string,
     metadata?: { email?: string; description?: string },
   ): Promise<string> {
-    // Intentar leer suscripción
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { restaurantId },
+    const existing = await this.findBillingSubscription(restaurantId, {
       select: { id: true, mpCustomerId: true },
     });
 
-    if (subscription?.mpCustomerId) return subscription.mpCustomerId;
+    if (existing?.mpCustomerId) return existing.mpCustomerId;
 
     if (!this.mercadopagoService) {
       throw new BadRequestException('MercadoPago no está configurado');
     }
 
-    // Crear customer en la cuenta GLOBAL de la plataforma para suscripciones
     const mpCustomerId = await this.mercadopagoService.createCustomer(
       restaurantId,
       metadata,
@@ -88,12 +147,24 @@ export class SubscriptionsService {
     const isDefaultPlanPaid = (defaultPlan?.price ?? 0) > 0;
     const trialDays = defaultPlan?.trialDays || TRIAL_DAYS;
     const trialEnd = addDays(now, trialDays);
+    const billingUserId =
+      await this.subscriptionResolver.getBillingUserIdForRestaurant(
+        restaurantId,
+      );
 
-    // Upsert subscription row minimalmente
+    if (existing) {
+      await this.prisma.subscription.update({
+        where: { id: existing.id },
+        data: { mpCustomerId },
+      });
+      return mpCustomerId;
+    }
+
     await this.prisma.subscription.upsert({
       where: { restaurantId },
       create: {
         restaurant: { connect: { id: restaurantId } },
+        ...(billingUserId ? { user: { connect: { id: billingUserId } } } : {}),
         plan: { connect: { id: PlanType.STARTER } },
         planType: PlanType.STARTER,
         status: isDefaultPlanPaid
@@ -105,6 +176,7 @@ export class SubscriptionsService {
         trialEnd: isDefaultPlanPaid ? trialEnd : undefined,
         nextPaymentDate: isDefaultPlanPaid ? trialEnd : undefined,
         isFreeAccount: !isDefaultPlanPaid,
+        isBillingAnchor: true,
         mpCustomerId,
       } as any,
       update: { mpCustomerId },
@@ -146,21 +218,32 @@ export class SubscriptionsService {
       });
     }
 
-    // Obtener (o crear) subscription
-    const subscription = await this.prisma.subscription.upsert({
-      where: { restaurantId },
-      create: {
-        restaurant: { connect: { id: restaurantId } },
-        plan: { connect: { id: 'STARTER' } },
-        planType: 'STARTER',
-        status: 'ACTIVE',
-        currentPeriodStart: new Date(),
-        currentPeriodEnd: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 5),
-        isFreeAccount: true,
-        mpCustomerId,
-      } as any,
-      update: {},
-    });
+    // Usar suscripción de cuenta (no crear fila duplicada por restaurante)
+    let subscription = await this.findBillingSubscription(restaurantId);
+    if (!subscription) {
+      const billingUserId =
+        await this.subscriptionResolver.getBillingUserIdForRestaurant(
+          restaurantId,
+        );
+      subscription = await this.prisma.subscription.create({
+        data: {
+          restaurant: { connect: { id: restaurantId } },
+          ...(billingUserId
+            ? { user: { connect: { id: billingUserId } } }
+            : {}),
+          plan: { connect: { id: 'STARTER' } },
+          planType: 'STARTER',
+          status: 'ACTIVE',
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: new Date(
+            Date.now() + 1000 * 60 * 60 * 24 * 365 * 5,
+          ),
+          isFreeAccount: true,
+          isBillingAnchor: true,
+          mpCustomerId,
+        } as any,
+      });
+    }
 
     // ¿es default? si no hay otros
     const existingCount = await this.prisma.subscriptionPaymentMethod.count({
@@ -264,10 +347,11 @@ export class SubscriptionsService {
   }
 
   async listPaymentMethods(restaurantId: string) {
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { restaurantId },
+    const subscription = (await this.findBillingSubscription(restaurantId, {
       include: { paymentMethods: true },
-    });
+    })) as Prisma.SubscriptionGetPayload<{
+      include: { paymentMethods: true };
+    }> | null;
 
     if (!subscription) return { paymentMethods: [] };
 
@@ -305,12 +389,9 @@ export class SubscriptionsService {
   }
 
   async removePaymentMethod(restaurantId: string, paymentMethodId: string) {
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { restaurantId },
+    const subscription = await this.requireBillingSubscription(restaurantId, {
       include: { paymentMethods: true },
     });
-
-    if (!subscription) throw new NotFoundException('Subscription not found');
 
     const pm = await this.prisma.subscriptionPaymentMethod.findUnique({
       where: { id: paymentMethodId },
@@ -356,11 +437,9 @@ export class SubscriptionsService {
     },
     userId?: string,
   ) {
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { restaurantId },
+    const subscription = await this.requireBillingSubscription(restaurantId, {
       include: { paymentMethods: true },
     });
-    if (!subscription) throw new NotFoundException('Subscription not found');
 
     const updates: any = {};
 
@@ -410,7 +489,7 @@ export class SubscriptionsService {
     }
 
     const updated = await this.prisma.subscription.update({
-      where: { restaurantId },
+      where: { id: subscription.id },
       data: updates,
     });
     return { subscription: updated, selectedUserPaymentMethod };
@@ -567,10 +646,7 @@ export class SubscriptionsService {
    * Crear nueva suscripción
    */
   async createSubscription(restaurantId: string, dto: CreateSubscriptionDto) {
-    // Verificar que no exista suscripción activa
-    const existing = await this.prisma.subscription.findUnique({
-      where: { restaurantId },
-    });
+    const existing = await this.findBillingSubscription(restaurantId);
 
     if (
       existing &&
@@ -578,7 +654,7 @@ export class SubscriptionsService {
       existing.status !== SubscriptionStatus.CANCELED
     ) {
       throw new ConflictException(
-        'Ya existe una suscripción activa para este restaurante',
+        'Ya existe una suscripción activa para esta cuenta',
       );
     }
 
@@ -601,22 +677,28 @@ export class SubscriptionsService {
 
     let subscriptionData: Prisma.SubscriptionCreateInput;
 
+    const billingUserId =
+      await this.subscriptionResolver.getBillingUserIdForRestaurant(
+        restaurantId,
+      );
+
     if (!isPaidPlan) {
-      // Plan sin costo: activo inmediatamente, sin trial
       subscriptionData = {
         restaurant: { connect: { id: restaurantId } },
+        ...(billingUserId ? { user: { connect: { id: billingUserId } } } : {}),
         plan: { connect: { id: plan.id } },
         planType,
         status: SubscriptionStatus.ACTIVE,
         currentPeriodStart: now,
         isFreeAccount: true,
-        currentPeriodEnd: addMonths(now, 120), // 10 años, prácticamente sin vencimiento
+        isBillingAnchor: true,
+        currentPeriodEnd: addMonths(now, 120),
       };
     } else {
-      // Planes de pago: inician con trial
       const trialEnd = addDays(now, trialDays);
       subscriptionData = {
         restaurant: { connect: { id: restaurantId } },
+        ...(billingUserId ? { user: { connect: { id: billingUserId } } } : {}),
         plan: { connect: { id: plan.id } },
         planType,
         status: SubscriptionStatus.TRIALING,
@@ -626,14 +708,14 @@ export class SubscriptionsService {
         trialEnd,
         nextPaymentDate: trialEnd,
         isFreeAccount: false,
+        isBillingAnchor: true,
       };
     }
 
-    // Si existe una suscripción cancelada/expirada, actualizarla
     let subscription;
     if (existing) {
       subscription = await this.prisma.subscription.update({
-        where: { restaurantId },
+        where: { id: existing.id },
         data: {
           ...subscriptionData,
           restaurant: undefined,
@@ -828,15 +910,7 @@ export class SubscriptionsService {
     user?: RequestUser,
   ) {
     void user;
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { restaurantId },
-    });
-
-    if (!subscription) {
-      throw new NotFoundException(
-        'No existe suscripción para este restaurante',
-      );
-    }
+    const subscription = await this.requireBillingSubscription(restaurantId);
 
     if (
       subscription.status === SubscriptionStatus.CANCELED ||
@@ -869,20 +943,7 @@ export class SubscriptionsService {
     const isUpgrade = isPlanUpgrade(currentPlan, newPlan);
     let message: string;
 
-    // Obtener las features actuales del restaurante
-    const restaurant = await this.prisma.restaurant.findUnique({
-      where: { id: restaurantId },
-      select: { features: true },
-    });
-
-    // Ajustar features según el nuevo plan
-    const adjustedFeatures = adjustFeaturesForPlan(
-      (restaurant?.features as any) || {},
-      newPlan,
-    );
-
     if (isUpgrade) {
-      // Upgrade: aplicar inmediatamente
       const updateData: any = {
         planId: newPlan,
         planType: newPlan,
@@ -890,7 +951,6 @@ export class SubscriptionsService {
       };
 
       if (subscription.status === SubscriptionStatus.TRIALING) {
-        // Si está en trial y adquiere un plan superior, activar suscripción
         updateData.status = SubscriptionStatus.ACTIVE;
         updateData.trialEnd = null;
         updateData.currentPeriodStart = new Date();
@@ -904,39 +964,28 @@ export class SubscriptionsService {
       }
 
       await this.prisma.subscription.update({
-        where: { restaurantId },
+        where: { id: subscription.id },
         data: updateData,
       });
 
-      // Actualizar features del restaurante
-      await this.prisma.restaurant.update({
-        where: { id: restaurantId },
-        data: { features: adjustedFeatures },
-      });
+      await this.syncOwnedRestaurantFeatures(restaurantId, newPlan);
     } else {
-      // Downgrade a Starter o plan inferior: aplicar al final del período
       await this.prisma.subscription.update({
-        where: { restaurantId },
+        where: { id: subscription.id },
         data: {
-          // Guardamos el nuevo plan en metadata para aplicar al renovar
-          // Por ahora, aplicamos inmediatamente también
           planId: newPlan,
           planType: newPlan,
           isFreeAccount: isNewPlanFree,
         },
       });
 
-      // Actualizar features del restaurante (incluso en downgrade)
-      await this.prisma.restaurant.update({
-        where: { id: restaurantId },
-        data: { features: adjustedFeatures },
-      });
+      await this.syncOwnedRestaurantFeatures(restaurantId, newPlan);
 
       message = `Plan actualizado. El cambio se aplicará al final del período actual (${format(subscription.currentPeriodEnd, "d 'de' MMMM", { locale: es })}). Algunas funcionalidades han sido deshabilitadas según tu nuevo plan.`;
     }
 
     const updatedSubscription = await this.prisma.subscription.findUnique({
-      where: { restaurantId },
+      where: { id: subscription.id },
     });
 
     return {
@@ -949,22 +998,14 @@ export class SubscriptionsService {
    * Cancelar suscripción
    */
   async cancelSubscription(restaurantId: string) {
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { restaurantId },
-    });
-
-    if (!subscription) {
-      throw new NotFoundException(
-        'No existe suscripción para este restaurante',
-      );
-    }
+    const subscription = await this.requireBillingSubscription(restaurantId);
 
     if (subscription.status === SubscriptionStatus.CANCELED) {
       throw new BadRequestException('La suscripción ya está cancelada');
     }
 
     const updatedSubscription = await this.prisma.subscription.update({
-      where: { restaurantId },
+      where: { id: subscription.id },
       data: {
         cancelAtPeriodEnd: true,
         canceledAt: new Date(),
@@ -1019,17 +1060,9 @@ export class SubscriptionsService {
       );
     }
 
-    // Obtener suscripción actual
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { restaurantId },
+    const subscription = await this.requireBillingSubscription(restaurantId, {
       include: { plan: true },
     });
-
-    if (!subscription) {
-      throw new NotFoundException(
-        'No existe suscripción para este restaurante',
-      );
-    }
 
     if (subscription.planId === newPlanId) {
       throw new BadRequestException('Ya estás en este plan');
@@ -1037,10 +1070,10 @@ export class SubscriptionsService {
 
     // Actualizar plan
     const updatedSubscription = await this.prisma.subscription.update({
-      where: { restaurantId },
+      where: { id: subscription.id },
       data: {
         planId: newPlanId,
-        planType: newPlanId as any, // Mantener compatibilidad
+        planType: newPlanId as any,
       },
       include: {
         plan: {
@@ -1050,6 +1083,8 @@ export class SubscriptionsService {
         },
       },
     });
+
+    await this.syncOwnedRestaurantFeatures(restaurantId, newPlanId as PlanType);
 
     this.logger.log(
       `Restaurant ${restaurantId} cambió de plan ${subscription.planId} a ${newPlanId}`,
@@ -1065,15 +1100,7 @@ export class SubscriptionsService {
    * Reactivar suscripción cancelada
    */
   async reactivateSubscription(restaurantId: string) {
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { restaurantId },
-    });
-
-    if (!subscription) {
-      throw new NotFoundException(
-        'No existe suscripción para este restaurante',
-      );
-    }
+    const subscription = await this.requireBillingSubscription(restaurantId);
 
     if (
       !subscription.cancelAtPeriodEnd &&
@@ -1090,7 +1117,7 @@ export class SubscriptionsService {
     }
 
     const updatedSubscription = await this.prisma.subscription.update({
-      where: { restaurantId },
+      where: { id: subscription.id },
       data: {
         cancelAtPeriodEnd: false,
         canceledAt: null,
@@ -1126,8 +1153,7 @@ export class SubscriptionsService {
    * Obtener facturas de la suscripción
    */
   async getInvoices(restaurantId: string) {
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { restaurantId },
+    const subscription = await this.findBillingSubscription(restaurantId, {
       select: { id: true },
     });
 
@@ -1150,10 +1176,18 @@ export class SubscriptionsService {
     restaurantId: string,
     invoiceId: string,
   ): Promise<string> {
+    const billingSubscription = await this.findBillingSubscription(
+      restaurantId,
+      { select: { id: true } },
+    );
+    if (!billingSubscription) {
+      throw new NotFoundException('Factura no encontrada');
+    }
+
     const invoice = await this.prisma.invoice.findFirst({
       where: {
         id: invoiceId,
-        subscription: { restaurantId },
+        subscriptionId: billingSubscription.id,
       },
       include: {
         subscription: {
@@ -1247,9 +1281,7 @@ export class SubscriptionsService {
         `Payment ${paymentId} skipped for restaurant ${restaurantId} because it has a SUPER_ADMIN user`,
       );
       // Retornar la suscripción existente sin procesar pago
-      const existingSub = await this.prisma.subscription.findUnique({
-        where: { restaurantId },
-      });
+      const existingSub = await this.findBillingSubscription(restaurantId);
       return existingSub;
     }
 
@@ -1263,9 +1295,7 @@ export class SubscriptionsService {
         `Payment ${paymentId} already processed (invoice ${existingInvoice.id}), skipping`,
       );
       // Retornar la suscripción existente
-      const existingSub = await this.prisma.subscription.findUnique({
-        where: { restaurantId },
-      });
+      const existingSub = await this.findBillingSubscription(restaurantId);
       return existingSub;
     }
 
@@ -1273,32 +1303,50 @@ export class SubscriptionsService {
     const nextBillingDate = addMonths(now, 1);
 
     // Usar transacción atómica para garantizar consistencia
+    const billingUserId =
+      await this.subscriptionResolver.getBillingUserIdForRestaurant(
+        restaurantId,
+      );
+
     const result = await this.prisma.$transaction(async (tx) => {
-      const subscription = await tx.subscription.upsert({
-        where: { restaurantId },
-        create: {
-          restaurant: { connect: { id: restaurantId } },
-          planType,
-          status: SubscriptionStatus.ACTIVE,
-          currentPeriodStart: now,
-          currentPeriodEnd: nextBillingDate,
-          lastPaymentDate: now,
-          lastPaymentAmount: amount,
-          nextPaymentDate: nextBillingDate,
-        },
-        update: {
-          planType,
-          status: SubscriptionStatus.ACTIVE,
-          currentPeriodStart: now,
-          currentPeriodEnd: nextBillingDate,
-          lastPaymentDate: now,
-          lastPaymentAmount: amount,
-          nextPaymentDate: nextBillingDate,
-          trialEnd: null, // Trial terminado
-          cancelAtPeriodEnd: false,
-          canceledAt: null,
-        },
+      const existingBilling = await tx.subscription.findFirst({
+        where: billingUserId
+          ? { userId: billingUserId, isBillingAnchor: true }
+          : { restaurantId },
       });
+
+      const subscription = existingBilling
+        ? await tx.subscription.update({
+            where: { id: existingBilling.id },
+            data: {
+              planType,
+              status: SubscriptionStatus.ACTIVE,
+              currentPeriodStart: now,
+              currentPeriodEnd: nextBillingDate,
+              lastPaymentDate: now,
+              lastPaymentAmount: amount,
+              nextPaymentDate: nextBillingDate,
+              trialEnd: null,
+              cancelAtPeriodEnd: false,
+              canceledAt: null,
+            },
+          })
+        : await tx.subscription.create({
+            data: {
+              restaurant: { connect: { id: restaurantId } },
+              ...(billingUserId
+                ? { user: { connect: { id: billingUserId } } }
+                : {}),
+              planType,
+              status: SubscriptionStatus.ACTIVE,
+              currentPeriodStart: now,
+              currentPeriodEnd: nextBillingDate,
+              lastPaymentDate: now,
+              lastPaymentAmount: amount,
+              nextPaymentDate: nextBillingDate,
+              isBillingAnchor: true,
+            },
+          });
 
       // Crear factura dentro de la misma transacción
       await tx.invoice.create({
@@ -1454,6 +1502,16 @@ export class SubscriptionsService {
     return this.getSubscription(anchor.restaurantId, userId);
   }
 
+  async getAccountInvoices(userId: string) {
+    const anchor = await this.subscriptionResolver.resolveForUser(userId, {
+      select: { restaurantId: true },
+    });
+    if (!anchor?.restaurantId) {
+      return { invoices: [] };
+    }
+    return this.getInvoices(anchor.restaurantId);
+  }
+
   async getAccountSubscriptionSummary(userId: string) {
     const { subscription } = await this.getAccountSubscription(userId);
     if (!subscription?.restaurantId) {
@@ -1549,9 +1607,5 @@ export class SubscriptionsService {
       (subscription.planType as string) ||
       PlanType.STARTER
     );
-  }
-
-  private async resolveBillingSubscription(restaurantId: string) {
-    return this.subscriptionResolver.resolveForRestaurant(restaurantId);
   }
 }
