@@ -10,6 +10,7 @@ import { SubscriptionStatus } from '@prisma/client';
 import { PLAN_NAMES } from '../constants';
 import { PlanType } from '../dto';
 import { PlanEntitlementsService } from '../plans/plan-entitlements.service';
+import { SubscriptionResolverService } from '../subscription-resolver.service';
 
 export const REQUIRED_FEATURE_KEY = 'requiredFeature';
 
@@ -32,6 +33,7 @@ export class FeatureGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly prisma: PrismaService,
     private readonly planEntitlements: PlanEntitlementsService,
+    private readonly subscriptionResolver: SubscriptionResolverService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -62,9 +64,10 @@ export class FeatureGuard implements CanActivate {
       });
     }
 
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { restaurantId },
-    });
+    const subscription = await this.subscriptionResolver.resolveForRestaurant(
+      restaurantId,
+      { select: { status: true, planType: true, planId: true } },
+    );
 
     if (!subscription) {
       throw new ForbiddenException({

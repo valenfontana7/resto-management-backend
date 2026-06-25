@@ -74,6 +74,19 @@ export class CreatePlanDto {
   isPopular?: boolean;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  listPrice?: number;
+
+  @IsOptional()
+  @IsString()
+  promoBadge?: string;
+
+  @IsOptional()
+  @IsString()
+  promoEndsAt?: string;
+
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreatePlanRestrictionDto)

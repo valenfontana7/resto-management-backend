@@ -21,6 +21,9 @@ type SubscriptionPlanDetails = {
   displayName: string;
   description: string;
   price: number;
+  listPrice?: number | null;
+  promoBadge?: string | null;
+  promoEndsAt?: Date | null;
   interval: string;
   trialDays: number;
   color: string;
@@ -53,6 +56,14 @@ const STARTER_RESTRICTIONS: PlanRestrictionSeed[] = [
     value: '1',
     displayName: 'Usuarios',
     description: 'Cantidad de usuarios del sistema',
+    category: 'limits',
+  },
+  {
+    key: 'restaurants',
+    type: 'limit',
+    value: '1',
+    displayName: 'Restaurantes',
+    description: 'Cantidad de locales en la cuenta',
     category: 'limits',
   },
   {
@@ -192,6 +203,14 @@ const STARTER_RESTRICTION_UPDATES: PlanRestrictionSeed[] = [
     value: '1',
     displayName: 'Usuarios',
     description: 'Cantidad de usuarios del sistema',
+    category: 'limits',
+  },
+  {
+    key: 'restaurants',
+    type: 'limit',
+    value: '1',
+    displayName: 'Restaurantes',
+    description: 'Cantidad de locales en la cuenta',
     category: 'limits',
   },
   {
@@ -612,6 +631,14 @@ const PROFESSIONAL_RESTRICTION_UPDATES: PlanRestrictionSeed[] = [
     category: 'limits',
   },
   {
+    key: 'restaurants',
+    type: 'limit',
+    value: '3',
+    displayName: 'Restaurantes',
+    description: 'Cantidad de locales en la cuenta',
+    category: 'limits',
+  },
+  {
     key: 'categories',
     type: 'limit',
     value: '9999',
@@ -695,6 +722,14 @@ const PROFESSIONAL_RESTRICTION_UPDATES: PlanRestrictionSeed[] = [
 
 const ENTERPRISE_RESTRICTION_UPDATES: PlanRestrictionSeed[] = [
   {
+    key: 'restaurants',
+    type: 'limit',
+    value: '9999',
+    displayName: 'Restaurantes',
+    description: 'Locales ilimitados en la cuenta',
+    category: 'limits',
+  },
+  {
     key: 'categories',
     type: 'limit',
     value: '9999',
@@ -735,6 +770,9 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
       displayName: 'Directo',
       description: 'Para empezar a vender por link y QR.',
       price: 1500000,
+      listPrice: 2000000,
+      promoBadge: '25% OFF',
+      promoEndsAt: null,
       interval: 'monthly',
       trialDays: 14,
       color: 'from-stone-500 to-stone-700',
@@ -748,6 +786,9 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
       displayName: 'Directo',
       description: 'Para empezar a vender por link y QR.',
       price: 1500000,
+      listPrice: 2000000,
+      promoBadge: '25% OFF',
+      promoEndsAt: null,
       interval: 'monthly',
       trialDays: 14,
       color: 'from-slate-500 to-slate-600',
@@ -765,6 +806,9 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
       displayName: 'Operación',
       description: 'Para ordenar pedidos, cocina y reservas.',
       price: 3500000,
+      listPrice: 5000000,
+      promoBadge: '30% OFF',
+      promoEndsAt: null,
       interval: 'monthly',
       trialDays: 14,
       color: 'from-teal-500 to-emerald-600',
@@ -778,6 +822,9 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
       displayName: 'Operación',
       description: 'Para ordenar pedidos, cocina y reservas.',
       price: 3500000,
+      listPrice: 5000000,
+      promoBadge: '30% OFF',
+      promoEndsAt: null,
       interval: 'monthly',
       trialDays: 14,
       color: 'from-purple-400 to-purple-600',

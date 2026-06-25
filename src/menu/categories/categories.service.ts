@@ -13,6 +13,7 @@ import {
 import { PLAN_LIMITS } from '../../subscriptions/constants';
 import { PlanType } from '../../subscriptions/dto';
 import { PlanEntitlementsService } from '../../subscriptions/plans/plan-entitlements.service';
+import { SubscriptionResolverService } from '../../subscriptions/subscription-resolver.service';
 import { isUnlimitedLimit } from '../../subscriptions/constants/plan-restrictions.fallback';
 
 /**
@@ -28,6 +29,7 @@ export class CategoriesService {
     private readonly ownership: OwnershipService,
     private readonly imageProcessing: ImageProcessingService,
     private readonly planEntitlements: PlanEntitlementsService,
+    private readonly subscriptionResolver: SubscriptionResolverService,
   ) {}
 
   async findAll(restaurantId: string, userId: string) {
@@ -72,14 +74,12 @@ export class CategoriesService {
   async create(restaurantId: string, userId: string, dto: CreateCategoryDto) {
     await this.ownership.verifyUserOwnsRestaurant(restaurantId, userId);
 
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { restaurantId },
-      select: { planId: true, planType: true },
-    });
     const planId =
-      subscription?.planId ||
-      (subscription?.planType as PlanType) ||
-      PlanType.STARTER;
+      await this.subscriptionResolver.resolvePlanIdForRestaurant(restaurantId);
+    const subscription = await this.subscriptionResolver.resolveForRestaurant(
+      restaurantId,
+      { select: { planType: true } },
+    );
     const maxCategories = await this.planEntitlements.getLimit(
       planId,
       'categories',

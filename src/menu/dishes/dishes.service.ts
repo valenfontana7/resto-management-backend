@@ -13,6 +13,7 @@ import {
 import { PLAN_LIMITS } from '../../subscriptions/constants';
 import { PlanType } from '../../subscriptions/dto';
 import { PlanEntitlementsService } from '../../subscriptions/plans/plan-entitlements.service';
+import { SubscriptionResolverService } from '../../subscriptions/subscription-resolver.service';
 import { isUnlimitedLimit } from '../../subscriptions/constants/plan-restrictions.fallback';
 
 export interface DishFilters {
@@ -35,6 +36,7 @@ export class DishesService {
     private readonly ownership: OwnershipService,
     private readonly imageProcessing: ImageProcessingService,
     private readonly planEntitlements: PlanEntitlementsService,
+    private readonly subscriptionResolver: SubscriptionResolverService,
   ) {}
 
   async findAllPublic(restaurantId: string, filters?: DishFilters) {
@@ -99,14 +101,12 @@ export class DishesService {
   async create(restaurantId: string, userId: string, dto: CreateDishDto) {
     await this.ownership.verifyUserOwnsRestaurant(restaurantId, userId);
 
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { restaurantId },
-      select: { planId: true, planType: true },
-    });
     const planId =
-      subscription?.planId ||
-      (subscription?.planType as PlanType) ||
-      PlanType.STARTER;
+      await this.subscriptionResolver.resolvePlanIdForRestaurant(restaurantId);
+    const subscription = await this.subscriptionResolver.resolveForRestaurant(
+      restaurantId,
+      { select: { planType: true } },
+    );
     const maxProducts = await this.planEntitlements.getLimit(
       planId,
       'products',

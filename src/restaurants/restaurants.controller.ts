@@ -69,6 +69,7 @@ import {
 import { UpdateRestaurantSettingsDto } from './dto/update-restaurant-settings.dto';
 import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
 import { OwnerEmailVerificationService } from '../auth/services/owner-email-verification.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CallMeBotService } from '../notifications/callmebot.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Throttle } from '@nestjs/throttler';
@@ -85,6 +86,7 @@ export class RestaurantsController {
     private readonly settingsService: RestaurantSettingsService,
     private readonly authService: AuthService,
     private readonly ownerEmailVerification: OwnerEmailVerificationService,
+    private readonly subscriptionsService: SubscriptionsService,
     private readonly callMeBot: CallMeBotService,
     private readonly prisma: PrismaService,
     private readonly publicWriteAbuse: PublicWriteAbuseService,
@@ -246,6 +248,7 @@ export class RestaurantsController {
   })
   async create(@Body() createDto: any, @CurrentUser() user: RequestUser) {
     await this.ownerEmailVerification.assertOwnerEmailVerified(user.userId);
+    await this.subscriptionsService.assertCanAddRestaurant(user.userId);
 
     // Support frontend onboarding payloads under `onboardingData` or legacy flat payload
     let payload = createDto;
@@ -315,10 +318,18 @@ export class RestaurantsController {
       };
     }
 
-    const restaurant = await this.restaurantsService.create(payload);
+    const restaurant = await this.restaurantsService.create(
+      payload,
+      user.userId,
+    );
 
     // Associate restaurant with user
     await this.restaurantsService.associateUserWithRestaurant(
+      user.userId,
+      restaurant.id,
+    );
+
+    await this.subscriptionsService.linkOwnerToRestaurantSubscription(
       user.userId,
       restaurant.id,
     );

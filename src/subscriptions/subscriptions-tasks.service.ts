@@ -35,7 +35,8 @@ export class SubscriptionTasksService {
         where: {
           status: SubscriptionStatus.TRIALING,
           trialEnd: { lt: new Date() },
-          isFreeAccount: false, // Excluir cuentas gratuitas
+          isFreeAccount: false,
+          isBillingAnchor: true,
         },
         include: {
           restaurant: { select: { id: true, name: true, email: true } },
@@ -229,7 +230,8 @@ export class SubscriptionTasksService {
         where: {
           status: SubscriptionStatus.TRIALING,
           trialEnd: { gt: now },
-          isFreeAccount: false, // Excluir cuentas gratuitas
+          isFreeAccount: false,
+          isBillingAnchor: true,
         },
         include: {
           restaurant: {
@@ -512,6 +514,7 @@ export class SubscriptionTasksService {
         where: {
           status: SubscriptionStatus.PAST_DUE,
           isFreeAccount: false,
+          isBillingAnchor: true,
         },
         include: {
           restaurant: { select: { id: true, name: true, email: true } },

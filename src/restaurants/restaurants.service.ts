@@ -15,6 +15,7 @@ import { RestaurantStatus, SubscriptionStatus } from '@prisma/client';
 import { adjustFeaturesForPlan } from '../subscriptions/constants';
 import { PlanType } from '../subscriptions/dto';
 import { RolesCatalogService } from '../common/services/roles-catalog.service';
+import { SubscriptionResolverService } from '../subscriptions/subscription-resolver.service';
 
 @Injectable()
 export class RestaurantsService {
@@ -24,6 +25,7 @@ export class RestaurantsService {
     private prisma: PrismaService,
     private readonly s3: S3Service,
     private readonly rolesCatalog: RolesCatalogService,
+    private readonly subscriptionResolver: SubscriptionResolverService,
     @Inject(forwardRef(() => RestaurantSettingsService))
     private readonly settingsService: RestaurantSettingsService,
   ) {}
@@ -309,7 +311,7 @@ export class RestaurantsService {
     return value;
   }
 
-  async create(payload: any) {
+  async create(payload: any, ownerUserId?: string) {
     // Support both old structure (config/businessInfo) and new structure (onboardingData)
     const data = payload.onboardingData || payload.config || payload;
     const selectedPlan = this.normalizePlanType(
@@ -555,26 +557,36 @@ export class RestaurantsService {
       const trialDays = selectedSubscriptionPlan.trialDays || 14;
       const trialEnd = this.addDays(now, trialDays);
 
-      await tx.subscription.create({
-        data: {
-          restaurant: { connect: { id: restaurant.id } },
-          plan: { connect: { id: selectedPlan } },
-          planType: selectedPlan,
-          status: isPaidPlan
-            ? SubscriptionStatus.TRIALING
-            : SubscriptionStatus.ACTIVE,
-          currentPeriodStart: now,
-          currentPeriodEnd: isPaidPlan ? trialEnd : this.addYears(now, 10),
-          ...(isPaidPlan
-            ? {
-                trialStart: now,
-                trialEnd,
-                nextPaymentDate: trialEnd,
-              }
-            : {}),
-          isFreeAccount: !isPaidPlan,
-        },
-      });
+      const skipNewSubscription =
+        !!ownerUserId &&
+        (await this.subscriptionResolver.userHasAccountSubscription(
+          ownerUserId,
+        ));
+
+      if (!skipNewSubscription) {
+        await tx.subscription.create({
+          data: {
+            restaurant: { connect: { id: restaurant.id } },
+            ...(ownerUserId ? { user: { connect: { id: ownerUserId } } } : {}),
+            plan: { connect: { id: selectedPlan } },
+            planType: selectedPlan,
+            status: isPaidPlan
+              ? SubscriptionStatus.TRIALING
+              : SubscriptionStatus.ACTIVE,
+            currentPeriodStart: now,
+            currentPeriodEnd: isPaidPlan ? trialEnd : this.addYears(now, 10),
+            ...(isPaidPlan
+              ? {
+                  trialStart: now,
+                  trialEnd,
+                  nextPaymentDate: trialEnd,
+                }
+              : {}),
+            isFreeAccount: !isPaidPlan,
+            isBillingAnchor: true,
+          },
+        });
+      }
 
       return restaurant;
     });
@@ -809,10 +821,10 @@ export class RestaurantsService {
         ...currentFeatures,
         ...(incomingFeatures || {}),
       };
-      const subscription = await this.prisma.subscription.findUnique({
-        where: { restaurantId: id },
-        select: { planType: true },
-      });
+      const subscription = await this.subscriptionResolver.resolveForRestaurant(
+        id,
+        { select: { planType: true } },
+      );
       updateData.features = adjustFeaturesForPlan(
         this.normalizeFeatures(mergedFeatures),
         this.normalizePlanType(subscription?.planType),

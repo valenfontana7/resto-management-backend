@@ -85,6 +85,7 @@ export const FALLBACK_RESTRICTIONS_BY_PLAN: Record<
       ['tables', 3],
       ['categories', 3],
       ['orders_per_month', 0],
+      ['restaurants', 1],
     ]),
     ...booleanRestrictions([
       ['qr_menus', true],
@@ -111,6 +112,7 @@ export const FALLBACK_RESTRICTIONS_BY_PLAN: Record<
       ['tables', 50],
       ['categories', 'unlimited'],
       ['orders_per_month', 1000],
+      ['restaurants', 3],
     ]),
     ...booleanRestrictions([
       ['qr_menus', true],
@@ -137,6 +139,7 @@ export const FALLBACK_RESTRICTIONS_BY_PLAN: Record<
       ['tables', 'unlimited'],
       ['categories', 'unlimited'],
       ['orders_per_month', 'unlimited'],
+      ['restaurants', 'unlimited'],
     ]),
     ...booleanRestrictions([
       ['qr_menus', true],

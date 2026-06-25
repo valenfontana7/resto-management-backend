@@ -29,6 +29,9 @@ import { SubscriptionStatus, Prisma } from '@prisma/client';
 import { addDays, addMonths, differenceInDays, format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { PlansService } from './plans/plans.service';
+import { PlanEntitlementsService } from './plans/plan-entitlements.service';
+import { SubscriptionResolverService } from './subscription-resolver.service';
+import { isUnlimitedLimit } from './constants/plan-restrictions.fallback';
 
 @Injectable()
 export class SubscriptionsService {
@@ -41,7 +44,9 @@ export class SubscriptionsService {
     private readonly emailService: EmailService,
     private readonly mercadopagoService: MercadoPagoService,
     private readonly plansService: PlansService,
+    private readonly planEntitlements: PlanEntitlementsService,
     private readonly paymentProviderFactory: PaymentProviderFactory,
+    private readonly subscriptionResolver: SubscriptionResolverService,
   ) {
     const accessToken = this.configService.get<string>(
       'MERCADOPAGO_ACCESS_TOKEN',
@@ -412,26 +417,34 @@ export class SubscriptionsService {
   }
 
   /**
-   * Obtener suscripción actual de un restaurante
+   * Obtener suscripción actual de un restaurante (hereda plan de la cuenta del dueño)
    */
   async getSubscription(restaurantId: string, userId?: string) {
-    const subscription = await this.prisma.subscription.findUnique({
-      where: { restaurantId },
-      include: {
-        plan: {
-          include: {
-            restrictions: true,
+    const subscription = (await this.subscriptionResolver.resolveForRestaurant(
+      restaurantId,
+      {
+        include: {
+          plan: {
+            include: {
+              restrictions: true,
+            },
+          },
+          invoices: {
+            take: 5,
+            orderBy: { createdAt: 'desc' },
+          },
+          paymentMethods: {
+            orderBy: { isDefault: 'desc' },
           },
         },
-        invoices: {
-          take: 5,
-          orderBy: { createdAt: 'desc' },
-        },
-        paymentMethods: {
-          orderBy: { isDefault: 'desc' },
-        },
       },
-    });
+    )) as Prisma.SubscriptionGetPayload<{
+      include: {
+        plan: { include: { restrictions: true } };
+        invoices: true;
+        paymentMethods: true;
+      };
+    }> | null;
 
     let allPaymentMethods: any[] =
       subscription?.paymentMethods.map((pm) => ({
@@ -1426,5 +1439,119 @@ export class SubscriptionsService {
       where: { id: subscriptionId },
       data: { status: SubscriptionStatus.CANCELED },
     });
+  }
+
+  /**
+   * Suscripción de la cuenta del usuario (fuente de verdad de billing).
+   */
+  async getAccountSubscription(userId: string) {
+    const anchor = await this.subscriptionResolver.resolveForUser(userId, {
+      select: { restaurantId: true },
+    });
+    if (!anchor?.restaurantId) {
+      return { subscription: null };
+    }
+    return this.getSubscription(anchor.restaurantId, userId);
+  }
+
+  async getAccountSubscriptionSummary(userId: string) {
+    const { subscription } = await this.getAccountSubscription(userId);
+    if (!subscription?.restaurantId) {
+      return {
+        subscription: null,
+        trialDaysRemaining: 0,
+        isTrialing: false,
+        canUpgrade: true,
+        canDowngrade: false,
+        nextBillingDate: null,
+        nextBillingAmount: 0,
+      };
+    }
+    return this.getSubscriptionSummary(subscription.restaurantId);
+  }
+
+  /**
+   * Verifica si el dueño puede crear otro restaurante según su plan.
+   */
+  async assertCanAddRestaurant(userId: string): Promise<void> {
+    const ownedCount =
+      await this.subscriptionResolver.countOwnedRestaurants(userId);
+    const planId = await this.resolveAccountPlanId(userId);
+    const maxRestaurants = await this.planEntitlements.getLimit(
+      planId,
+      'restaurants',
+    );
+    const effectiveMax =
+      maxRestaurants === 0
+        ? this.getFallbackRestaurantLimit(planId)
+        : maxRestaurants;
+
+    if (isUnlimitedLimit(effectiveMax)) return;
+
+    if (ownedCount >= effectiveMax) {
+      throw new BadRequestException(
+        `Tu plan actual permite hasta ${effectiveMax} restaurante${effectiveMax === 1 ? '' : 's'}. Actualizá tu plan para agregar más locales.`,
+      );
+    }
+  }
+
+  /**
+   * Vincula la suscripción del restaurante al userId del dueño (migración / primer alta).
+   */
+  async linkOwnerToRestaurantSubscription(
+    userId: string,
+    restaurantId: string,
+  ): Promise<void> {
+    const restaurantSub = await this.prisma.subscription.findUnique({
+      where: { restaurantId },
+    });
+    if (!restaurantSub) return;
+
+    const existingAccountSub = await this.prisma.subscription.findFirst({
+      where: { userId, isBillingAnchor: true },
+    });
+
+    if (existingAccountSub && existingAccountSub.id !== restaurantSub.id) {
+      await this.prisma.subscription.update({
+        where: { id: restaurantSub.id },
+        data: { isBillingAnchor: false },
+      });
+      return;
+    }
+
+    if (!restaurantSub.userId) {
+      await this.prisma.subscription.update({
+        where: { id: restaurantSub.id },
+        data: { userId, isBillingAnchor: true },
+      });
+    }
+  }
+
+  private getFallbackRestaurantLimit(planId: string): number {
+    const limits: Record<string, number> = {
+      STARTER: 1,
+      PROFESSIONAL: 3,
+      ENTERPRISE: 9999,
+    };
+    return limits[planId] ?? 1;
+  }
+
+  private async resolveAccountPlanId(userId: string): Promise<string> {
+    const subscription = await this.subscriptionResolver.resolveForUser(
+      userId,
+      {
+        select: { planId: true, planType: true },
+      },
+    );
+    if (!subscription) return PlanType.STARTER;
+    return (
+      subscription.planId ||
+      (subscription.planType as string) ||
+      PlanType.STARTER
+    );
+  }
+
+  private async resolveBillingSubscription(restaurantId: string) {
+    return this.subscriptionResolver.resolveForRestaurant(restaurantId);
   }
 }

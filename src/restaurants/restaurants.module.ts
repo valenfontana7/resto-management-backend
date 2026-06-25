@@ -12,6 +12,7 @@ import { AuthModule } from '../auth/auth.module';
 import { AdminAlertsModule } from '../admin-alerts/admin-alerts.module';
 import { EmailModule } from '../email/email.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     AdminAlertsModule,
     EmailModule,
     NotificationsModule,
+    SubscriptionsModule,
   ],
   controllers: [
     RestaurantsController,

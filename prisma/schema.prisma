@@ -691,6 +691,7 @@ model User {
   emailVerificationLinks AuthEmailVerificationLink[]
   memberships        RestaurantMembership[]
   deliveryDriverProfiles DeliveryDriver[]
+  accountSubscription Subscription?
 
   @@index([email])
   @@index([restaurantId])
@@ -833,6 +834,9 @@ model SubscriptionPlan {
   displayName   String
   description   String
   price         Int
+  listPrice     Int?
+  promoBadge    String?
+  promoEndsAt   DateTime?
   interval      String
   trialDays     Int               @default(0)
   color         String
@@ -870,7 +874,9 @@ model PlanRestriction {
 
 model Subscription {
   id                  String                      @id @default(cuid())
+  userId              String?                     @unique
   restaurantId        String                      @unique
+  isBillingAnchor     Boolean                     @default(true)
   planType            PlanType                    @default(STARTER)
   status              SubscriptionStatus          @default(TRIALING)
   currentPeriodStart  DateTime                    @default(now())
@@ -900,11 +906,14 @@ model Subscription {
   discountGrantedAt   DateTime?
   invoices            Invoice[]
   plan                SubscriptionPlan            @relation(fields: [planId], references: [id])
+  user                User?                       @relation(fields: [userId], references: [id], onDelete: SetNull)
   restaurant          Restaurant                  @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   paymentMethods      SubscriptionPaymentMethod[]
 
+  @@index([userId])
   @@index([restaurantId])
   @@index([status])
+  @@index([isBillingAnchor, status])
   @@index([status, currentPeriodEnd])
 }
 
