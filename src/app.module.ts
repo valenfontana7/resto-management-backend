@@ -47,6 +47,7 @@ import { PaymentProvidersModule } from './payment-providers/payment-providers.mo
 import { OnboardingAiModule } from './onboarding-ai/onboarding-ai.module';
 import { OnboardingAnalyticsModule } from './onboarding-analytics/onboarding-analytics.module';
 import { DemoExamplesModule } from './demo-examples/demo-examples.module';
+import { LeadsModule } from './leads/leads.module';
 import { FloorModule } from './floor/floor.module';
 import { BusinessHealthModule } from './business-health/business-health.module';
 import { getJwtSecret } from './common/config/jwt.config';
@@ -154,6 +155,7 @@ import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage';
     OnboardingAiModule,
     OnboardingAnalyticsModule,
     DemoExamplesModule,
+    LeadsModule,
     FloorModule,
     BusinessHealthModule,
     EdgeSyncModule,

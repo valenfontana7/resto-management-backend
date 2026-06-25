@@ -1694,3 +1694,116 @@ model EdgeSyncCursor {
   @@unique([restaurantId, localId, streamKey])
   @@index([restaurantId, streamKey])
 }
+
+enum LeadStatus {
+  NEW
+  ANALYZED
+  CONTACTED
+  INTERESTED
+  MEETING_SCHEDULED
+  CLIENT
+  LOST
+}
+
+enum LeadAnalysisType {
+  BUSINESS_DIAGNOSIS
+  INSTAGRAM_MESSAGE
+  WHATSAPP_MESSAGE
+  EMAIL_MESSAGE
+}
+
+model Lead {
+  id                    String     @id @default(cuid())
+  businessName          String
+  category              String?
+  contactName           String?
+  email                 String?
+  phone                 String?
+  whatsapp              String?
+  instagram             String?
+  website               String?
+  city                  String?
+  notes                 String?    @db.Text
+  hasWebsite            Boolean    @default(false)
+  hasOnlineMenu         Boolean    @default(false)
+  hasReservations       Boolean    @default(false)
+  hasWhatsapp           Boolean    @default(false)
+  hasEcommerce          Boolean    @default(false)
+  branchCount           Int        @default(1)
+  score                 Int        @default(0)
+  status                LeadStatus @default(NEW)
+  discoveredWithAi      Boolean    @default(false)
+  discoverySessionId    String?
+  discoverySourceUrl    String?    @db.Text
+  createdById           String?
+  convertedRestaurantId String?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  analyses      LeadAnalysis[]
+  statusHistory LeadStatusChange[]
+
+  @@index([status])
+  @@index([category])
+  @@index([city])
+  @@index([score])
+  @@index([createdAt])
+  @@index([discoveredWithAi])
+}
+
+model LeadAnalysis {
+  id          String           @id @default(cuid())
+  leadId      String
+  lead        Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type        LeadAnalysisType
+  content     Json
+  model       String?
+  createdById String?
+  createdAt   DateTime         @default(now())
+
+  @@index([leadId, type])
+  @@index([createdAt])
+}
+
+model LeadStatusChange {
+  id          String      @id @default(cuid())
+  leadId      String
+  lead        Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fromStatus  LeadStatus?
+  toStatus    LeadStatus
+  changedById String?
+  changedAt   DateTime    @default(now())
+
+  @@index([leadId, changedAt])
+  @@index([toStatus])
+}
+
+model LeadDiscoverySession {
+  id          String   @id @default(cuid())
+  query       String
+  filters     Json?
+  results     Json
+  model       String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model LeadSavedSearch {
+  id          String    @id @default(cuid())
+  name        String?
+  query       String
+  filters     Json?
+  schedule    String    @default("manual")
+  enabled     Boolean   @default(false)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([enabled, nextRunAt])
+  @@index([createdById])
+  @@index([createdAt])
+}
