@@ -23,6 +23,10 @@ export class EdgeHeartbeatDto {
   @IsOptional()
   @IsString()
   lanUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  hostname?: string;
 }
 
 export class EdgeSyncPullQueryDto {

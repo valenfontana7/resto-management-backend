@@ -10,6 +10,8 @@ export interface RequestUser {
   roleId: string | null;
   restaurantId: string | null;
   role?: string | null;
+  tokenType?: 'user' | 'device';
+  terminalId?: string | null;
 }
 
 @Injectable()

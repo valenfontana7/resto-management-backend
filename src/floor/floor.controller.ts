@@ -527,7 +527,21 @@ export class FloorController {
     @Body() dto: PingTerminalDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.terminals.ping(restaurantId, terminalId, user.userId, dto);
+    return this.terminals.ping(restaurantId, terminalId, user, dto);
+  }
+
+  @Post('terminals/:terminalId/revoke-device-token')
+  @ApiOperation({ summary: 'Revocar token de dispositivo de la terminal' })
+  revokeTerminalDeviceToken(
+    @Param('restaurantId') restaurantId: string,
+    @Param('terminalId') terminalId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.terminals.revokeDeviceToken(
+      restaurantId,
+      terminalId,
+      user.userId,
+    );
   }
 
   @Delete('terminals/:terminalId')

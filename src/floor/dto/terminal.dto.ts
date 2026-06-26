@@ -50,4 +50,10 @@ export class PingTerminalDto {
   @IsString()
   @MaxLength(120)
   platform?: string;
+
+  @ApiPropertyOptional({ example: 'CAJA-01' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  hostname?: string;
 }

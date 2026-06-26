@@ -6,4 +6,6 @@ export interface DesktopReleaseManifest {
   publishedAt: string;
   changelog: string[];
   releaseNotesUrl?: string;
+  /** SHA256 hex del instalador (opcional). */
+  installerSha256?: string;
 }

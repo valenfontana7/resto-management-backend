@@ -93,6 +93,7 @@ export class EdgeSyncService {
         lastHeartbeatAt: new Date(),
         lastLanUrl: dto.lanUrl?.trim() || record.lastLanUrl,
         version: dto.version?.trim() || record.version,
+        hostname: dto.hostname?.trim() || record.hostname,
         status: EdgeLocalServerStatus.ACTIVE,
       },
     });

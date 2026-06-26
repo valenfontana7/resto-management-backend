@@ -33,6 +33,7 @@ import {
   ResetPasswordDto,
   RequestEmailVerificationDto,
   ConsumeEmailVerificationDto,
+  IssueDeviceTokenDto,
 } from './dto/auth.dto';
 import { ImpersonateDto } from './dto/impersonate.dto';
 import { SwitchRestaurantDto } from './dto/switch-restaurant.dto';
@@ -443,5 +444,23 @@ export class AuthController {
   async logout(@Res({ passthrough: true }) res: Response) {
     this.clearAuthCookie(res);
     return { message: 'Logout successful' };
+  }
+
+  @Post('device-token')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Emitir token de dispositivo (90 días) para terminal de caja',
+  })
+  @ApiResponse({ status: 201, description: 'Device token issued' })
+  async issueDeviceToken(
+    @Body() dto: IssueDeviceTokenDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.authService.issueDeviceToken(
+      user.userId,
+      dto.restaurantId,
+      dto.terminalId,
+    );
   }
 }

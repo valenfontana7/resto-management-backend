@@ -6,6 +6,8 @@ export interface RequestUser {
   role?: string;
   roleId?: string | null;
   restaurantId?: string | null;
+  tokenType?: 'user' | 'device';
+  terminalId?: string | null;
 }
 
 export const CurrentUser = createParamDecorator(

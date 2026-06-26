@@ -57,8 +57,13 @@ export class JwtAuthGuard implements CanActivate {
 
     try {
       const payload = await this.jwtService.verifyAsync(token);
-      // Load fresh user from DB to avoid stale token data
       const authService = this.moduleRef.get(AuthService, { strict: false });
+
+      if (payload.tokenType === 'device') {
+        request.user = await authService.resolveDeviceAuth(token);
+        return true;
+      }
+
       const freshUser = await authService.validateUser(payload.sub);
       request.user = {
         userId: freshUser.id,
@@ -67,6 +72,7 @@ export class JwtAuthGuard implements CanActivate {
         restaurantId: freshUser.restaurantId ?? null,
         role: freshUser.role?.name ?? null,
         restaurantSlug: freshUser.restaurant?.slug ?? null,
+        tokenType: 'user',
       };
       return true;
     } catch {

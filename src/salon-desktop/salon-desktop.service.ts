@@ -35,6 +35,9 @@ export class SalonDesktopService {
     const releaseNotesUrl =
       this.config.get<string>('DESKTOP_RELEASE_NOTES_URL')?.trim() ||
       DEFAULT_MANIFEST.releaseNotesUrl;
+    const installerSha256 =
+      this.config.get<string>('DESKTOP_RELEASE_INSTALLER_SHA256')?.trim() ||
+      undefined;
 
     const changelogRaw =
       this.config.get<string>('DESKTOP_RELEASE_CHANGELOG')?.trim() || '';
@@ -55,6 +58,7 @@ export class SalonDesktopService {
       publishedAt,
       changelog,
       releaseNotesUrl,
+      ...(installerSha256 ? { installerSha256 } : {}),
     };
   }
 }

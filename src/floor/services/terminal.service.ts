@@ -111,10 +111,27 @@ export class TerminalService {
   async ping(
     restaurantId: string,
     terminalId: string,
-    userId: string,
+    user: {
+      userId: string;
+      tokenType?: 'user' | 'device';
+      terminalId?: string | null;
+      restaurantId?: string | null;
+    },
     dto?: PingTerminalDto,
   ) {
-    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+    if (user.tokenType === 'device') {
+      if (
+        user.terminalId !== terminalId ||
+        user.restaurantId !== restaurantId
+      ) {
+        throw new BadRequestException('La terminal del token no coincide');
+      }
+    } else {
+      await this.ownership.verifyUserBelongsToRestaurant(
+        restaurantId,
+        user.userId,
+      );
+    }
 
     const terminal = await this.findTerminalOrThrow(restaurantId, terminalId);
 
@@ -136,10 +153,32 @@ export class TerminalService {
         ...(dto?.platform !== undefined
           ? { platform: dto.platform.trim() || null }
           : {}),
+        ...(dto?.hostname !== undefined
+          ? { hostname: dto.hostname.trim() || null }
+          : {}),
       },
     });
 
     return { terminal: this.formatTerminal(updated) };
+  }
+
+  async revokeDeviceToken(
+    restaurantId: string,
+    terminalId: string,
+    userId: string,
+  ) {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+    await this.findTerminalOrThrow(restaurantId, terminalId);
+
+    const terminal = await this.prisma.restaurantTerminal.update({
+      where: { id: terminalId },
+      data: {
+        deviceTokenHash: null,
+        deviceTokenExpiresAt: null,
+      },
+    });
+
+    return { terminal: this.formatTerminal(terminal) };
   }
 
   async deactivate(restaurantId: string, terminalId: string, userId: string) {
@@ -195,11 +234,17 @@ export class TerminalService {
 
     lastSeenAt: Date | null;
 
+    hostname: string | null;
+
     clientVersion: string | null;
 
     localVersion: string | null;
 
     platform: string | null;
+
+    deviceTokenHash: string | null;
+
+    deviceTokenExpiresAt: Date | null;
 
     createdAt: Date;
 
@@ -214,11 +259,17 @@ export class TerminalService {
 
       lastSeenAt: terminal.lastSeenAt,
 
+      hostname: terminal.hostname,
+
       clientVersion: terminal.clientVersion,
 
       localVersion: terminal.localVersion,
 
       platform: terminal.platform,
+
+      hasDeviceToken: Boolean(terminal.deviceTokenHash),
+
+      deviceTokenExpiresAt: terminal.deviceTokenExpiresAt,
 
       createdAt: terminal.createdAt,
 

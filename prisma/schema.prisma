@@ -1452,18 +1452,21 @@ enum FiscalDocumentStatus {
 }
 
 model RestaurantTerminal {
-  id            String       @id @default(cuid())
-  restaurantId  String
-  name          String
-  isActive      Boolean      @default(true)
-  lastSeenAt    DateTime?
-  clientVersion String?
-  localVersion  String?
-  platform      String?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  restaurant    Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  cashSessions  CashRegisterSession[]
+  id                   String       @id @default(cuid())
+  restaurantId         String
+  name                 String
+  isActive             Boolean      @default(true)
+  lastSeenAt           DateTime?
+  hostname             String?
+  clientVersion        String?
+  localVersion         String?
+  platform             String?
+  deviceTokenHash      String?
+  deviceTokenExpiresAt DateTime?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  restaurant           Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  cashSessions         CashRegisterSession[]
 
   @@unique([restaurantId, name])
 }

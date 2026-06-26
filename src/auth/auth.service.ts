@@ -40,14 +40,20 @@ import { RegistrationAbuseService } from './services/registration-abuse.service'
 import { AuthEmailAbuseService } from './services/auth-email-abuse.service';
 import { BotDefenseService } from '../common/services/bot-defense.service';
 import { OwnerEmailVerificationService } from './services/owner-email-verification.service';
+import { OwnershipService } from '../common/services/ownership.service';
+import { hashDeviceToken, verifyDeviceToken } from './device-token.crypto';
+import type { RequestUser } from './strategies/jwt.strategy';
 
 export interface JwtPayload {
-  sub: string; // userId
-  email: string;
-  roleId: string | null;
-  restaurantId: string | null;
+  sub: string; // userId or terminalId (device)
+  email?: string;
+  roleId?: string | null;
+  restaurantId?: string | null;
   roleName?: string | null;
   restaurantSlug?: string | null;
+  tokenType?: 'user' | 'device';
+  terminalId?: string;
+  issuedByUserId?: string;
 }
 
 export interface AuthResponse {
@@ -88,6 +94,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private readonly rolesCatalog: RolesCatalogService,
+    private readonly ownership: OwnershipService,
     @Optional() private readonly adminAlerts?: AdminAlertsService,
     @Optional() private readonly emailService?: EmailService,
     @Optional() private readonly registrationAbuse?: RegistrationAbuseService,
@@ -910,6 +917,103 @@ export class AuthService {
     });
 
     return { message: 'Password reset successfully' };
+  }
+
+  /** Token de 90 días para BentooSalonLocal / caja — revocable desde admin. */
+  async issueDeviceToken(
+    userId: string,
+    restaurantId: string,
+    terminalId: string,
+  ): Promise<{ token: string; expiresAt: string; terminalId: string }> {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    const terminal = await this.prisma.restaurantTerminal.findFirst({
+      where: { id: terminalId, restaurantId, isActive: true },
+    });
+    if (!terminal) {
+      throw new NotFoundException('Terminal no encontrada o inactiva');
+    }
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 90);
+
+    const payload: JwtPayload = {
+      sub: terminalId,
+      tokenType: 'device',
+      restaurantId,
+      terminalId,
+      issuedByUserId: userId,
+    };
+
+    const token = this.jwtService.sign(payload, { expiresIn: '90d' });
+    const deviceTokenHash = hashDeviceToken(token);
+
+    await this.prisma.restaurantTerminal.update({
+      where: { id: terminalId },
+      data: {
+        deviceTokenHash,
+        deviceTokenExpiresAt: expiresAt,
+      },
+    });
+
+    return {
+      token,
+      expiresAt: expiresAt.toISOString(),
+      terminalId,
+    };
+  }
+
+  async resolveDeviceAuth(token: string): Promise<RequestUser> {
+    let payload: JwtPayload;
+    try {
+      payload = await this.jwtService.verifyAsync<JwtPayload>(token);
+    } catch {
+      throw new UnauthorizedException('Invalid token');
+    }
+
+    if (
+      payload.tokenType !== 'device' ||
+      !payload.terminalId ||
+      !payload.restaurantId ||
+      !payload.issuedByUserId
+    ) {
+      throw new UnauthorizedException('Invalid device token');
+    }
+
+    const terminal = await this.prisma.restaurantTerminal.findFirst({
+      where: {
+        id: payload.terminalId,
+        restaurantId: payload.restaurantId,
+        isActive: true,
+      },
+    });
+
+    if (!terminal?.deviceTokenHash) {
+      throw new UnauthorizedException('Device token revoked');
+    }
+
+    if (!verifyDeviceToken(token, terminal.deviceTokenHash)) {
+      throw new UnauthorizedException('Device token revoked');
+    }
+
+    if (
+      terminal.deviceTokenExpiresAt &&
+      terminal.deviceTokenExpiresAt.getTime() < Date.now()
+    ) {
+      throw new UnauthorizedException('Device token expired');
+    }
+
+    await this.validateUser(payload.issuedByUserId);
+
+    return {
+      userId: payload.issuedByUserId,
+      email: `device:${terminal.name}`,
+      roleId: null,
+      restaurantId: payload.restaurantId,
+      role: 'DEVICE',
+      terminalId: payload.terminalId,
+      tokenType: 'device',
+    };
   }
 
   async validateUser(userId: string): Promise<any> {

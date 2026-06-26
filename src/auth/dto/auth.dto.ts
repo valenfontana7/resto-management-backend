@@ -152,3 +152,13 @@ export class ConsumeEmailVerificationDto {
   @IsString()
   token: string;
 }
+
+export class IssueDeviceTokenDto {
+  @ApiProperty({ example: 'clrestaurant123' })
+  @IsString()
+  restaurantId: string;
+
+  @ApiProperty({ example: 'clterminal456' })
+  @IsString()
+  terminalId: string;
+}

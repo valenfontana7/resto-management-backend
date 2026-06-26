@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { RolesCatalogService } from '../common/services/roles-catalog.service';
+import { OwnershipService } from '../common/services/ownership.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -82,6 +83,14 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: JwtService, useValue: jwt },
         { provide: RolesCatalogService, useValue: rolesCatalog },
+        {
+          provide: OwnershipService,
+          useValue: {
+            verifyUserBelongsToRestaurant: jest
+              .fn()
+              .mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 
