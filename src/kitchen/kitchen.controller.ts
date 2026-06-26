@@ -9,7 +9,7 @@ import {
   Query,
   Logger,
 } from '@nestjs/common';
-import { Throttle } from '@nestjs/throttler';
+import { SkipThrottle } from '@nestjs/throttler';
 import {
   ApiTags,
   ApiBearerAuth,
@@ -27,9 +27,7 @@ import { OrderFiltersDto } from '../orders/dto/order.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/strategies/jwt.strategy';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
 import { OwnershipService } from '../common/services/ownership.service';
-import { getClientIp } from '../common/utils/client-ip.util';
 import { normalizeRoleCode } from '../common/utils/role.utils';
 
 const KITCHEN_SSE_ROLES = new Set([
@@ -50,24 +48,17 @@ export class KitchenController {
     private jwtService: JwtService,
     private kitchenNotifications: KitchenNotificationsService,
     private ordersService: OrdersService,
-    private readonly publicWriteAbuse: PublicWriteAbuseService,
     private readonly ownership: OwnershipService,
   ) {}
 
   @Get('notifications')
   @Sse()
   @Public()
-  @Throttle({ default: { ttl: 60_000, limit: 15 } })
+  @SkipThrottle()
   async notifications(
     @Param('restaurantId') restaurantId: string,
     @Req() req: Request,
   ): Promise<Observable<MessageEvent>> {
-    await this.publicWriteAbuse.assertPublicWriteAllowed({
-      ip: getClientIp(req),
-      scope: 'kitchen_sse',
-      restaurantId,
-    });
-
     const authHeader = req.headers.authorization || req.headers.Authorization;
 
     if (!authHeader || !String(authHeader).startsWith('Bearer ')) {
