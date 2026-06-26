@@ -25,7 +25,7 @@ export class SalonDesktopFleetService {
         : 100;
     const search = options?.search?.trim() ?? '';
     const staleBefore = new Date(Date.now() - staleMinutes * 60 * 1000);
-    const latestRelease = this.salonDesktop.getLatestRelease();
+    const latestRelease = await this.salonDesktop.getLatestRelease();
 
     const terminals = await this.prisma.restaurantTerminal.findMany({
       where: {

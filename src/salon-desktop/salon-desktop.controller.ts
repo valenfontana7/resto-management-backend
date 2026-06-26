@@ -15,7 +15,7 @@ export class SalonDesktopController {
   @ApiOperation({
     summary: 'Última versión publicada del instalador Bentoo Salón Desktop',
   })
-  getLatestRelease() {
+  async getLatestRelease() {
     return this.salonDesktop.getLatestRelease();
   }
 }
