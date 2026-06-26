@@ -5,6 +5,7 @@ import {
   Logger,
   Optional,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateUserDto } from '../dto/update-user.dto';
 import { CreateUserDto } from '../dto/create-user.dto';
@@ -27,7 +28,9 @@ export class SuperAdminUsersService {
     limit: number = 10,
     offset: number = 0,
   ) {
-    const where: any = {};
+    const where: any = {
+      deletedAt: null,
+    };
 
     if (search) {
       where.OR = [
@@ -315,37 +318,82 @@ export class SuperAdminUsersService {
       where: { adminId: userId },
     });
 
-    await this.prisma.$transaction(async (tx) => {
-      // AdminAuditLog no tiene cascade contra User; sin esto el hard delete falla.
-      await tx.adminAuditLog.deleteMany({
-        where: { adminId: userId },
-      });
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.onboardingDraft.deleteMany({
+          where: { userId: user.id },
+        });
 
-      await tx.user.delete({
-        where: { id: userId },
-      });
+        await tx.pushSubscription.deleteMany({
+          where: { userId: user.id },
+        });
 
-      await tx.adminAuditLog.create({
-        data: {
-          adminId,
-          action: 'DELETE_USER',
-          targetRestaurantId: user.restaurantId,
-          details: {
-            deletedUserId: user.id,
-            deletedUserEmail: user.email,
-            deletedUserName: user.name,
-            deletedUserRole: roleName,
-            deletedUserRestaurantId: user.restaurantId,
-            deletedUserRestaurantName: user.restaurant?.name ?? null,
-            deletedUserWasActive: user.isActive,
-            deletedUserCreatedAt: user.createdAt.toISOString(),
-            deletedUserSoftDeletedAt: user.deletedAt?.toISOString() ?? null,
-            removedPerformedAuditLogs: performedAuditLogs,
-            hardDeleted: true,
+        await tx.authLoginLink.deleteMany({
+          where: { userId: user.id },
+        });
+
+        await tx.authPasswordResetLink.deleteMany({
+          where: { userId: user.id },
+        });
+
+        await tx.authEmailVerificationLink.deleteMany({
+          where: { userId: user.id },
+        });
+
+        await tx.notification.deleteMany({
+          where: { userId: user.id },
+        });
+
+        await tx.userPaymentMethod.deleteMany({
+          where: { userId: user.id },
+        });
+
+        await tx.restaurantMembership.deleteMany({
+          where: { userId: user.id },
+        });
+
+        await tx.deliveryDriver.updateMany({
+          where: { userId: user.id },
+          data: { userId: null },
+        });
+
+        await tx.subscription.updateMany({
+          where: { userId: user.id },
+          data: { userId: null },
+        });
+
+        await tx.adminAuditLog.deleteMany({
+          where: { adminId: user.id },
+        });
+
+        await tx.user.delete({
+          where: { id: user.id },
+        });
+
+        await tx.adminAuditLog.create({
+          data: {
+            adminId,
+            action: 'DELETE_USER',
+            targetRestaurantId: user.restaurantId,
+            details: {
+              deletedUserId: user.id,
+              deletedUserEmail: user.email,
+              deletedUserName: user.name,
+              deletedUserRole: roleName,
+              deletedUserRestaurantId: user.restaurantId,
+              deletedUserRestaurantName: user.restaurant?.name ?? null,
+              deletedUserWasActive: user.isActive,
+              deletedUserCreatedAt: user.createdAt.toISOString(),
+              deletedUserSoftDeletedAt: user.deletedAt?.toISOString() ?? null,
+              removedPerformedAuditLogs: performedAuditLogs,
+              hardDeleted: true,
+            },
           },
-        },
+        });
       });
-    });
+    } catch (error) {
+      this.rethrowUserDeleteError(error);
+    }
 
     void this.adminAlerts?.notifyAdminEvent({
       source: 'super-admin.delete-user',
@@ -367,8 +415,30 @@ export class SuperAdminUsersService {
       success: true,
       id: user.id,
       email: user.email,
+      hardDeleted: true,
       message: 'Usuario eliminado permanentemente',
     };
+  }
+
+  private rethrowUserDeleteError(error: unknown): never {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2003'
+    ) {
+      throw new BadRequestException(
+        'No se puede eliminar el usuario porque tiene datos vinculados en el sistema.',
+      );
+    }
+
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2025'
+    ) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    this.logger.error('Error eliminando usuario permanentemente', error);
+    throw error;
   }
 
   async getRoles() {
