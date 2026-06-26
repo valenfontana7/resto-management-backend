@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  InternalServerErrorException,
   Logger,
   Optional,
 } from '@nestjs/common';
@@ -318,8 +319,24 @@ export class SuperAdminUsersService {
       where: { adminId: userId },
     });
 
+    const targetRestaurantId = user.restaurant?.id ?? null;
+    const auditDetails = {
+      deletedUserId: user.id,
+      deletedUserEmail: user.email,
+      deletedUserName: user.name,
+      deletedUserRole: roleName,
+      deletedUserRestaurantId: user.restaurantId,
+      deletedUserRestaurantName: user.restaurant?.name ?? null,
+      deletedUserWasActive: user.isActive,
+      deletedUserCreatedAt: user.createdAt.toISOString(),
+      deletedUserSoftDeletedAt: user.deletedAt?.toISOString() ?? null,
+      removedPerformedAuditLogs: performedAuditLogs,
+      hardDeleted: true,
+    };
+
     try {
       await this.prisma.$transaction(async (tx) => {
+        // Tablas sin FK a User pero con userId suelto.
         await tx.onboardingDraft.deleteMany({
           where: { userId: user.id },
         });
@@ -328,71 +345,35 @@ export class SuperAdminUsersService {
           where: { userId: user.id },
         });
 
-        await tx.authLoginLink.deleteMany({
-          where: { userId: user.id },
-        });
-
-        await tx.authPasswordResetLink.deleteMany({
-          where: { userId: user.id },
-        });
-
-        await tx.authEmailVerificationLink.deleteMany({
-          where: { userId: user.id },
-        });
-
-        await tx.notification.deleteMany({
-          where: { userId: user.id },
-        });
-
-        await tx.userPaymentMethod.deleteMany({
-          where: { userId: user.id },
-        });
-
-        await tx.restaurantMembership.deleteMany({
-          where: { userId: user.id },
-        });
-
-        await tx.deliveryDriver.updateMany({
-          where: { userId: user.id },
-          data: { userId: null },
-        });
-
-        await tx.subscription.updateMany({
-          where: { userId: user.id },
-          data: { userId: null },
-        });
-
+        // AdminAuditLog.adminId usa ON DELETE RESTRICT.
         await tx.adminAuditLog.deleteMany({
           where: { adminId: user.id },
         });
 
+        // El resto de relaciones (memberships, auth links, notifications, etc.)
+        // se resuelve por ON DELETE CASCADE / SET NULL al borrar el User.
         await tx.user.delete({
           where: { id: user.id },
-        });
-
-        await tx.adminAuditLog.create({
-          data: {
-            adminId,
-            action: 'DELETE_USER',
-            targetRestaurantId: user.restaurantId,
-            details: {
-              deletedUserId: user.id,
-              deletedUserEmail: user.email,
-              deletedUserName: user.name,
-              deletedUserRole: roleName,
-              deletedUserRestaurantId: user.restaurantId,
-              deletedUserRestaurantName: user.restaurant?.name ?? null,
-              deletedUserWasActive: user.isActive,
-              deletedUserCreatedAt: user.createdAt.toISOString(),
-              deletedUserSoftDeletedAt: user.deletedAt?.toISOString() ?? null,
-              removedPerformedAuditLogs: performedAuditLogs,
-              hardDeleted: true,
-            },
-          },
         });
       });
     } catch (error) {
       this.rethrowUserDeleteError(error);
+    }
+
+    try {
+      await this.prisma.adminAuditLog.create({
+        data: {
+          adminId,
+          action: 'DELETE_USER',
+          targetRestaurantId,
+          details: auditDetails,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to persist admin audit log for deleted user ${user.id}`,
+        error instanceof Error ? error.stack : undefined,
+      );
     }
 
     void this.adminAlerts?.notifyAdminEvent({
@@ -438,7 +419,9 @@ export class SuperAdminUsersService {
     }
 
     this.logger.error('Error eliminando usuario permanentemente', error);
-    throw error;
+    throw new InternalServerErrorException(
+      'No se pudo eliminar el usuario. Intenta nuevamente o revisa los logs del backend.',
+    );
   }
 
   async getRoles() {
