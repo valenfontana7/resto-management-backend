@@ -111,6 +111,7 @@ export class OrdersService {
         city: true,
         country: true,
         businessRules: true,
+        features: true,
       },
     });
 
@@ -124,6 +125,12 @@ export class OrdersService {
     this.assertPaymentMethodEnabled(
       normalizedPaymentMethod,
       enabledPaymentMethods,
+    );
+
+    this.assertOrderTypeAllowed(
+      orderType,
+      restaurant.features,
+      restaurant.businessRules,
     );
 
     const orderItems = createDto.items.map((item) => {
@@ -1440,6 +1447,38 @@ export class OrdersService {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(
         `No se pudieron acreditar puntos de fidelización para el pedido ${order.id}: ${message}`,
+      );
+    }
+  }
+
+  private assertOrderTypeAllowed(
+    orderType: OrderType,
+    features: unknown,
+    businessRules: unknown,
+  ) {
+    const featureFlags =
+      features && typeof features === 'object'
+        ? (features as Record<string, unknown>)
+        : {};
+    const rules =
+      businessRules && typeof businessRules === 'object'
+        ? (businessRules as Record<string, any>)
+        : {};
+
+    const pickupEnabled =
+      featureFlags.takeaway !== false && rules.pickup?.enabled !== false;
+    const deliveryEnabled =
+      featureFlags.delivery === true && rules.delivery?.enabled !== false;
+
+    if (orderType === OrderType.PICKUP && !pickupEnabled) {
+      throw new BadRequestException(
+        'El retiro en local no está habilitado para este restaurante.',
+      );
+    }
+
+    if (orderType === OrderType.DELIVERY && !deliveryEnabled) {
+      throw new BadRequestException(
+        'El delivery no está habilitado para este restaurante.',
       );
     }
   }

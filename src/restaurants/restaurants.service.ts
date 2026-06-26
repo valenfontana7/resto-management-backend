@@ -830,6 +830,24 @@ export class RestaurantsService {
         this.normalizePlanType(subscription?.planType),
       );
 
+      const currentBusinessRules =
+        currentRestaurant.businessRules &&
+        typeof currentRestaurant.businessRules === 'object'
+          ? (currentRestaurant.businessRules as Record<string, any>)
+          : {};
+
+      updateData.businessRules = {
+        ...currentBusinessRules,
+        pickup: {
+          ...(currentBusinessRules.pickup || {}),
+          enabled: updateData.features.takeaway !== false,
+        },
+        delivery: {
+          ...(currentBusinessRules.delivery || {}),
+          enabled: updateData.features.delivery === true,
+        },
+      };
+
       if (userId) {
         updateData.modulesUpdatedBy = userId;
         updateData.modulesUpdatedAt = new Date();
