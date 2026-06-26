@@ -8,6 +8,7 @@ import {
   buildMenuGeminiPrompt,
   MENU_AI_RESPONSE_JSON_SCHEMA,
   normalizeMenuDraft,
+  parseMenuAiJsonResponse,
 } from './menu-ai-draft.helpers';
 import type { MenuAiDraft } from './types/menu-ai.types';
 import {
@@ -520,10 +521,9 @@ export class OnboardingAiService {
     }
   }
 
-  async generateMenuDraft({
-    prompt,
-    restaurantName,
-  }: GenerateMenuDraftDto): Promise<MenuAiDraft> {
+  async generateMenuDraft(dto: GenerateMenuDraftDto): Promise<MenuAiDraft> {
+    const prompt = dto.prompt?.trim() ?? '';
+    const restaurantName = dto.restaurantName?.trim() || undefined;
     const fallbackDraft = this.buildHeuristicMenuDraft(prompt, restaurantName);
 
     if (!this.gemini) {
@@ -536,7 +536,11 @@ export class OnboardingAiService {
         contents: buildMenuGeminiPrompt(prompt, restaurantName),
         config: {
           systemInstruction:
-            'Sos un asistente gastronomico. Devolve exclusivamente JSON valido segun el esquema, sin markdown. Usa espanol rioplatense claro. Los precios son enteros en pesos argentinos.',
+            'Sos un asistente gastronómico para restaurantes en Argentina. ' +
+            'Generá categorías y platos EXCLUSIVAMENTE a partir del pedido del usuario. ' +
+            'No uses menús genéricos si el usuario describe otro rubro. ' +
+            'Devolvé exclusivamente JSON válido según el esquema, sin markdown. ' +
+            'Usá español rioplatense claro. Los precios son enteros en pesos argentinos.',
           temperature: 0.35,
           maxOutputTokens: 4096,
           responseMimeType: 'application/json',
@@ -549,7 +553,7 @@ export class OnboardingAiService {
         throw new Error('Gemini returned an empty response');
       }
 
-      const parsedDraft = JSON.parse(rawDraft) as Partial<MenuAiDraft>;
+      const parsedDraft = parseMenuAiJsonResponse(rawDraft);
       return normalizeMenuDraft(parsedDraft, fallbackDraft);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';

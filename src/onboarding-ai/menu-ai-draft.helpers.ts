@@ -48,6 +48,56 @@ export const MENU_AI_RESPONSE_JSON_SCHEMA = {
   },
 } as const;
 
+export function normalizeMenuKey(value: string): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+export function resolveCategoryName(
+  categoryName: string,
+  categories: MenuAiCategoryDraft[],
+): string | null {
+  const key = normalizeMenuKey(categoryName);
+  if (!key) return null;
+
+  const exact = categories.find(
+    (category) => normalizeMenuKey(category.name) === key,
+  );
+  if (exact) return exact.name;
+
+  const partial = categories.find((category) => {
+    const categoryKey = normalizeMenuKey(category.name);
+    return categoryKey.includes(key) || key.includes(categoryKey);
+  });
+
+  return partial?.name ?? null;
+}
+
+export function parseMenuAiJsonResponse(raw: string): Partial<MenuAiDraft> {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error('Empty Gemini menu draft response');
+  }
+
+  let jsonStr = trimmed;
+  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) {
+    jsonStr = fenceMatch[1].trim();
+  } else {
+    const start = trimmed.indexOf('{');
+    const end = trimmed.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      jsonStr = trimmed.slice(start, end + 1);
+    }
+  }
+
+  return JSON.parse(jsonStr) as Partial<MenuAiDraft>;
+}
+
 const HEURISTIC_DISH_TEMPLATES = [
   {
     suffix: 'Clásica',
@@ -102,27 +152,32 @@ export function normalizeMenuDraft(
 
   const safeCategories =
     categories.length > 0 ? categories : fallback.categories;
-  const categoryNames = new Set(
-    safeCategories.map((category) => category.name.toLowerCase()),
-  );
 
   const dishes = Array.isArray(draft?.dishes)
     ? draft.dishes
-        .map((dish) => ({
-          name: String(dish?.name || '').trim(),
-          description: String(dish?.description || '').trim(),
-          price: Math.round(Number(dish?.price) || 0),
-          categoryName: String(dish?.categoryName || '').trim(),
-        }))
-        .filter(
-          (dish) =>
-            dish.name.length >= 2 &&
-            dish.categoryName.length >= 2 &&
-            dish.price >= 100 &&
-            categoryNames.has(dish.categoryName.toLowerCase()),
-        )
+        .map((dish) => {
+          const name = String(dish?.name || '').trim();
+          const description = String(dish?.description || '').trim();
+          const price = Math.round(Number(dish?.price) || 0);
+          const resolvedCategoryName = resolveCategoryName(
+            String(dish?.categoryName || '').trim(),
+            safeCategories,
+          );
+
+          if (name.length < 2 || !resolvedCategoryName || price < 100) {
+            return null;
+          }
+
+          return {
+            name,
+            description,
+            price,
+            categoryName: resolvedCategoryName,
+          };
+        })
+        .filter((dish): dish is MenuAiDishDraft => dish !== null)
         .slice(0, 24)
-    : fallback.dishes;
+    : [];
 
   const assumptions = Array.isArray(draft?.assumptions)
     ? draft.assumptions
@@ -131,9 +186,16 @@ export function normalizeMenuDraft(
         .slice(0, 6)
     : fallback.assumptions;
 
+  const heuristicDishes = buildHeuristicMenuDishes(safeCategories);
+
   return {
     categories: safeCategories,
-    dishes: dishes.length > 0 ? dishes : fallback.dishes,
+    dishes:
+      dishes.length > 0
+        ? dishes
+        : heuristicDishes.length > 0
+          ? heuristicDishes
+          : fallback.dishes,
     assumptions,
   };
 }
@@ -142,19 +204,24 @@ export function buildMenuGeminiPrompt(
   prompt: string,
   restaurantName?: string,
 ): string {
+  const trimmedPrompt = prompt.trim();
   return [
+    'Pedido del usuario (OBLIGATORIO: basar todo el menu en este texto):',
+    '---',
+    trimmedPrompt,
+    '---',
+    restaurantName ? `Nombre del local: ${restaurantName}` : '',
+    '',
     'Genera un borrador de menu para un restaurante en Argentina.',
     'Reglas:',
-    '- categories: entre 3 y 6 categorias logicas para el rubro.',
-    '- dishes: entre 2 y 4 platos por categoria, con nombres comerciales claros.',
+    '- Usa SOLO el rubro, platos, estilo y rangos de precio mencionados por el usuario.',
+    '- No inventes un menu generico de parrilla/pizza si el usuario describe otro negocio.',
+    '- categories: entre 3 y 6 categorias logicas para ESE rubro.',
+    '- dishes: entre 2 y 4 platos por categoria, con nombres comerciales concretos del pedido.',
     '- price: precio en pesos argentinos (entero, sin centavos), realista para 2025.',
     '- categoryName debe coincidir exactamente con el name de una categoria.',
     '- descriptions cortas, utiles para carta digital.',
     '- assumptions: supuestos o datos faltantes en espanol.',
-    restaurantName ? `- Nombre del local: ${restaurantName}` : '',
-    '',
-    'Descripcion del usuario:',
-    prompt,
   ]
     .filter(Boolean)
     .join('\n');
