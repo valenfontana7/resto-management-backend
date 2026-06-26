@@ -35,6 +35,8 @@ COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
+RUN chmod +x /app/scripts/docker-entrypoint.sh
+
 RUN set -eux; \
         if ! getent group nodejs >/dev/null 2>&1; then \
             if command -v groupadd >/dev/null 2>&1; then groupadd -g 1001 nodejs; else addgroup --gid 1001 nodejs; fi; \
@@ -48,4 +50,4 @@ RUN set -eux; \
 USER nestjs
 
 EXPOSE 4000
-CMD ["node", "dist/main"]
+ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
