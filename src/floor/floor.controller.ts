@@ -38,6 +38,7 @@ import {
   PingTerminalDto,
 } from './dto/terminal.dto';
 import { UploadAfipCertificateDto } from '../fiscal/dto/upload-afip-certificate.dto';
+import { IssueOrderFiscalDocumentDto } from './dto/issue-order-fiscal.dto';
 import { DailyOperationService } from './services/daily-operation.service';
 import { UpdateDailyOperationDto } from './dto/daily-operation.dto';
 import { CloseDailyOperationDto } from './dto/close-daily-operation.dto';
@@ -653,7 +654,25 @@ export class FloorController {
     return this.fiscalDocuments.createCreditNote(restaurantId, documentId);
   }
 
-  // ─── Equipo de salón (alta rápida) ─────────────────────────────────────────
+  @Post('fiscal/orders/:orderId/issue')
+  @ApiOperation({ summary: 'Emitir comprobante fiscal para un pedido pagado' })
+  issueOrderFiscalDocument(
+    @Param('restaurantId') restaurantId: string,
+    @Param('orderId') orderId: string,
+    @Body() dto: IssueOrderFiscalDocumentDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    void user;
+    return this.fiscalDocuments.createForOrder(restaurantId, orderId, {
+      type: dto.type,
+      subtotal: 0,
+      total: 0,
+      customerDocType: dto.customerDocType,
+      customerDocNumber: dto.customerDocNumber,
+      customerName: dto.customerName,
+      customerIvaCondition: dto.customerIvaCondition,
+    });
+  }
 
   @Post('salon-staff/quick')
   @ApiOperation({

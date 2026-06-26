@@ -22,6 +22,7 @@ export interface RestaurantFiscalConfig {
   availableDocumentTypes: Array<'FACTURA_A' | 'FACTURA_B' | 'FACTURA_C'>;
   environment: AfipEnvironment;
   certificateConfigured: boolean;
+  ivaRate: number;
 }
 
 interface StoredFiscalRules {
@@ -34,6 +35,9 @@ interface StoredFiscalRules {
   certificateConfigured?: boolean;
   certificateCiphertext?: string;
   privateKeyCiphertext?: string;
+  lastConnectionOkAt?: string;
+  /** Alícuota IVA general para facturas A/B (default 21). */
+  ivaRate?: number;
 }
 
 @Injectable()
@@ -65,7 +69,13 @@ export class FiscalConfigService {
       certificateConfigured: Boolean(
         rules.certificateConfigured && rules.certificateCiphertext,
       ),
+      ivaRate: this.resolveIvaRate(rules.ivaRate),
     };
+  }
+
+  private resolveIvaRate(value?: number): number {
+    if (value == null || !Number.isFinite(value) || value <= 0) return 21;
+    return Math.min(Math.max(value, 0), 100);
   }
 
   async isReadyForAfip(restaurantId: string): Promise<boolean> {
@@ -137,9 +147,20 @@ export class FiscalConfigService {
       certificateCiphertext: undefined,
       privateKeyCiphertext: undefined,
       certificateConfigured: false,
+      lastConnectionOkAt: undefined,
     };
     await this.persistRules(restaurantId, merged);
     return { certificateConfigured: false };
+  }
+
+  async recordConnectionSuccess(restaurantId: string) {
+    const current = (await this.getStoredRules(restaurantId)) ?? {};
+    const merged: StoredFiscalRules = {
+      ...current,
+      lastConnectionOkAt: new Date().toISOString(),
+    };
+    await this.persistRules(restaurantId, merged);
+    return { lastConnectionOkAt: merged.lastConnectionOkAt };
   }
 
   private async getStoredRules(

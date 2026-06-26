@@ -39,6 +39,7 @@ export interface AuthorizeInvoiceInput {
   relatedInvoiceType?: FiscalDocumentType | null;
   relatedVoucher?: RelatedVoucherInput | null;
   environment?: AfipEnvironment;
+  ivaRate?: number;
 }
 
 export interface AuthorizeInvoiceResult {
@@ -99,7 +100,13 @@ export class AfipWsfeService {
       environment,
     );
     const nextNumber = lastNumber + 1;
-    const amounts = buildAfipAmounts(input.type, input.totalPesos, relatedType);
+    const ivaRate = input.ivaRate ?? 21;
+    const amounts = buildAfipAmounts(
+      input.type,
+      input.totalPesos,
+      relatedType,
+      ivaRate,
+    );
     const docTipo = mapCustomerDocType(input.customerDocType);
     const docNro = mapCustomerDocNumber(docTipo, input.customerDocNumber);
 

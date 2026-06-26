@@ -385,4 +385,58 @@ export class SuperAdminService {
       },
     };
   }
+
+  async getFiscalHealth() {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const restaurants = await this.prisma.restaurant.findMany({
+      select: { id: true, businessRules: true },
+    });
+
+    let configuredCount = 0;
+    for (const restaurant of restaurants) {
+      const rules = restaurant.businessRules as Record<string, unknown> | null;
+      const fiscal = rules?.fiscal as Record<string, unknown> | undefined;
+      if (fiscal?.certificateConfigured === true) configuredCount += 1;
+    }
+
+    const [pendingRecent, rejectedRecent, authorizedRecent] = await Promise.all(
+      [
+        this.prisma.fiscalDocument.count({
+          where: {
+            status: 'PENDING_AFIP',
+            createdAt: { gte: since },
+          },
+        }),
+        this.prisma.fiscalDocument.count({
+          where: {
+            status: 'REJECTED',
+            createdAt: { gte: since },
+          },
+        }),
+        this.prisma.fiscalDocument.count({
+          where: {
+            status: 'AUTHORIZED',
+            createdAt: { gte: since },
+            type: { not: 'INTERNAL_TICKET' },
+          },
+        }),
+      ],
+    );
+
+    const fiscalAttempts = rejectedRecent + authorizedRecent;
+    const rejectionRate =
+      fiscalAttempts > 0
+        ? Math.round((rejectedRecent / fiscalAttempts) * 100)
+        : 0;
+
+    return {
+      restaurantsTotal: restaurants.length,
+      restaurantsWithCertificate: configuredCount,
+      pendingRecent,
+      rejectedRecent,
+      authorizedRecent,
+      rejectionRate,
+    };
+  }
 }

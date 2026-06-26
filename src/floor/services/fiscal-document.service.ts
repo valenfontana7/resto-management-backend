@@ -10,6 +10,7 @@ import { AfipAuthorizationService } from '../../fiscal/services/afip-authorizati
 import { AfipPadronService } from '../../fiscal/services/afip-padron.service';
 import { FiscalConfigService } from '../../fiscal/services/fiscal-config.service';
 import { FiscalPdfService } from '../../fiscal/services/fiscal-pdf.service';
+import { S3Service } from '../../storage/s3.service';
 import { buildAfipAmounts } from '../../fiscal/utils/afip-amount.util';
 import { validateFiscalCustomerInput } from '../../fiscal/utils/afip-fiscal-validation.util';
 
@@ -37,7 +38,76 @@ export class FiscalDocumentService {
     private readonly afipPadron: AfipPadronService,
     private readonly fiscalConfig: FiscalConfigService,
     private readonly fiscalPdf: FiscalPdfService,
+    private readonly s3: S3Service,
   ) {}
+
+  async createForOrder(
+    restaurantId: string,
+    orderId: string,
+    input: CreateFiscalDocumentInput,
+  ) {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, restaurantId },
+      select: { id: true, total: true, paymentStatus: true },
+    });
+
+    if (!order) {
+      throw new NotFoundException('Pedido no encontrado');
+    }
+
+    if (order.paymentStatus !== 'PAID') {
+      throw new BadRequestException(
+        'Solo se puede facturar un pedido con pago confirmado',
+      );
+    }
+
+    const existing = await this.prisma.fiscalDocument.findFirst({
+      where: {
+        restaurantId,
+        orderId,
+        type: input.type,
+        status: {
+          in: [
+            FiscalDocumentStatus.AUTHORIZED,
+            FiscalDocumentStatus.PENDING_AFIP,
+          ],
+        },
+      },
+    });
+
+    if (existing) {
+      throw new BadRequestException(
+        'Este pedido ya tiene un comprobante fiscal activo',
+      );
+    }
+
+    this.assertValidFiscalInput({
+      ...input,
+      total: order.total,
+    });
+
+    const resolvedInput: CreateFiscalDocumentInput = {
+      ...input,
+      total: order.total,
+      subtotal: order.total,
+    };
+
+    if (resolvedInput.type === FiscalDocumentType.INTERNAL_TICKET) {
+      return this.createInternalTicket(
+        restaurantId,
+        null,
+        orderId,
+        resolvedInput,
+      );
+    }
+
+    return this.createFiscalDocument(
+      restaurantId,
+      null,
+      orderId,
+      resolvedInput,
+    );
+  }
 
   async createForSession(
     restaurantId: string,
@@ -140,7 +210,12 @@ export class FiscalDocumentService {
       );
     }
 
-    const amounts = buildAfipAmounts(original.type, original.total);
+    const amounts = buildAfipAmounts(
+      original.type,
+      original.total,
+      null,
+      await this.resolveIvaRate(restaurantId),
+    );
 
     const doc = await this.prisma.fiscalDocument.create({
       data: {
@@ -249,7 +324,11 @@ export class FiscalDocumentService {
   }
 
   async testAfipConnection(restaurantId: string) {
-    return this.afipAuthorization.testConnection(restaurantId);
+    const result = await this.afipAuthorization.testConnection(restaurantId);
+    if (result.ok) {
+      await this.fiscalConfig.recordConnectionSuccess(restaurantId);
+    }
+    return result;
   }
 
   async generatePdf(restaurantId: string, documentId: string) {
@@ -366,7 +445,7 @@ export class FiscalDocumentService {
 
   private async createInternalTicket(
     restaurantId: string,
-    tableSessionId: string,
+    tableSessionId: string | null,
     orderId: string,
     input: CreateFiscalDocumentInput,
   ) {
@@ -393,11 +472,16 @@ export class FiscalDocumentService {
 
   private async createFiscalDocument(
     restaurantId: string,
-    tableSessionId: string,
+    tableSessionId: string | null,
     orderId: string,
     input: CreateFiscalDocumentInput,
   ) {
-    const amounts = buildAfipAmounts(input.type, input.total);
+    const amounts = buildAfipAmounts(
+      input.type,
+      input.total,
+      null,
+      await this.resolveIvaRate(restaurantId),
+    );
 
     const doc = await this.prisma.fiscalDocument.create({
       data: {
@@ -470,7 +554,7 @@ export class FiscalDocumentService {
     }
 
     if (result.success) {
-      return this.prisma.fiscalDocument.update({
+      const authorized = await this.prisma.fiscalDocument.update({
         where: { id: documentId },
         data: {
           status: FiscalDocumentStatus.AUTHORIZED,
@@ -485,6 +569,8 @@ export class FiscalDocumentService {
           },
         },
       });
+      void this.persistAuthorizedPdf(restaurantId, documentId);
+      return authorized;
     }
 
     this.logger.warn(
@@ -506,8 +592,34 @@ export class FiscalDocumentService {
     });
   }
 
+  private async resolveIvaRate(restaurantId: string): Promise<number> {
+    const config = await this.fiscalConfig.getPublicConfig(restaurantId);
+    return config?.ivaRate ?? 21;
+  }
+
+  private async persistAuthorizedPdf(restaurantId: string, documentId: string) {
+    try {
+      const generated = await this.generatePdf(restaurantId, documentId);
+      const key = `fiscal/${restaurantId}/${documentId}.pdf`;
+      const uploaded = await this.s3.uploadObject({
+        key,
+        body: generated.buffer,
+        contentType: 'application/pdf',
+      });
+      await this.prisma.fiscalDocument.update({
+        where: { id: documentId },
+        data: { pdfUrl: uploaded.url },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo persistir PDF fiscal · doc=${documentId}: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
   private canDownloadPdf(doc: { type: string; status: string }): boolean {
-    return doc.status === FiscalDocumentStatus.AUTHORIZED;
+    if (doc.status !== FiscalDocumentStatus.AUTHORIZED) return false;
+    return true;
   }
 
   private extractRelatedInvoiceType(

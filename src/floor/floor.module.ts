@@ -1,4 +1,5 @@
 import { Module, forwardRef } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { FloorController } from './floor.controller';
 import { TableSessionService } from './services/table-session.service';
 import { CashRegisterService } from './services/cash-register.service';
@@ -17,8 +18,10 @@ import { RestaurantsModule } from '../restaurants/restaurants.module';
 import { DeliveryModule } from '../delivery/delivery.module';
 import { SalonDeliveryOrderService } from './services/salon-delivery-order.service';
 import { FloorDesktopBootstrapService } from './services/floor-desktop-bootstrap.service';
+import { FiscalRetrySchedulerService } from './services/fiscal-retry-scheduler.service';
 import { TablesModule } from '../tables/tables.module';
 import { StorageModule } from '../storage/storage.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -29,6 +32,8 @@ import { StorageModule } from '../storage/storage.module';
     DeliveryModule,
     TablesModule,
     StorageModule,
+    NotificationsModule,
+    ScheduleModule.forRoot(),
     forwardRef(() => OrdersModule),
     RestaurantsModule,
   ],
@@ -44,6 +49,7 @@ import { StorageModule } from '../storage/storage.module';
     FloorIdempotencyService,
     SalonDeliveryOrderService,
     FloorDesktopBootstrapService,
+    FiscalRetrySchedulerService,
   ],
   exports: [
     TableSessionService,

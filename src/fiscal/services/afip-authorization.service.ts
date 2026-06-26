@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { FiscalDocumentType } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
 import { AFIP_CBTE_TYPE } from '../utils/afip.constants';
 import { mapFiscalDocumentType } from '../utils/afip-amount.util';
+import { withFiscalAdvisoryLock } from '../utils/afip-lock.util';
 import { AfipWsaaService } from './afip-wsaa.service';
 import {
   AfipWsfeService,
@@ -19,6 +21,7 @@ export interface EmitAfipInvoiceInput {
   customerIvaCondition?: number | null;
   relatedInvoiceType?: FiscalDocumentType | null;
   relatedVoucher?: AuthorizeInvoiceInput['relatedVoucher'];
+  ivaRate?: number;
 }
 
 @Injectable()
@@ -29,6 +32,7 @@ export class AfipAuthorizationService {
     private readonly fiscalConfig: FiscalConfigService,
     private readonly wsaa: AfipWsaaService,
     private readonly wsfe: AfipWsfeService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async testConnection(restaurantId: string) {
@@ -143,18 +147,30 @@ export class AfipAuthorizationService {
         config.environment,
       );
 
-      return this.wsfe.authorizeInvoice(auth, {
-        cuit: config.cuit,
-        puntoVenta: config.puntoVenta,
-        type: input.type,
-        totalPesos: input.totalPesos,
-        customerDocType: input.customerDocType,
-        customerDocNumber: input.customerDocNumber,
-        customerIvaCondition: input.customerIvaCondition,
-        relatedInvoiceType: input.relatedInvoiceType,
-        relatedVoucher: input.relatedVoucher,
-        environment: config.environment,
-      });
+      const relatedType = input.relatedInvoiceType ?? null;
+      const cbteTipo = mapFiscalDocumentType(input.type, relatedType);
+      const ivaRate = config.ivaRate ?? 21;
+
+      return withFiscalAdvisoryLock(
+        this.prisma,
+        input.restaurantId,
+        config.puntoVenta,
+        cbteTipo,
+        () =>
+          this.wsfe.authorizeInvoice(auth, {
+            cuit: config.cuit,
+            puntoVenta: config.puntoVenta,
+            type: input.type,
+            totalPesos: input.totalPesos,
+            customerDocType: input.customerDocType,
+            customerDocNumber: input.customerDocNumber,
+            customerIvaCondition: input.customerIvaCondition,
+            relatedInvoiceType: input.relatedInvoiceType,
+            relatedVoucher: input.relatedVoucher,
+            environment: config.environment,
+            ivaRate,
+          }),
+      );
     } catch (error) {
       this.logger.error(
         `AFIP authorize failed · restaurant=${input.restaurantId}`,

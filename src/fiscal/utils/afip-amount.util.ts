@@ -34,6 +34,7 @@ export function buildAfipAmounts(
   type: FiscalDocumentType,
   totalPesos: number,
   relatedInvoiceType?: FiscalDocumentType | null,
+  ivaRate = 21,
 ): AfipInvoiceAmounts {
   const effectiveType =
     type === FiscalDocumentType.NOTA_CREDITO
@@ -56,7 +57,8 @@ export function buildAfipAmounts(
     };
   }
 
-  const impNeto = toAfipAmount(impTotal / 1.21);
+  const divisor = 1 + Math.max(0, ivaRate) / 100;
+  const impNeto = toAfipAmount(impTotal / divisor);
   const impIVA = toAfipAmount(impTotal - impNeto);
 
   return {

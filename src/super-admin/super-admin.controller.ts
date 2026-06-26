@@ -95,6 +95,11 @@ export class SuperAdminController {
     return this.superAdminService.getGlobalStats();
   }
 
+  @Get('fiscal-health')
+  async getFiscalHealth() {
+    return this.superAdminService.getFiscalHealth();
+  }
+
   @Get('users')
   async getUsers(
     @Query('search') search?: string,
