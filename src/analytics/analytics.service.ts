@@ -35,11 +35,12 @@ export class AnalyticsService {
     const { start, end } = this.getDateRange(period, startDate, endDate);
 
     // Usar query raw para agrupar por fecha en la DB en vez de cargar todo en memoria
+    const tz = this.timezone;
     const rows = await this.prisma.$queryRaw<
       Array<{ date: string; sales: bigint | number; orders: bigint | number }>
     >`
       SELECT
-        DATE("createdAt") AS "date",
+        DATE(("createdAt" AT TIME ZONE ${tz})) AS "date",
         SUM("total") AS "sales",
         COUNT(*)::int AS "orders"
       FROM "Order"
@@ -47,7 +48,7 @@ export class AnalyticsService {
         AND "status" = 'DELIVERED'
         AND "createdAt" >= ${start}
         AND "createdAt" <= ${end}
-      GROUP BY DATE("createdAt")
+      GROUP BY DATE(("createdAt" AT TIME ZONE ${tz}))
       ORDER BY "date" ASC
     `;
 
@@ -149,11 +150,12 @@ export class AnalyticsService {
   ) {
     const { start, end } = this.getDateRange(period, startDate, endDate);
 
+    const tz = this.timezone;
     const rows = await this.prisma.$queryRaw<
       Array<{ hour: number; orders: bigint | number; sales: bigint | number }>
     >`
       SELECT
-        EXTRACT(HOUR FROM "createdAt")::int AS "hour",
+        EXTRACT(HOUR FROM ("createdAt" AT TIME ZONE ${tz}))::int AS "hour",
         COUNT(*)::int AS "orders",
         COALESCE(SUM("total"), 0) AS "sales"
       FROM "Order"
@@ -161,7 +163,7 @@ export class AnalyticsService {
         AND "status" != 'CANCELLED'
         AND "createdAt" >= ${start}
         AND "createdAt" <= ${end}
-      GROUP BY EXTRACT(HOUR FROM "createdAt")
+      GROUP BY EXTRACT(HOUR FROM ("createdAt" AT TIME ZONE ${tz}))
       ORDER BY "hour" ASC
     `;
 

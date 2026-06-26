@@ -25,6 +25,10 @@ export class PrismaService
     });
 
     this.pool = pool;
+    const timezone = this.timezone.replace(/'/g, "''");
+    this.pool.on('connect', (client) => {
+      void client.query(`SET TIME ZONE '${timezone}'`);
+    });
   }
 
   async onModuleInit() {
