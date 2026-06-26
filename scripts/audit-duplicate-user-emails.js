@@ -1,23 +1,32 @@
-import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { Pool } from 'pg';
-import { getEmailCanonicalIdentity } from '../src/common/utils/email-identity.util';
+require('dotenv/config');
+const { PrismaClient } = require('@prisma/client');
+const { PrismaPg } = require('@prisma/adapter-pg');
+const { Pool } = require('pg');
 
-type ActiveUserRow = {
-  id: string;
-  email: string;
-  name: string;
-  createdAt: Date;
-  restaurantId: string | null;
-  isActive: boolean;
-};
+function normalizeEmailForStorage(email) {
+  return email.trim().toLowerCase();
+}
 
-type DuplicateGroup = {
-  key: string;
-  kind: 'exact' | 'canonical';
-  users: ActiveUserRow[];
-};
+function getEmailCanonicalIdentity(email) {
+  const normalized = normalizeEmailForStorage(email);
+  const at = normalized.lastIndexOf('@');
+  if (at <= 0) return normalized;
+
+  let local = normalized.slice(0, at);
+  let domain = normalized.slice(at + 1);
+
+  if (domain === 'googlemail.com') {
+    domain = 'gmail.com';
+  }
+
+  if (domain === 'gmail.com') {
+    local = local.split('+')[0].replace(/\./g, '');
+    return `${local}@${domain}`;
+  }
+
+  local = local.split('+')[0];
+  return `${local}@${domain}`;
+}
 
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL?.trim();
@@ -39,8 +48,8 @@ function parseArgs() {
   return { apply, json, includeCanonical };
 }
 
-function groupExactDuplicates(users: ActiveUserRow[]): DuplicateGroup[] {
-  const byEmail = new Map<string, ActiveUserRow[]>();
+function groupExactDuplicates(users) {
+  const byEmail = new Map();
 
   for (const user of users) {
     const key = user.email.trim().toLowerCase();
@@ -53,13 +62,13 @@ function groupExactDuplicates(users: ActiveUserRow[]): DuplicateGroup[] {
     .filter(([, group]) => group.length > 1)
     .map(([key, group]) => ({
       key,
-      kind: 'exact' as const,
+      kind: 'exact',
       users: sortUsersForKeep(group),
     }));
 }
 
-function groupCanonicalDuplicates(users: ActiveUserRow[]): DuplicateGroup[] {
-  const byIdentity = new Map<string, ActiveUserRow[]>();
+function groupCanonicalDuplicates(users) {
+  const byIdentity = new Map();
 
   for (const user of users) {
     const key = getEmailCanonicalIdentity(user.email);
@@ -70,17 +79,19 @@ function groupCanonicalDuplicates(users: ActiveUserRow[]): DuplicateGroup[] {
 
   return [...byIdentity.entries()]
     .filter(([, group]) => {
-      const distinctStored = new Set(group.map((user) => user.email.toLowerCase()));
+      const distinctStored = new Set(
+        group.map((user) => user.email.toLowerCase()),
+      );
       return distinctStored.size > 1;
     })
     .map(([key, group]) => ({
       key,
-      kind: 'canonical' as const,
+      kind: 'canonical',
       users: sortUsersForKeep(group),
     }));
 }
 
-function sortUsersForKeep(users: ActiveUserRow[]): ActiveUserRow[] {
+function sortUsersForKeep(users) {
   return [...users].sort((a, b) => {
     const createdDiff = a.createdAt.getTime() - b.createdAt.getTime();
     if (createdDiff !== 0) return createdDiff;
@@ -88,7 +99,7 @@ function sortUsersForKeep(users: ActiveUserRow[]): ActiveUserRow[] {
   });
 }
 
-function formatUser(user: ActiveUserRow): string {
+function formatUser(user) {
   const restaurant = user.restaurantId ?? 'sin-restaurante';
   const status = user.isActive ? 'activo' : 'inactivo';
   return [
@@ -101,7 +112,7 @@ function formatUser(user: ActiveUserRow): string {
   ].join('\n');
 }
 
-function printReport(groups: DuplicateGroup[]): void {
+function printReport(groups) {
   if (groups.length === 0) {
     console.log('No se encontraron duplicados entre usuarios activos.');
     return;
@@ -127,11 +138,8 @@ function printReport(groups: DuplicateGroup[]): void {
   }
 }
 
-async function applySoftDelete(
-  prisma: PrismaClient,
-  groups: DuplicateGroup[],
-): Promise<number> {
-  const idsToDelete = new Set<string>();
+async function applySoftDelete(prisma, groups) {
+  const idsToDelete = new Set();
 
   for (const group of groups) {
     for (const user of group.users.slice(1)) {
