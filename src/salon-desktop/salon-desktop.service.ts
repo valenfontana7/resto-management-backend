@@ -6,15 +6,15 @@ const DEFAULT_MANIFEST_URL =
   'https://bentoo.com.ar/downloads/desktop-latest.json';
 
 const DEFAULT_MANIFEST: DesktopReleaseManifest = {
-  version: '0.2.7',
+  version: '0.2.8',
   installerUrl: 'https://bentoo.com.ar/downloads/BentooSalon-Win7-Setup.exe',
   installerFileName: 'BentooSalon-Win7-Setup.exe',
   minWindowsVersion: '6.1',
-  publishedAt: '2026-06-26T22:50:28.363Z',
+  publishedAt: '2026-06-27T00:00:00.000Z',
   changelog: [
-    'Bentoo Salón Desktop v0.2.7',
-    'Pantalla post-instalación: distingue configuración inicial vs actualización',
-    'Título de ventana y botón Continuar corregidos en el asistente de setup',
+    'Bentoo Salón Desktop v0.2.8',
+    'Sync operativo: mesas, menú, sesiones y pedidos desde la nube en cada poll',
+    'Bootstrap refresca caja y catálogo; sync background cada 15 s',
   ],
   releaseNotesUrl: DEFAULT_MANIFEST_URL,
 };
