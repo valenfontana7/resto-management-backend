@@ -27,7 +27,9 @@ export class SuperAdminUsersService {
     limit: number = 10,
     offset: number = 0,
   ) {
-    const where: any = {};
+    const where: any = {
+      deletedAt: null,
+    };
 
     if (search) {
       where.OR = [

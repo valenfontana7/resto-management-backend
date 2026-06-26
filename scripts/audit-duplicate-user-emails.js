@@ -1,6 +1,4 @@
 require('dotenv/config');
-const { PrismaClient } = require('@prisma/client');
-const { PrismaPg } = require('@prisma/adapter-pg');
 const { Pool } = require('pg');
 
 function normalizeEmailForStorage(email) {
@@ -28,24 +26,12 @@ function getEmailCanonicalIdentity(email) {
   return `${local}@${domain}`;
 }
 
-function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL?.trim();
-  if (!connectionString) {
-    throw new Error(
-      'DATABASE_URL no está configurada. Definila en .env antes de auditar.',
-    );
-  }
-
-  const pool = new Pool({ connectionString });
-  const adapter = new PrismaPg(pool);
-  return { prisma: new PrismaClient({ adapter }), pool };
-}
-
 function parseArgs() {
   const apply = process.argv.includes('--apply');
   const json = process.argv.includes('--json');
   const includeCanonical = !process.argv.includes('--exact-only');
-  return { apply, json, includeCanonical };
+  const includeDeleted = process.argv.includes('--include-deleted');
+  return { apply, json, includeCanonical, includeDeleted };
 }
 
 function groupExactDuplicates(users) {
@@ -93,33 +79,49 @@ function groupCanonicalDuplicates(users) {
 
 function sortUsersForKeep(users) {
   return [...users].sort((a, b) => {
-    const createdDiff = a.createdAt.getTime() - b.createdAt.getTime();
+    const createdDiff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
     if (createdDiff !== 0) return createdDiff;
     return a.id.localeCompare(b.id);
   });
 }
 
+function mergeDuplicateGroups(exactGroups, canonicalGroups) {
+  const mergedGroups = [...exactGroups];
+  const exactKeys = new Set(exactGroups.map((group) => group.key));
+
+  for (const group of canonicalGroups) {
+    if (exactKeys.has(group.key)) continue;
+    mergedGroups.push(group);
+  }
+
+  return mergedGroups;
+}
+
 function formatUser(user) {
   const restaurant = user.restaurantId ?? 'sin-restaurante';
   const status = user.isActive ? 'activo' : 'inactivo';
+  const deleted = user.deletedAt
+    ? `soft-deleted (${new Date(user.deletedAt).toISOString()})`
+    : 'activo-en-db';
   return [
     `  - ${user.id}`,
     `    email: ${user.email}`,
     `    nombre: ${user.name}`,
-    `    creado: ${user.createdAt.toISOString()}`,
+    `    creado: ${new Date(user.createdAt).toISOString()}`,
     `    restaurante: ${restaurant}`,
     `    estado: ${status}`,
+    `    registro: ${deleted}`,
   ].join('\n');
 }
 
-function printReport(groups) {
+function printReport(title, groups) {
+  console.log(title);
   if (groups.length === 0) {
-    console.log('No se encontraron duplicados entre usuarios activos.');
+    console.log('  Ninguno.\n');
     return;
   }
 
-  console.log(`Grupos duplicados encontrados: ${groups.length}\n`);
-
+  console.log(`  Grupos: ${groups.length}\n`);
   for (const group of groups) {
     const keep = group.users[0];
     const remove = group.users.slice(1);
@@ -128,9 +130,9 @@ function printReport(groups) {
         ? `Email exacto: ${group.key}`
         : `Identidad canónica: ${group.key}`;
 
-    console.log(`${label}`);
-    console.log(`  Conservar: ${keep.id} (${keep.email})`);
-    console.log(`  Soft-delete sugerido: ${remove.length}`);
+    console.log(`  ${label}`);
+    console.log(`    Conservar: ${keep.id} (${keep.email})`);
+    console.log(`    Removibles: ${remove.length}`);
     for (const user of group.users) {
       console.log(formatUser(user));
     }
@@ -138,12 +140,32 @@ function printReport(groups) {
   }
 }
 
-async function applySoftDelete(prisma, groups) {
+async function fetchUsers(pool, includeDeleted) {
+  const whereClause = includeDeleted ? '' : 'WHERE "deletedAt" IS NULL';
+  const { rows } = await pool.query(`
+    SELECT
+      id,
+      email,
+      name,
+      "createdAt",
+      "restaurantId",
+      "isActive",
+      "deletedAt"
+    FROM "User"
+    ${whereClause}
+    ORDER BY "createdAt" ASC, id ASC
+  `);
+  return rows;
+}
+
+async function applySoftDelete(pool, groups) {
   const idsToDelete = new Set();
 
   for (const group of groups) {
     for (const user of group.users.slice(1)) {
-      idsToDelete.add(user.id);
+      if (!user.deletedAt) {
+        idsToDelete.add(user.id);
+      }
     }
   }
 
@@ -151,64 +173,58 @@ async function applySoftDelete(prisma, groups) {
     return 0;
   }
 
-  const result = await prisma.user.updateMany({
-    where: {
-      id: { in: [...idsToDelete] },
-      deletedAt: null,
-    },
-    data: {
-      deletedAt: new Date(),
-    },
-  });
+  const { rowCount } = await pool.query(
+    `
+      UPDATE "User"
+      SET "deletedAt" = CURRENT_TIMESTAMP, "updatedAt" = CURRENT_TIMESTAMP
+      WHERE id = ANY($1::text[]) AND "deletedAt" IS NULL
+    `,
+    [[...idsToDelete]],
+  );
 
-  return result.count;
+  return rowCount ?? 0;
 }
 
 /**
- * Audita usuarios activos con email duplicado (exacto o identidad canónica).
+ * Audita usuarios con email duplicado (exacto o identidad canónica).
  *
  * Uso:
  *   npm run audit:duplicate-emails
  *   npm run audit:duplicate-emails -- --json
  *   npm run audit:duplicate-emails -- --exact-only
+ *   npm run audit:duplicate-emails -- --include-deleted
  *   npm run audit:duplicate-emails -- --apply
  */
 async function main() {
-  const { apply, json, includeCanonical } = parseArgs();
-  const { prisma, pool } = createPrismaClient();
+  const { apply, json, includeCanonical, includeDeleted } = parseArgs();
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL?.trim() });
 
   try {
-    const users = await prisma.user.findMany({
-      where: { deletedAt: null },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        createdAt: true,
-        restaurantId: true,
-        isActive: true,
-      },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    });
+    const activeUsers = await fetchUsers(pool, false);
+    const allUsers = includeDeleted ? await fetchUsers(pool, true) : activeUsers;
+    const softDeletedUsers = allUsers.filter((user) => user.deletedAt);
 
-    const exactGroups = groupExactDuplicates(users);
-    const canonicalGroups = includeCanonical
-      ? groupCanonicalDuplicates(users)
+    const activeExactGroups = groupExactDuplicates(activeUsers);
+    const activeCanonicalGroups = includeCanonical
+      ? groupCanonicalDuplicates(activeUsers)
+      : [];
+    const activeGroups = mergeDuplicateGroups(
+      activeExactGroups,
+      activeCanonicalGroups,
+    );
+
+    const deletedExactGroups = includeDeleted
+      ? groupExactDuplicates(allUsers)
+      : [];
+    const deletedCanonicalGroups =
+      includeDeleted && includeCanonical
+        ? groupCanonicalDuplicates(allUsers)
+        : [];
+    const allGroups = includeDeleted
+      ? mergeDuplicateGroups(deletedExactGroups, deletedCanonicalGroups)
       : [];
 
-    const mergedGroups = [...exactGroups];
-    const exactKeys = new Set(exactGroups.map((group) => group.key));
-
-    for (const group of canonicalGroups) {
-      if (exactKeys.has(group.key)) continue;
-      mergedGroups.push(group);
-    }
-
-    const duplicateUserCount = mergedGroups.reduce(
-      (total, group) => total + group.users.length,
-      0,
-    );
-    const removableCount = mergedGroups.reduce(
+    const removableCount = activeGroups.reduce(
       (total, group) => total + Math.max(group.users.length - 1, 0),
       0,
     );
@@ -217,62 +233,67 @@ async function main() {
       console.log(
         JSON.stringify(
           {
-            scannedActiveUsers: users.length,
-            duplicateGroups: mergedGroups.length,
-            duplicateUsers: duplicateUserCount,
-            removableUsers: removableCount,
-            exactDuplicateGroups: exactGroups.length,
-            canonicalDuplicateGroups: canonicalGroups.length,
+            scannedActiveUsers: activeUsers.length,
+            scannedAllUsers: allUsers.length,
+            softDeletedUsers: softDeletedUsers.length,
+            activeDuplicateGroups: activeGroups.length,
+            allDuplicateGroups: allGroups.length,
+            removableActiveUsers: removableCount,
             apply,
-            groups: mergedGroups.map((group) => ({
-              kind: group.kind,
-              key: group.key,
-              keepUserId: group.users[0]?.id ?? null,
-              userIds: group.users.map((user) => user.id),
-              users: group.users,
-            })),
+            activeGroups,
+            allGroups: includeDeleted ? allGroups : undefined,
           },
           null,
           2,
         ),
       );
     } else {
-      console.log('Auditoría de emails duplicados (usuarios activos)\n');
-      console.log(`Usuarios activos escaneados: ${users.length}`);
-      console.log(`Grupos duplicados exactos: ${exactGroups.length}`);
-      if (includeCanonical) {
+      console.log('Auditoría de emails duplicados\n');
+      console.log(`Usuarios activos (deletedAt IS NULL): ${activeUsers.length}`);
+      if (includeDeleted) {
+        console.log(`Usuarios totales en DB: ${allUsers.length}`);
+        console.log(`Usuarios soft-deleted: ${softDeletedUsers.length}`);
+      }
+      console.log(`Modo: ${apply ? 'APLICAR soft-delete' : 'SOLO REPORTE'}\n`);
+
+      printReport('Duplicados entre usuarios ACTIVOS:', activeGroups);
+
+      if (includeDeleted) {
+        printReport(
+          'Duplicados incluyendo soft-deleted (lo que veía /master/users antes del fix):',
+          allGroups,
+        );
+      } else if (softDeletedUsers.length > 0) {
         console.log(
-          `Grupos duplicados por identidad canónica: ${canonicalGroups.length}`,
+          `Hay ${softDeletedUsers.length} usuario(s) soft-deleted que ya no cuentan como activos.`,
+        );
+        console.log(
+          'Para verlos en el reporte: npm run audit:duplicate-emails -- --include-deleted\n',
         );
       }
-      console.log(`Usuarios en grupos duplicados: ${duplicateUserCount}`);
-      console.log(`Usuarios removibles (soft-delete): ${removableCount}`);
-      console.log(`Modo: ${apply ? 'APLICAR soft-delete' : 'SOLO REPORTE'}\n`);
-      printReport(mergedGroups);
     }
 
     if (apply) {
-      if (mergedGroups.length === 0) {
+      if (activeGroups.length === 0) {
         if (!json) {
-          console.log('Nada para aplicar.');
+          console.log('Nada para aplicar entre usuarios activos.');
         }
         return;
       }
 
-      const deletedCount = await applySoftDelete(prisma, mergedGroups);
+      const deletedCount = await applySoftDelete(pool, activeGroups);
       if (!json) {
-        console.log(`Soft-delete aplicado a ${deletedCount} usuario(s).`);
+        console.log(`Soft-delete aplicado a ${deletedCount} usuario(s) activo(s).`);
         console.log(
           'Próximo paso: npx prisma migrate deploy (índice único parcial).',
         );
       }
-    } else if (!json && mergedGroups.length > 0) {
+    } else if (!json && activeGroups.length > 0) {
       console.log(
-        'Para aplicar soft-delete manual antes de la migración: npm run audit:duplicate-emails -- --apply',
+        'Para aplicar soft-delete: npm run audit:duplicate-emails -- --apply',
       );
     }
   } finally {
-    await prisma.$disconnect();
     await pool.end();
   }
 }
