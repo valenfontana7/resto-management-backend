@@ -23,7 +23,7 @@ import {
   RequestPasswordResetDto,
   ResetPasswordDto,
 } from './dto/auth.dto';
-import { User } from '@prisma/client';
+import { Prisma, User } from '@prisma/client';
 import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
 import { EmailService } from '../email/email.service';
 import {
@@ -99,6 +99,16 @@ export class AuthService {
 
   private normalizeEmail(email: string): string {
     return normalizeEmailForStorage(email);
+  }
+
+  private rethrowIfDuplicateUserEmail(error: unknown): never {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      throw new ConflictException('Email already registered');
+    }
+    throw error;
   }
 
   private hashLoginToken(token: string): string {
@@ -205,20 +215,25 @@ export class AuthService {
 
     // Si NO se proporciona restaurantName, crear solo el usuario
     if (!dto.restaurantName) {
-      const user = await this.prisma.user.create({
-        data: {
-          email: normalizedEmail,
-          password: hashedPassword,
-          name: dto.name,
-          isActive: true,
-          // No tiene restaurante ni rol por ahora
-        },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-        },
-      });
+      let user: { id: string; email: string; name: string };
+      try {
+        user = await this.prisma.user.create({
+          data: {
+            email: normalizedEmail,
+            password: hashedPassword,
+            name: dto.name,
+            isActive: true,
+            // No tiene restaurante ni rol por ahora
+          },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+          },
+        });
+      } catch (error) {
+        this.rethrowIfDuplicateUserEmail(error);
+      }
 
       void this.maybeNotifyUserRegistered({
         source: 'auth.register',
@@ -261,15 +276,20 @@ export class AuthService {
       );
 
       // 3. Crear usuario dueño
-      const user = await tx.user.create({
-        data: {
-          email: normalizedEmail,
-          password: hashedPassword,
-          name: dto.name,
-          restaurantId: restaurant.id,
-          roleId: ownerRoleId,
-        },
-      });
+      let user: User;
+      try {
+        user = await tx.user.create({
+          data: {
+            email: normalizedEmail,
+            password: hashedPassword,
+            name: dto.name,
+            restaurantId: restaurant.id,
+            roleId: ownerRoleId,
+          },
+        });
+      } catch (error) {
+        this.rethrowIfDuplicateUserEmail(error);
+      }
 
       return { user, restaurant };
     });
@@ -358,15 +378,20 @@ export class AuthService {
 
     if (!existing) {
       const hashedPassword = await bcrypt.hash(dto.password, 10);
-      const created = await this.prisma.user.create({
-        data: {
-          email: normalizedEmail,
-          password: hashedPassword,
-          name,
-          isActive: true,
-          passwordSetupRequired: false,
-        },
-      });
+      let created: User;
+      try {
+        created = await this.prisma.user.create({
+          data: {
+            email: normalizedEmail,
+            password: hashedPassword,
+            name,
+            isActive: true,
+            passwordSetupRequired: false,
+          },
+        });
+      } catch (error) {
+        this.rethrowIfDuplicateUserEmail(error);
+      }
 
       void this.maybeNotifyUserRegistered({
         source: 'auth.register-magic-link',

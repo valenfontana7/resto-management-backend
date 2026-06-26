@@ -230,36 +230,45 @@ export class RegistrationAbuseService {
     normalizedEmail: string,
     identity: string,
   ): Promise<void> {
+    const hasConflict = await this.hasEmailIdentityConflict(
+      normalizedEmail,
+      identity,
+    );
+    if (hasConflict) {
+      throw new ConflictException('Email already registered');
+    }
+  }
+
+  private async hasEmailIdentityConflict(
+    normalizedEmail: string,
+    identity: string,
+  ): Promise<boolean> {
     const exact = await this.prisma.user.findFirst({
       where: {
         email: { equals: normalizedEmail, mode: 'insensitive' },
         deletedAt: null,
       },
-      select: { id: true, email: true },
+      select: { id: true },
     });
     if (exact) {
-      return;
+      return true;
     }
 
-    if (identity !== normalizedEmail) {
-      const canonicalMatch = await this.prisma.user.findFirst({
-        where: {
-          email: { equals: identity, mode: 'insensitive' },
-          deletedAt: null,
-        },
-        select: { id: true, email: true },
-      });
-      if (canonicalMatch) {
-        throw new ConflictException('Email already registered');
-      }
-    }
-
-    if (!normalizedEmail.includes('+')) {
-      return;
+    const canonicalStored = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: identity, mode: 'insensitive' },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (canonicalStored) {
+      return true;
     }
 
     const at = identity.lastIndexOf('@');
-    if (at <= 0) return;
+    if (at <= 0) {
+      return false;
+    }
 
     const baseLocal = identity.slice(0, at);
     const domain = identity.slice(at + 1);
@@ -277,30 +286,34 @@ export class RegistrationAbuseService {
       take: 25,
     });
 
-    const aliasMatch = aliasCandidates.find(
-      (user) => getEmailCanonicalIdentity(user.email) === identity,
-    );
-    if (aliasMatch) {
-      throw new ConflictException('Email already registered');
+    if (
+      aliasCandidates.some(
+        (user) => getEmailCanonicalIdentity(user.email) === identity,
+      )
+    ) {
+      return true;
     }
 
+    if (domain !== 'gmail.com' && domain !== 'googlemail.com') {
+      return false;
+    }
+
+    const gmailDomain =
+      domain === 'googlemail.com' ? 'googlemail.com' : 'gmail.com';
     const domainCandidates = await this.prisma.user.findMany({
       where: {
         deletedAt: null,
-        email: { endsWith: `@${domain}`, mode: 'insensitive' },
+        email: { endsWith: `@${gmailDomain}`, mode: 'insensitive' },
       },
       select: { email: true },
       take: 100,
     });
 
-    const domainMatch = domainCandidates.find(
+    return domainCandidates.some(
       (user) =>
         getEmailCanonicalIdentity(user.email) === identity &&
         user.email.toLowerCase() !== normalizedEmail,
     );
-    if (domainMatch) {
-      throw new ConflictException('Email already registered');
-    }
   }
 
   private async countRecentRegistrations(
