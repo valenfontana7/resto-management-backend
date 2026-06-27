@@ -1,5 +1,6 @@
 import {
   IsArray,
+  IsBoolean,
   IsNumber,
   IsOptional,
   IsString,
@@ -37,6 +38,22 @@ export class CreateInventoryItemDto {
   @IsArray()
   @IsString({ each: true })
   linkedDishIds?: string[];
+
+  @ApiProperty({
+    example: false,
+    required: false,
+    description:
+      'Si está activo, los platos vinculados se marcan como no disponibles automáticamente cuando el stock llega a 0.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  autoDisableDishes?: boolean;
+
+  @ApiProperty({ required: false, description: 'Costo por unidad en centavos' })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  unitCost?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()
@@ -76,6 +93,17 @@ export class UpdateInventoryItemDto {
   @IsArray()
   @IsString({ each: true })
   linkedDishIds?: string[];
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsBoolean()
+  autoDisableDishes?: boolean;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  unitCost?: number;
 
   @ApiProperty({ required: false })
   @IsOptional()

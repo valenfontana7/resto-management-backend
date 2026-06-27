@@ -7,6 +7,7 @@ import { EmailService } from '../email/email.service';
 import { renderDigestEmail } from '../email/email-templates';
 import { ImageProcessingService } from '../common/services/image-processing.service';
 import { DigestPreferencesService } from './digest-preferences.service';
+import { BusinessHealthService } from '../business-health/business-health.service';
 
 @Injectable()
 export class DigestSchedulerService {
@@ -18,6 +19,7 @@ export class DigestSchedulerService {
     private readonly emailService: EmailService,
     private readonly images: ImageProcessingService,
     private readonly preferencesService: DigestPreferencesService,
+    private readonly businessHealthService: BusinessHealthService,
   ) {}
 
   /**
@@ -160,6 +162,11 @@ export class DigestSchedulerService {
     });
     const logoUrl = await this.images.toEmailAssetUrl(restaurant?.logo ?? null);
 
+    const healthInsights =
+      frequency === 'WEEKLY'
+        ? await this.businessHealthService.getDigestSnapshot(restaurantId)
+        : null;
+
     return renderDigestEmail({
       title: this.getSubject(restaurantName, frequency),
       periodLabel: periodLabel[frequency] || '',
@@ -170,6 +177,7 @@ export class DigestSchedulerService {
       breakdown,
       logoUrl,
       restaurantName,
+      healthInsights,
     });
   }
 }

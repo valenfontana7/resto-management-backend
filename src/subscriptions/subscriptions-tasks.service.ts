@@ -180,8 +180,10 @@ export class SubscriptionTasksService {
               }
             }
           } else {
-            // No hay método de pago: marcar expirado y notificar
-            await this.subscriptionsService.markAsExpired(subscription.id);
+            // Sin método de pago: gracia post-trial antes de cortar acceso
+            await this.subscriptionsService.markTrialGracePeriod(
+              subscription.id,
+            );
             if (subscription.restaurant?.email) {
               const planName = PLAN_NAMES[subscription.planType as PlanType];
               await this.emailService.sendTrialExpiredEmail(
@@ -212,6 +214,59 @@ export class SubscriptionTasksService {
       this.logger.log(`Processed ${expiredTrials.length} expired trials`);
     } catch (error: any) {
       this.logger.error(`Error checking expired trials: ${error.message}`);
+    }
+  }
+
+  /**
+   * Finalizar gracia post-trial sin método de pago — cada hora
+   */
+  @Cron(CronExpression.EVERY_HOUR)
+  async checkExpiredTrialGracePeriods() {
+    this.logger.log('Checking expired trial grace periods...');
+
+    try {
+      const now = new Date();
+      const graceExpired = await this.prisma.subscription.findMany({
+        where: {
+          status: SubscriptionStatus.PAST_DUE,
+          trialEnd: { not: null, lte: now },
+          currentPeriodEnd: { lte: now },
+          isFreeAccount: false,
+          isBillingAnchor: true,
+        },
+        include: {
+          restaurant: { select: { id: true, name: true, email: true } },
+          paymentMethods: { where: { isDefault: true }, take: 1 },
+        },
+      });
+
+      for (const subscription of graceExpired) {
+        if ((subscription as any).paymentMethods?.length) {
+          continue;
+        }
+
+        await this.subscriptionsService.markAsExpired(subscription.id);
+        this.logger.log(
+          `Trial grace expired for subscription ${subscription.id} — marked EXPIRED`,
+        );
+
+        if (subscription.restaurant?.email) {
+          const planName = PLAN_NAMES[subscription.planType as PlanType];
+          await this.emailService.sendTrialExpiredEmail(
+            subscription.restaurant.email,
+            subscription.restaurant.name,
+            planName,
+          );
+        }
+      }
+
+      this.logger.log(
+        `Processed ${graceExpired.length} expired trial grace periods`,
+      );
+    } catch (error: any) {
+      this.logger.error(
+        `Error checking expired trial grace periods: ${error.message}`,
+      );
     }
   }
 
@@ -524,6 +579,13 @@ export class SubscriptionTasksService {
 
       for (const subscription of pastDueSubs) {
         try {
+          const pm = (subscription as any).paymentMethods?.[0];
+
+          // Gracia post-trial sin tarjeta: expira vía checkExpiredTrialGracePeriods
+          if (subscription.trialEnd && !pm) {
+            continue;
+          }
+
           const daysOverdue = differenceInDays(
             new Date(),
             subscription.currentPeriodEnd,
@@ -561,7 +623,6 @@ export class SubscriptionTasksService {
             continue;
           }
 
-          const pm = (subscription as any).paymentMethods?.[0];
           if (!pm || !subscription.mpCustomerId) {
             // Sin método de pago: solo notificar
             if (subscription.restaurant?.email) {

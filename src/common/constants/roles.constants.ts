@@ -5,7 +5,8 @@
  * Jerarquía operativa:
  * - OWNER: dueño — configuración, facturación, equipo, todo el local
  * - MANAGER: gerente — operación diaria sin tocar suscripción/branding global
- * - WAITER: salón — mesas, pedidos, reservas, cobro en piso
+ * - WAITER: salón — mesas, pedidos, reservas (cobro si modo unificado)
+ * - CASHIER: cajero — cobro en piso, caja parcial y comprobantes
  * - KITCHEN: cocina — tablero y estados de preparación
  * - DELIVERY: reparto — entregas y repartidores
  */
@@ -14,6 +15,7 @@ export type SystemRoleCode =
   | 'OWNER'
   | 'MANAGER'
   | 'WAITER'
+  | 'CASHIER'
   | 'KITCHEN'
   | 'DELIVERY';
 
@@ -81,7 +83,8 @@ export const SYSTEM_ROLE_DEFINITIONS: SystemRoleDefinition[] = [
     code: 'WAITER',
     legacyNames: ['Waiter', 'Mozo', 'Mesero', 'WAITER'],
     displayName: 'Mozo',
-    description: 'Salón: pedidos, mesas, reservas y cobro en piso.',
+    description:
+      'Salón: pedidos, mesas y reservas. Cobro solo en modo unificado.',
     color: '#3b82f6',
     permissions: [
       'dashboard',
@@ -91,6 +94,14 @@ export const SYSTEM_ROLE_DEFINITIONS: SystemRoleDefinition[] = [
       'salon',
       'cashier',
     ],
+  },
+  {
+    code: 'CASHIER',
+    legacyNames: ['Cashier', 'Cajero', 'Cajera', 'CASHIER'],
+    displayName: 'Cajero',
+    description: 'Cobro en piso, caja parcial y comprobantes fiscales.',
+    color: '#059669',
+    permissions: ['dashboard', 'salon', 'cashier'],
   },
   {
     code: 'KITCHEN',

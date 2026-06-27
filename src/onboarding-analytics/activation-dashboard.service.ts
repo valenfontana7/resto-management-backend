@@ -48,6 +48,10 @@ export class ActivationDashboardService {
       funnel,
       stuckCounts,
       stuckRestaurants,
+      ttvMetrics,
+      onlinePaymentWeek1,
+      retention,
+      criticalIncidents,
     ] = await Promise.all([
       this.countRestaurantsRegistered(since),
       this.countRestaurantsRegistered(previousSince, since),
@@ -60,6 +64,10 @@ export class ActivationDashboardService {
       this.onboardingAnalytics.getFunnel(safeDays),
       this.getStuckCounts(),
       this.listStuckRestaurants(8),
+      this.getTtvMetrics(since),
+      this.getOnlinePaymentActiveWeek1Rate(since),
+      this.onboardingAnalytics.getRetentionCohorts(Math.min(safeDays, 60)),
+      this.countCriticalIncidents(since),
     ]);
 
     const funnelDrops = funnel.steps
@@ -113,6 +121,13 @@ export class ActivationDashboardService {
             teamActivatedPrevious,
           ),
         },
+        medianTtvHours: ttvMetrics.medianHours,
+        ttvSampleSize: ttvMetrics.sampleSize,
+        onlinePaymentActiveWeek1Percent: onlinePaymentWeek1.rate,
+        onlinePaymentActiveWeek1Sample: onlinePaymentWeek1.sampleSize,
+        averageD30Rate: retention.averageD30Rate,
+        sampleUsersD30: retention.sampleUsersD30,
+        criticalIncidents: criticalIncidents.value,
       },
       conversion: {
         registeredToPublished,
@@ -383,5 +398,106 @@ export class ActivationDashboardService {
       firstChargeAt: row.first_charge_at?.toISOString() ?? null,
       issue: row.issue,
     }));
+  }
+
+  private async getTtvMetrics(since: Date): Promise<{
+    medianHours: number | null;
+    sampleSize: number;
+  }> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ hours_to_first_charge: number | null }>
+    >`
+      WITH first_paid AS (
+        SELECT
+          r.id,
+          EXTRACT(EPOCH FROM (MIN(o."paidAt") - r."createdAt")) / 3600.0 AS hours_to_first_charge
+        FROM "Restaurant" r
+        INNER JOIN "Order" o ON o."restaurantId" = r.id
+        WHERE r."createdAt" >= ${since}
+          AND o."paymentStatus" = 'PAID'
+          AND o."paidAt" IS NOT NULL
+        GROUP BY r.id, r."createdAt"
+      )
+      SELECT hours_to_first_charge
+      FROM first_paid
+      WHERE hours_to_first_charge IS NOT NULL AND hours_to_first_charge >= 0
+      ORDER BY hours_to_first_charge
+    `;
+
+    const values = rows
+      .map((row) => row.hours_to_first_charge)
+      .filter((value): value is number => value != null);
+    if (values.length === 0) {
+      return { medianHours: null, sampleSize: 0 };
+    }
+
+    const mid = Math.floor(values.length / 2);
+    const median =
+      values.length % 2 === 0
+        ? (values[mid - 1] + values[mid]) / 2
+        : values[mid];
+
+    return {
+      medianHours: Math.round(median * 10) / 10,
+      sampleSize: values.length,
+    };
+  }
+
+  private async getOnlinePaymentActiveWeek1Rate(since: Date): Promise<{
+    rate: number | null;
+    sampleSize: number;
+  }> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ total: bigint; active: bigint }>
+    >`
+      WITH cohort AS (
+        SELECT id, "createdAt"
+        FROM "Restaurant"
+        WHERE "createdAt" >= ${since}
+      ),
+      active AS (
+        SELECT DISTINCT c.id
+        FROM cohort c
+        LEFT JOIN "MercadoPagoCredential" mp ON mp."restaurantId" = c.id
+        LEFT JOIN "Order" o ON o."restaurantId" = c.id
+          AND o."paymentStatus" = 'PAID'
+          AND o."paidAt" IS NOT NULL
+          AND o."paidAt" <= c."createdAt" + INTERVAL '7 day'
+          AND o."paymentMethod" IN ('mercadopago', 'card', 'credit-card', 'debit-card')
+        WHERE mp.id IS NOT NULL OR o.id IS NOT NULL
+      )
+      SELECT
+        (SELECT COUNT(*)::bigint FROM cohort) AS total,
+        (SELECT COUNT(*)::bigint FROM active) AS active
+    `;
+
+    const total = Number(rows[0]?.total ?? 0);
+    const active = Number(rows[0]?.active ?? 0);
+    return {
+      rate: total > 0 ? Math.round((active / total) * 1000) / 10 : null,
+      sampleSize: total,
+    };
+  }
+
+  private async countCriticalIncidents(
+    since: Date,
+  ): Promise<{ value: number }> {
+    const [failedPayments, cancelledOrders] = await Promise.all([
+      this.prisma.order.count({
+        where: {
+          createdAt: { gte: since },
+          paymentStatus: { in: ['FAILED', 'REFUNDED'] },
+        },
+      }),
+      this.prisma.order.count({
+        where: {
+          createdAt: { gte: since },
+          status: 'CANCELLED',
+          paymentStatus: 'PAID',
+        },
+      }),
+    ]);
+
+    return { value: failedPayments + cancelledOrders };
   }
 }

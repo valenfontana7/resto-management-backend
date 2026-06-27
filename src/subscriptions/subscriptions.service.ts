@@ -22,6 +22,7 @@ import {
 import {
   PLAN_NAMES,
   TRIAL_DAYS,
+  GRACE_PERIOD_DAYS,
   isPlanUpgrade,
   adjustFeaturesForPlan,
 } from './constants';
@@ -1399,6 +1400,21 @@ export class SubscriptionsService {
     await this.prisma.subscription.update({
       where: { id: subscriptionId },
       data: { status: SubscriptionStatus.PAST_DUE },
+    });
+  }
+
+  /**
+   * Período de gracia tras trial sin método de pago: mantiene acceso unos días
+   * mientras el usuario agrega tarjeta.
+   */
+  async markTrialGracePeriod(subscriptionId: string) {
+    const graceEnd = addDays(new Date(), GRACE_PERIOD_DAYS);
+    await this.prisma.subscription.update({
+      where: { id: subscriptionId },
+      data: {
+        status: SubscriptionStatus.PAST_DUE,
+        currentPeriodEnd: graceEnd,
+      },
     });
   }
 

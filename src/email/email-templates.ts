@@ -1113,6 +1113,42 @@ ${emailFooterBentoo()}`;
   );
 }
 
+export function renderRestaurantAccessGrantedEmail(params: {
+  name: string;
+  restaurantName: string;
+  loginUrl: string;
+}): string {
+  const safeName = escapeHtml(params.name);
+  const safeRestaurant = escapeHtml(params.restaurantName);
+  const safeLoginUrl = escapeHtml(params.loginUrl);
+
+  const content = `
+${emailHeader({
+  eyebrow: 'Equipo del local',
+  title: 'Te sumaron a un restaurante',
+  subtitle: safeRestaurant,
+  accent: C.bentoo,
+  ...bentooHeaderBranding(),
+})}
+<tr>
+  <td class="email-content" style="padding: 32px 36px 36px;">
+    ${emailParagraph(`Hola <strong>${safeName}</strong>,`)}
+    ${emailParagraph(
+      `Ya tenés acceso al panel de <strong>${safeRestaurant}</strong> en Bentoo. Entrá con tu email y contraseña habituales y elegí este local desde el selector de cuentas.`,
+      true,
+    )}
+    ${emailCta(safeLoginUrl, 'Ir al panel', C.bentoo)}
+    ${emailHighlightBox(
+      'Si no esperabas este acceso, podés ignorar este correo o avisar al dueño del local.',
+      'neutral',
+    )}
+  </td>
+</tr>
+${emailFooterBentoo()}`;
+
+  return emailDocument(`Acceso a ${safeRestaurant}`, C.bg, emailCard(content));
+}
+
 export function renderDigestEmail(params: {
   title: string;
   periodLabel: string;
@@ -1123,6 +1159,18 @@ export function renderDigestEmail(params: {
   breakdown: Array<{ type: string; orders: number; revenue: number }>;
   logoUrl?: string | null;
   restaurantName?: string;
+  healthInsights?: {
+    healthScoreOverall: number;
+    marginScore: number;
+    averageMarginPercent: number | null;
+    dishesWithoutCostCount: number;
+    lowStockCount: number;
+    inactiveCustomersCount: number;
+    topActionTitle: string | null;
+    topActionDetail: string | null;
+    d7Rate: number | null;
+    d30Rate: number | null;
+  } | null;
 }): string {
   const topDishesHtml =
     params.topDishes.length > 0
@@ -1165,6 +1213,55 @@ export function renderDigestEmail(params: {
     </table>`
       : '';
 
+  const healthHtml = params.healthInsights
+    ? `
+    ${emailSectionTitle('Salud del negocio (últimos 30 días)')}
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 16px;">
+      <tr>
+        <td style="padding: 10px 0; color: ${C.text};">Score general</td>
+        <td style="padding: 10px 0; text-align: right; font-weight: 700; color: ${C.text};">${params.healthInsights.healthScoreOverall}/100</td>
+      </tr>
+      <tr style="border-top: 1px solid ${C.borderLight};">
+        <td style="padding: 10px 0; color: ${C.text};">Margen</td>
+        <td style="padding: 10px 0; text-align: right; color: ${C.textMuted};">${
+          params.healthInsights.averageMarginPercent != null
+            ? `${params.healthInsights.averageMarginPercent}% promedio`
+            : `${params.healthInsights.dishesWithoutCostCount} plato(s) sin costo`
+        }</td>
+      </tr>
+      ${
+        params.healthInsights.lowStockCount > 0
+          ? `<tr style="border-top: 1px solid ${C.borderLight};">
+        <td style="padding: 10px 0; color: ${C.text};">Alertas de stock</td>
+        <td style="padding: 10px 0; text-align: right; color: #B45309; font-weight: 600;">${params.healthInsights.lowStockCount} insumo(s)</td>
+      </tr>`
+          : ''
+      }
+      ${
+        params.healthInsights.inactiveCustomersCount > 0
+          ? `<tr style="border-top: 1px solid ${C.borderLight};">
+        <td style="padding: 10px 0; color: ${C.text};">Clientes inactivos (30+ días)</td>
+        <td style="padding: 10px 0; text-align: right; color: ${C.textMuted};">${params.healthInsights.inactiveCustomersCount}</td>
+      </tr>`
+          : ''
+      }
+      ${
+        params.healthInsights.d7Rate != null
+          ? `<tr style="border-top: 1px solid ${C.borderLight};">
+        <td style="padding: 10px 0; color: ${C.text};">Retención D7 / D30</td>
+        <td style="padding: 10px 0; text-align: right; color: ${C.textMuted};">${params.healthInsights.d7Rate}% / ${params.healthInsights.d30Rate ?? '—'}%</td>
+      </tr>`
+          : ''
+      }
+    </table>
+    ${
+      params.healthInsights.topActionTitle
+        ? `<p style="margin: 0 0 8px; font-size: 13px; font-weight: 600; color: ${C.text};">Acción sugerida: ${escapeHtml(params.healthInsights.topActionTitle)}</p>
+    <p style="margin: 0 0 20px; font-size: 13px; color: ${C.textMuted};">${escapeHtml(params.healthInsights.topActionDetail ?? '')}</p>`
+        : ''
+    }`
+    : '';
+
   const content = `
 ${emailHeader({
   eyebrow: params.restaurantName ?? 'Resumen del negocio',
@@ -1194,6 +1291,7 @@ ${emailHeader({
     </table>
     ${topDishesHtml}
     ${breakdownHtml}
+    ${healthHtml}
     ${emailParagraph(
       'Este resumen te ayuda a tomar mejores decisiones para tu local. ¡Gracias por confiar en Bentoo!',
       true,

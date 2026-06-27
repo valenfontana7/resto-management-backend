@@ -903,6 +903,16 @@ export class RestaurantsService {
         },
       };
 
+      const hasSalon =
+        currentBusinessRules.salon || parsedIncomingBusinessRules.salon;
+
+      if (hasSalon) {
+        mergedBusinessRules.salon = {
+          ...(currentBusinessRules.salon || {}),
+          ...(parsedIncomingBusinessRules.salon || {}),
+        };
+      }
+
       const hasPromotions =
         currentBusinessRules.promotions ||
         parsedIncomingBusinessRules.promotions;

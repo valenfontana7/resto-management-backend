@@ -36,10 +36,13 @@ export class InventoryService {
         currentStock: dto.currentStock,
         minStock: dto.minStock,
         linkedDishIds: dto.linkedDishIds ?? [],
+        autoDisableDishes: dto.autoDisableDishes ?? false,
+        unitCost: dto.unitCost,
         notes: dto.notes?.trim() || null,
       },
     });
-    return { item };
+    const availability = await this.applyStockAvailability(restaurantId);
+    return { item, availability };
   }
 
   async update(
@@ -62,10 +65,13 @@ export class InventoryService {
         currentStock: dto.currentStock,
         minStock: dto.minStock,
         linkedDishIds: dto.linkedDishIds,
+        autoDisableDishes: dto.autoDisableDishes,
+        unitCost: dto.unitCost,
         notes: dto.notes === undefined ? undefined : dto.notes?.trim() || null,
       },
     });
-    return { item };
+    const availability = await this.applyStockAvailability(restaurantId);
+    return { item, availability };
   }
 
   async remove(restaurantId: string, userId: string, itemId: string) {
@@ -75,6 +81,92 @@ export class InventoryService {
     });
     if (!existing) throw new NotFoundException('Insumo no encontrado');
     await this.prisma.inventoryItem.delete({ where: { id: itemId } });
-    return { success: true };
+    const availability = await this.applyStockAvailability(restaurantId);
+    return { success: true, availability };
+  }
+
+  /**
+   * Sincroniza la disponibilidad de los platos según el stock de insumos
+   * que tengan activado el autocorte (`autoDisableDishes`).
+   *
+   * Reglas:
+   * - Un plato se marca NO disponible si algún insumo con autocorte que lo
+   *   referencia está en stock 0 (o menos). Marca `autoDisabledByStock=true`.
+   * - Un plato auto-deshabilitado se reactiva cuando ningún insumo con
+   *   autocorte que lo referencia sigue en quiebre.
+   * - NUNCA reactiva un plato deshabilitado manualmente
+   *   (`autoDisabledByStock=false`).
+   */
+  async applyStockAvailability(restaurantId: string): Promise<{
+    disabledDishIds: string[];
+    reEnabledDishIds: string[];
+  }> {
+    const items = await this.prisma.inventoryItem.findMany({
+      where: { restaurantId, autoDisableDishes: true },
+      select: { currentStock: true, linkedDishIds: true },
+    });
+
+    // Conjunto de platos que deben estar fuera por quiebre de stock.
+    const dishesToDisable = new Set<string>();
+    // Platos que están controlados por autocorte (no en quiebre ahora).
+    const managedDishes = new Set<string>();
+
+    for (const item of items) {
+      const outOfStock = item.currentStock <= 0;
+      for (const dishId of item.linkedDishIds) {
+        managedDishes.add(dishId);
+        if (outOfStock) dishesToDisable.add(dishId);
+      }
+    }
+
+    const disabledDishIds: string[] = [];
+    const reEnabledDishIds: string[] = [];
+
+    // 1) Deshabilitar platos en quiebre que hoy están disponibles.
+    if (dishesToDisable.size > 0) {
+      const toDisable = await this.prisma.dish.findMany({
+        where: {
+          restaurantId,
+          id: { in: [...dishesToDisable] },
+          isAvailable: true,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (toDisable.length > 0) {
+        const ids = toDisable.map((d) => d.id);
+        await this.prisma.dish.updateMany({
+          where: { id: { in: ids } },
+          data: { isAvailable: false, autoDisabledByStock: true },
+        });
+        disabledDishIds.push(...ids);
+      }
+    }
+
+    // 2) Reactivar platos que fueron auto-deshabilitados y ya no están en quiebre.
+    const reEnableCandidates = [...managedDishes].filter(
+      (dishId) => !dishesToDisable.has(dishId),
+    );
+    if (reEnableCandidates.length > 0) {
+      const toReEnable = await this.prisma.dish.findMany({
+        where: {
+          restaurantId,
+          id: { in: reEnableCandidates },
+          autoDisabledByStock: true,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (toReEnable.length > 0) {
+        const ids = toReEnable.map((d) => d.id);
+        await this.prisma.dish.updateMany({
+          where: { id: { in: ids } },
+          data: { isAvailable: true, autoDisabledByStock: false },
+        });
+        reEnabledDishIds.push(...ids);
+      }
+    }
+
+    return { disabledDishIds, reEnabledDishIds };
   }
 }

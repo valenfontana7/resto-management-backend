@@ -3,7 +3,9 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
+  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -13,6 +15,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/strategies/jwt.strategy';
 import { BusinessHealthService } from './business-health.service';
 import { SendWinBackEmailDto } from './dto/win-back.dto';
+import { UpdateGrowthSettingsDto } from './dto/growth-settings.dto';
+import { UpdateInventorySettingsDto } from './dto/inventory-settings.dto';
 
 @Controller('api/analytics/restaurant/:restaurantId/business-health')
 @UseGuards(JwtAuthGuard)
@@ -25,6 +29,46 @@ export class BusinessHealthController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.businessHealth.getDashboard(restaurantId, user.userId);
+  }
+
+  @Get('snapshots')
+  getSnapshots(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Query('days') days?: string,
+  ) {
+    const parsedDays = days ? Number.parseInt(days, 10) : 30;
+    return this.businessHealth.getSnapshotHistory(
+      restaurantId,
+      user.userId,
+      Number.isFinite(parsedDays) ? parsedDays : 30,
+    );
+  }
+
+  @Patch('growth-settings')
+  updateGrowthSettings(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: UpdateGrowthSettingsDto,
+  ) {
+    return this.businessHealth.updateGrowthSettings(
+      restaurantId,
+      user.userId,
+      dto,
+    );
+  }
+
+  @Patch('inventory-settings')
+  updateInventorySettings(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: UpdateInventorySettingsDto,
+  ) {
+    return this.businessHealth.updateInventorySettings(
+      restaurantId,
+      user.userId,
+      dto,
+    );
   }
 
   @Post('win-back')

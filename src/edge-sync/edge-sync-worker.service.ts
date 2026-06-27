@@ -62,7 +62,7 @@ export class EdgeSyncWorkerService implements OnModuleInit, OnModuleDestroy {
         body: JSON.stringify({ version: 'local-mvp', lanUrl }),
       });
 
-      const pullUrl = `${base}/api/restaurants/${restaurantId}/edge/sync/pull?streams=menu,tables,settings`;
+      const pullUrl = `${base}/api/restaurants/${restaurantId}/edge/sync/pull?streams=menu,tables,floor_sessions,settings`;
       const pullRes = await fetch(pullUrl, { headers });
       if (!pullRes.ok) {
         this.logger.warn(`Edge pull failed: HTTP ${pullRes.status}`);

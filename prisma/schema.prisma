@@ -79,6 +79,9 @@ model Restaurant {
   terminals             RestaurantTerminal[]
   dailyOperations       DailyOperation[]
   inventoryItems        InventoryItem[]
+  businessHealthSnapshots BusinessHealthSnapshot[]
+  winBackEmailLogs        WinBackEmailLog[]
+  orderInventoryDeductions OrderInventoryDeduction[]
   edgeLocalServer       EdgeLocalServer?
 
   @@index([slug])
@@ -142,6 +145,7 @@ model Dish {
   salonPrice      Int?
   image           String?
   isAvailable     Boolean     @default(true)
+  autoDisabledByStock Boolean @default(false)
   isAvailableInSalon Boolean  @default(true)
   isFeatured      Boolean     @default(false)
   preparationTime Int?
@@ -159,6 +163,7 @@ model Dish {
   tableSessionItems   TableSessionItem[]
   reviews             Review[]
   modifierGroups      ModifierGroup[]
+  recipeLines         DishRecipeLine[]
 
   @@index([restaurantId])
   @@index([categoryId])
@@ -173,10 +178,67 @@ model InventoryItem {
   currentStock   Float      @default(0)
   minStock       Float      @default(0)
   linkedDishIds  String[]   @default([])
+  autoDisableDishes Boolean @default(false)
+  unitCost       Int?
   notes          String?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   restaurant     Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  recipeLines    DishRecipeLine[]
+
+  @@index([restaurantId])
+}
+
+model DishRecipeLine {
+  id              String        @id @default(cuid())
+  dishId          String
+  inventoryItemId String
+  quantity        Float
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  dish            Dish          @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  @@unique([dishId, inventoryItemId])
+  @@index([dishId])
+  @@index([inventoryItemId])
+}
+
+model BusinessHealthSnapshot {
+  id           String     @id @default(cuid())
+  restaurantId String
+  snapshotDate DateTime   @db.Date
+  overall      Int
+  operational  Int
+  commercial   Int
+  margin       Int
+  createdAt    DateTime   @default(now())
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, snapshotDate])
+  @@index([restaurantId, snapshotDate])
+}
+
+model WinBackEmailLog {
+  id            String     @id @default(cuid())
+  restaurantId  String
+  customerKey   String
+  customerEmail String
+  source        String     @default("manual")
+  sentAt        DateTime   @default(now())
+  restaurant    Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, customerKey, sentAt])
+  @@index([restaurantId, sentAt])
+}
+
+model OrderInventoryDeduction {
+  id           String     @id @default(cuid())
+  restaurantId String
+  orderId      String     @unique
+  createdAt    DateTime   @default(now())
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  order        Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([restaurantId])
 }
@@ -264,6 +326,7 @@ model Order {
   currentTable        Table?               @relation("CurrentTableOrder")
   reviews             Review[]
   externalOrder       ExternalOrder?
+  inventoryDeduction  OrderInventoryDeduction?
 
   @@unique([restaurantId, orderNumber])
   @@index([restaurantId])

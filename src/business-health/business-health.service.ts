@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { OrderStatus } from '@prisma/client';
+import { CouponType, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
 import { EmailService } from '../email/email.service';
@@ -19,10 +19,22 @@ import {
 } from './business-health.utils';
 import { BusinessHealthAlertsService } from './business-health-alerts.service';
 import { BusinessHealthPdfService } from './business-health-pdf.service';
+import {
+  getGrowthSettings,
+  mergeGrowthSettings,
+  startOfUtcDay,
+} from './business-health-growth.util';
+import { UpdateGrowthSettingsDto } from './dto/growth-settings.dto';
+import { UpdateInventorySettingsDto } from './dto/inventory-settings.dto';
+import {
+  isAutoDeductOnSaleEnabled,
+  mergeInventorySettings,
+} from './inventory-consumption.utils';
 
 const INACTIVE_DAYS = 30;
 const PERIOD_DAYS = 30;
 const RETENTION_COHORT_DAYS = 90;
+const WIN_BACK_COUPON_CODE = 'BIENVUELTA';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function buildCustomerKey(order: {
@@ -305,6 +317,28 @@ export class BusinessHealthService {
 
     const retention = await this.getCustomerRetentionCohorts(restaurantId);
 
+    const weekAgo = new Date(Date.now() - 7 * 86400000);
+    const [restaurantMeta, lastScheduledWinBack, scheduledLast7Days] =
+      await Promise.all([
+        this.prisma.restaurant.findUnique({
+          where: { id: restaurantId },
+          select: { businessRules: true },
+        }),
+        this.prisma.winBackEmailLog.findFirst({
+          where: { restaurantId, source: 'scheduled' },
+          orderBy: { sentAt: 'desc' },
+          select: { sentAt: true },
+        }),
+        this.prisma.winBackEmailLog.count({
+          where: {
+            restaurantId,
+            source: 'scheduled',
+            sentAt: { gte: weekAgo },
+          },
+        }),
+      ]);
+    const growthSettingsMeta = getGrowthSettings(restaurantMeta?.businessRules);
+
     const menuRecommendations = buildMenuRecommendations(dishRows);
     const growthActions = buildGrowthActions({
       onlineShare,
@@ -360,6 +394,11 @@ export class BusinessHealthService {
         totalItems: inventoryItems.length,
         lowStockItems,
         affectedDishes: inventoryImpact,
+        settings: {
+          autoDeductOnSale: isAutoDeductOnSaleEnabled(
+            restaurantMeta?.businessRules,
+          ),
+        },
       },
       commercial: {
         totalOrders: orders.length,
@@ -375,6 +414,15 @@ export class BusinessHealthService {
         inactiveCustomers,
         recommendations: menuRecommendations,
         actions: growthActions,
+        settings: {
+          autoWinBackEnabled: growthSettingsMeta.autoWinBackEnabled,
+          autoWinBackMaxPerWeek: growthSettingsMeta.autoWinBackMaxPerWeek,
+          autoWinBackIncludeCoupon: growthSettingsMeta.autoWinBackIncludeCoupon,
+          winBackCouponPercent: growthSettingsMeta.winBackCouponPercent,
+          lastScheduledWinBackAt:
+            lastScheduledWinBack?.sentAt.toISOString() ?? null,
+          scheduledEmailsLast7Days: scheduledLast7Days,
+        },
       },
       retention,
     };
@@ -390,6 +438,222 @@ export class BusinessHealthService {
       });
 
     return dashboard;
+  }
+
+  async getSnapshotHistory(restaurantId: string, userId: string, days = 30) {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+    const since = startOfUtcDay();
+    since.setUTCDate(since.getUTCDate() - days);
+
+    const snapshots = await this.prisma.businessHealthSnapshot.findMany({
+      where: {
+        restaurantId,
+        snapshotDate: { gte: since },
+      },
+      orderBy: { snapshotDate: 'asc' },
+      select: {
+        snapshotDate: true,
+        overall: true,
+        operational: true,
+        commercial: true,
+        margin: true,
+      },
+    });
+
+    return {
+      snapshots: snapshots.map((row) => ({
+        date: row.snapshotDate.toISOString().slice(0, 10),
+        overall: row.overall,
+        operational: row.operational,
+        commercial: row.commercial,
+        margin: row.margin,
+      })),
+    };
+  }
+
+  async recordDailySnapshot(restaurantId: string): Promise<void> {
+    const ownerMembership = await this.prisma.restaurantMembership.findFirst({
+      where: {
+        restaurantId,
+        role: { name: 'OWNER' },
+      },
+      select: { userId: true },
+    });
+    if (!ownerMembership) return;
+
+    const dashboard = await this.getDashboard(
+      restaurantId,
+      ownerMembership.userId,
+    );
+    const snapshotDate = startOfUtcDay();
+
+    await this.prisma.businessHealthSnapshot.upsert({
+      where: {
+        restaurantId_snapshotDate: { restaurantId, snapshotDate },
+      },
+      create: {
+        restaurantId,
+        snapshotDate,
+        overall: dashboard.healthScore.overall,
+        operational: dashboard.healthScore.operational,
+        commercial: dashboard.healthScore.commercial,
+        margin: dashboard.healthScore.margin,
+      },
+      update: {
+        overall: dashboard.healthScore.overall,
+        operational: dashboard.healthScore.operational,
+        commercial: dashboard.healthScore.commercial,
+        margin: dashboard.healthScore.margin,
+      },
+    });
+  }
+
+  async updateGrowthSettings(
+    restaurantId: string,
+    userId: string,
+    dto: UpdateGrowthSettingsDto,
+  ) {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { businessRules: true },
+    });
+    if (!restaurant) {
+      throw new BadRequestException('Restaurante no encontrado');
+    }
+
+    await this.prisma.restaurant.update({
+      where: { id: restaurantId },
+      data: {
+        businessRules: mergeGrowthSettings(restaurant.businessRules, {
+          ...(dto.autoWinBackEnabled !== undefined
+            ? { autoWinBackEnabled: dto.autoWinBackEnabled }
+            : {}),
+          ...(dto.autoWinBackIncludeCoupon !== undefined
+            ? { autoWinBackIncludeCoupon: dto.autoWinBackIncludeCoupon }
+            : {}),
+          ...(dto.winBackCouponPercent !== undefined
+            ? { winBackCouponPercent: dto.winBackCouponPercent }
+            : {}),
+        }) as object,
+      },
+    });
+
+    const updated = getGrowthSettings(
+      mergeGrowthSettings(restaurant.businessRules, dto),
+    );
+
+    return {
+      autoWinBackEnabled: updated.autoWinBackEnabled,
+      autoWinBackIncludeCoupon: updated.autoWinBackIncludeCoupon,
+      winBackCouponPercent: updated.winBackCouponPercent,
+    };
+  }
+
+  async updateInventorySettings(
+    restaurantId: string,
+    userId: string,
+    dto: UpdateInventorySettingsDto,
+  ) {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { businessRules: true },
+    });
+    if (!restaurant) {
+      throw new BadRequestException('Restaurante no encontrado');
+    }
+
+    const merged = mergeInventorySettings(restaurant.businessRules, {
+      ...(dto.autoDeductOnSale !== undefined
+        ? { autoDeductOnSale: dto.autoDeductOnSale }
+        : {}),
+    });
+
+    await this.prisma.restaurant.update({
+      where: { id: restaurantId },
+      data: { businessRules: merged as object },
+    });
+
+    return {
+      autoDeductOnSale: isAutoDeductOnSaleEnabled(merged),
+    };
+  }
+
+  async runScheduledWinBack(restaurantId: string): Promise<{
+    sent: number;
+    failed: number;
+  }> {
+    const restaurant = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { businessRules: true },
+    });
+    if (!restaurant) return { sent: 0, failed: 0 };
+
+    const settings = getGrowthSettings(restaurant.businessRules);
+    if (!settings.autoWinBackEnabled) return { sent: 0, failed: 0 };
+
+    const result = await this.executeWinBackSend(restaurantId, {
+      sendToAll: true,
+      maxRecipients: settings.autoWinBackMaxPerWeek,
+      source: 'scheduled',
+      cooldownDays: 30,
+    });
+
+    return { sent: result.sent, failed: result.failed };
+  }
+
+  /** Resumen de salud para digest semanal (sin auth de usuario final). */
+  async getDigestSnapshot(restaurantId: string): Promise<{
+    healthScoreOverall: number;
+    marginScore: number;
+    averageMarginPercent: number | null;
+    dishesWithoutCostCount: number;
+    lowStockCount: number;
+    inactiveCustomersCount: number;
+    topActionTitle: string | null;
+    topActionDetail: string | null;
+    d7Rate: number | null;
+    d30Rate: number | null;
+  } | null> {
+    try {
+      const ownerMembership = await this.prisma.restaurantMembership.findFirst({
+        where: {
+          restaurantId,
+          role: { name: 'OWNER' },
+        },
+        select: { userId: true },
+      });
+      if (!ownerMembership) return null;
+
+      const dashboard = await this.getDashboard(
+        restaurantId,
+        ownerMembership.userId,
+      );
+      const topAction = dashboard.growth.actions[0] ?? null;
+
+      return {
+        healthScoreOverall: dashboard.healthScore.overall,
+        marginScore: dashboard.healthScore.margin,
+        averageMarginPercent: dashboard.margin.averageMarginPercent,
+        dishesWithoutCostCount: dashboard.margin.dishesWithoutCostCount,
+        lowStockCount: dashboard.inventory.lowStockItems.length,
+        inactiveCustomersCount: dashboard.growth.inactiveCustomers.length,
+        topActionTitle: topAction?.title ?? null,
+        topActionDetail: topAction?.detail ?? null,
+        d7Rate: dashboard.retention.averageD7Rate,
+        d30Rate: dashboard.retention.averageD30Rate,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Digest de salud no disponible para ${restaurantId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
   }
 
   async exportPdf(restaurantId: string, userId: string): Promise<Buffer> {
@@ -430,6 +694,24 @@ export class BusinessHealthService {
       );
     }
 
+    return this.executeWinBackSend(restaurantId, {
+      customerKeys: dto.customerKeys,
+      sendToAll: dto.sendToAll,
+      maxRecipients: dto.maxRecipients ?? 10,
+      source: 'manual',
+    });
+  }
+
+  private async executeWinBackSend(
+    restaurantId: string,
+    options: {
+      customerKeys?: string[];
+      sendToAll?: boolean;
+      maxRecipients: number;
+      source: 'manual' | 'scheduled';
+      cooldownDays?: number;
+    },
+  ) {
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { id: restaurantId },
       select: {
@@ -439,25 +721,56 @@ export class BusinessHealthService {
         address: true,
         phone: true,
         email: true,
+        businessRules: true,
       },
     });
     if (!restaurant) {
       throw new BadRequestException('Restaurante no encontrado');
     }
 
+    const growthSettings = getGrowthSettings(restaurant.businessRules);
+    let coupon: { code: string; percent: number } | null = null;
+    if (growthSettings.autoWinBackIncludeCoupon) {
+      coupon = await this.getOrCreateWinBackCoupon(
+        restaurantId,
+        growthSettings.winBackCouponPercent,
+      );
+    }
+
     const frontendUrl =
       process.env.FRONTEND_URL?.trim().replace(/\/$/, '') ||
       'http://localhost:3000';
-    const menuUrl = `${frontendUrl}/${restaurant.slug}`;
+    const menuUrl = coupon
+      ? `${frontendUrl}/${restaurant.slug}?coupon=${encodeURIComponent(coupon.code)}`
+      : `${frontendUrl}/${restaurant.slug}`;
     const logoUrl = await this.images.toEmailAssetUrl(restaurant.logo);
 
     const recipients = await this.listInactiveEmailRecipients(restaurantId);
-    const keyFilter = dto.sendToAll ? null : new Set(dto.customerKeys ?? []);
-    const maxRecipients = dto.maxRecipients ?? 10;
+    const keyFilter = options.sendToAll
+      ? null
+      : new Set(options.customerKeys ?? []);
+    const maxRecipients = options.maxRecipients;
 
-    const selected = recipients
-      .filter((entry) => (keyFilter ? keyFilter.has(entry.key) : true))
-      .slice(0, maxRecipients);
+    let eligible = recipients.filter((entry) =>
+      keyFilter ? keyFilter.has(entry.key) : true,
+    );
+
+    if (options.cooldownDays && options.cooldownDays > 0) {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - options.cooldownDays);
+      const recentLogs = await this.prisma.winBackEmailLog.findMany({
+        where: {
+          restaurantId,
+          sentAt: { gte: cutoff },
+          customerKey: { in: eligible.map((entry) => entry.key) },
+        },
+        select: { customerKey: true },
+      });
+      const recentlySent = new Set(recentLogs.map((log) => log.customerKey));
+      eligible = eligible.filter((entry) => !recentlySent.has(entry.key));
+    }
+
+    const selected = eligible.slice(0, maxRecipients);
 
     if (selected.length === 0) {
       return {
@@ -482,9 +795,20 @@ export class BusinessHealthService {
         restaurantAddress: restaurant.address,
         restaurantPhone: restaurant.phone,
         restaurantEmail: restaurant.email,
+        couponCode: coupon?.code,
+        couponPercent: coupon?.percent,
       });
-      if (ok) sent += 1;
-      else failed += 1;
+      if (ok) {
+        sent += 1;
+        await this.prisma.winBackEmailLog.create({
+          data: {
+            restaurantId,
+            customerKey: customer.key,
+            customerEmail: customer.email,
+            source: options.source,
+          },
+        });
+      } else failed += 1;
     }
 
     return {
@@ -689,5 +1013,46 @@ export class BusinessHealthService {
       sampleCustomersD30: sumCustomersD30,
       cohorts: cohorts.slice(0, 14),
     };
+  }
+
+  private async getOrCreateWinBackCoupon(
+    restaurantId: string,
+    percent: number,
+  ): Promise<{ code: string; percent: number }> {
+    const validUntil = new Date();
+    validUntil.setDate(validUntil.getDate() + 45);
+
+    const existing = await this.prisma.coupon.findFirst({
+      where: { restaurantId, code: WIN_BACK_COUPON_CODE },
+    });
+
+    if (existing) {
+      await this.prisma.coupon.update({
+        where: { id: existing.id },
+        data: {
+          isActive: true,
+          validUntil,
+          value: percent,
+          type: CouponType.PERCENTAGE,
+          name: 'Win-back clientes inactivos',
+        },
+      });
+    } else {
+      await this.prisma.coupon.create({
+        data: {
+          restaurantId,
+          code: WIN_BACK_COUPON_CODE,
+          name: 'Win-back clientes inactivos',
+          description: 'Cupón automático para recuperación de clientes',
+          type: CouponType.PERCENTAGE,
+          value: percent,
+          validFrom: new Date(),
+          validUntil,
+          isActive: true,
+        },
+      });
+    }
+
+    return { code: WIN_BACK_COUPON_CODE, percent };
   }
 }

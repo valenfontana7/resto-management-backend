@@ -26,6 +26,8 @@ import { OrderNotificationsService } from '../../orders/services/order-notificat
 import { FloorDiscountService } from './floor-discount.service';
 import { CashRegisterService } from './cash-register.service';
 import { FiscalDocumentService } from './fiscal-document.service';
+import { InventoryConsumptionService } from '../../business-health/inventory-consumption.service';
+import { FloorAccessService } from './floor-access.service';
 import {
   AddSessionItemsDto,
   CloseTableSessionDto,
@@ -58,6 +60,8 @@ export class TableSessionService {
     private readonly orderNotifications: OrderNotificationsService,
     private readonly cashRegister: CashRegisterService,
     private readonly fiscalDocuments: FiscalDocumentService,
+    private readonly inventoryConsumption: InventoryConsumptionService,
+    private readonly floorAccess: FloorAccessService,
   ) {}
 
   async listActive(restaurantId: string, userId: string) {
@@ -369,6 +373,7 @@ export class TableSessionService {
     itemIds?: string[],
   ) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+    await this.floorAccess.verifyCollectAccess(restaurantId, userId);
     const session = await this.findSessionOrThrow(restaurantId, sessionId);
 
     if (session.status !== TableSessionStatus.OPEN) {
@@ -424,6 +429,7 @@ export class TableSessionService {
     userName?: string,
   ) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+    await this.floorAccess.verifyCollectAccess(restaurantId, userId);
     const session = await this.findSessionOrThrow(restaurantId, sessionId);
 
     if (session.status !== TableSessionStatus.OPEN) {
@@ -637,6 +643,18 @@ export class TableSessionService {
       restaurantId,
       result.paymentOrder,
     );
+
+    if (isCash) {
+      void this.inventoryConsumption
+        .tryDeductForOrder(result.paymentOrder.id)
+        .catch((error) => {
+          this.logger.warn(
+            `Descuento de inventario falló mesa ${sessionId}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        });
+    }
 
     const remainingUnpaid = this.getUnpaidItems(result.session).filter(
       (i) => !i.paidInOrderId,

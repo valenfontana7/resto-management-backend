@@ -6,11 +6,11 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SubscriptionStatus } from '@prisma/client';
 import { PLAN_NAMES } from '../constants';
 import { PlanType } from '../dto';
 import { PlanEntitlementsService } from '../plans/plan-entitlements.service';
 import { SubscriptionResolverService } from '../subscription-resolver.service';
+import { isSubscriptionBillingActive } from '../subscription-billing-access';
 
 export const REQUIRED_FEATURE_KEY = 'requiredFeature';
 
@@ -66,7 +66,15 @@ export class FeatureGuard implements CanActivate {
 
     const subscription = await this.subscriptionResolver.resolveForRestaurant(
       restaurantId,
-      { select: { status: true, planType: true, planId: true } },
+      {
+        select: {
+          status: true,
+          planType: true,
+          planId: true,
+          trialEnd: true,
+          currentPeriodEnd: true,
+        },
+      },
     );
 
     if (!subscription) {
@@ -78,13 +86,7 @@ export class FeatureGuard implements CanActivate {
       });
     }
 
-    // Verificar estado de suscripción
-    const activeStatuses: SubscriptionStatus[] = [
-      SubscriptionStatus.ACTIVE,
-      SubscriptionStatus.TRIALING,
-    ];
-
-    if (!activeStatuses.includes(subscription.status)) {
+    if (!isSubscriptionBillingActive(subscription)) {
       throw new ForbiddenException({
         error: 'Suscripción no activa',
         status: subscription.status,

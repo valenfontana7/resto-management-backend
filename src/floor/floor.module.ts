@@ -19,14 +19,17 @@ import { DeliveryModule } from '../delivery/delivery.module';
 import { SalonDeliveryOrderService } from './services/salon-delivery-order.service';
 import { FloorDesktopBootstrapService } from './services/floor-desktop-bootstrap.service';
 import { FiscalRetrySchedulerService } from './services/fiscal-retry-scheduler.service';
+import { FloorAccessService } from './services/floor-access.service';
 import { TablesModule } from '../tables/tables.module';
 import { StorageModule } from '../storage/storage.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { BusinessHealthModule } from '../business-health/business-health.module';
 
 @Module({
   imports: [
     PrismaModule,
     CommonModule,
+    BusinessHealthModule,
     KitchenModule,
     FiscalModule,
     DeliveryModule,
@@ -50,6 +53,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     SalonDeliveryOrderService,
     FloorDesktopBootstrapService,
     FiscalRetrySchedulerService,
+    FloorAccessService,
   ],
   exports: [
     TableSessionService,

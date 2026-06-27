@@ -22,6 +22,11 @@ import {
   parseEdgeSyncStaleMinutes,
   resolveLastActivityAt,
 } from './edge-sync-stale.util';
+import {
+  pullFloorSessionsStream,
+  pullMenuStream,
+  pullTablesStream,
+} from './edge-sync-pull.util';
 
 @Injectable()
 export class EdgeSyncService {
@@ -106,7 +111,7 @@ export class EdgeSyncService {
     since?: string,
   ) {
     await this.requireEdgeServer(restaurantId, localId);
-    const streams = (streamsRaw ?? 'menu,tables,settings')
+    const streams = (streamsRaw ?? 'menu,tables,floor_sessions,settings')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
@@ -117,12 +122,55 @@ export class EdgeSyncService {
       data: { lastSyncPullAt: now, status: EdgeLocalServerStatus.ACTIVE },
     });
 
-    // MVP: estructura de delta vacía; Fase 2 llena menu/tables desde Prisma.
     const streamPayload: Record<
       string,
       { items: unknown[]; cursor: string; since: string | null }
     > = {};
+
     for (const stream of streams) {
+      if (stream === 'menu') {
+        const menu = await pullMenuStream(this.prisma, restaurantId, since);
+        streamPayload[stream] = { ...menu, since: since ?? null };
+        await this.upsertCursor(restaurantId, localId, stream, menu.cursor);
+        continue;
+      }
+      if (stream === 'tables') {
+        const tables = await pullTablesStream(this.prisma, restaurantId, since);
+        streamPayload[stream] = { ...tables, since: since ?? null };
+        await this.upsertCursor(restaurantId, localId, stream, tables.cursor);
+        continue;
+      }
+      if (stream === 'floor_sessions') {
+        const sessions = await pullFloorSessionsStream(
+          this.prisma,
+          restaurantId,
+          since,
+        );
+        streamPayload[stream] = { ...sessions, since: since ?? null };
+        await this.upsertCursor(restaurantId, localId, stream, sessions.cursor);
+        continue;
+      }
+      if (stream === 'settings') {
+        const restaurant = await this.prisma.restaurant.findUnique({
+          where: { id: restaurantId },
+          select: {
+            name: true,
+            slug: true,
+            businessRules: true,
+            settings: true,
+            updatedAt: true,
+          },
+        });
+        const cursor = restaurant?.updatedAt.toISOString() ?? now.toISOString();
+        streamPayload[stream] = {
+          items: restaurant ? [restaurant] : [],
+          cursor,
+          since: since ?? null,
+        };
+        await this.upsertCursor(restaurantId, localId, stream, cursor);
+        continue;
+      }
+
       const cursor = await this.prisma.edgeSyncCursor.findUnique({
         where: {
           restaurantId_localId_streamKey: {
@@ -147,6 +195,21 @@ export class EdgeSyncService {
     };
   }
 
+  private async upsertCursor(
+    restaurantId: string,
+    localId: string,
+    streamKey: string,
+    cursorValue: string,
+  ) {
+    await this.prisma.edgeSyncCursor.upsert({
+      where: {
+        restaurantId_localId_streamKey: { restaurantId, localId, streamKey },
+      },
+      create: { restaurantId, localId, streamKey, cursorValue },
+      update: { cursorValue },
+    });
+  }
+
   async push(restaurantId: string, localId: string, dto: EdgeSyncPushDto) {
     await this.requireEdgeServer(restaurantId, localId);
     const accepted: string[] = [];
@@ -160,7 +223,36 @@ export class EdgeSyncService {
         });
         continue;
       }
-      // MVP: ack idempotente; Fase 2 aplica mutaciones floor en cloud.
+
+      const entityType = mutation.entityType?.trim();
+      if (entityType === 'table_session.close') {
+        const rawSessionId = mutation.payload?.sessionId;
+        const sessionId =
+          typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
+        if (!sessionId) {
+          rejected.push({
+            clientMutationId: mutation.clientMutationId,
+            reason: 'missing_sessionId',
+          });
+          continue;
+        }
+        const session = await this.prisma.tableSession.findFirst({
+          where: { id: sessionId, restaurantId },
+          select: { id: true, status: true },
+        });
+        if (!session) {
+          rejected.push({
+            clientMutationId: mutation.clientMutationId,
+            reason: 'session_not_found',
+          });
+          continue;
+        }
+        if (session.status === 'CLOSED') {
+          accepted.push(mutation.clientMutationId.trim());
+          continue;
+        }
+      }
+
       accepted.push(mutation.clientMutationId.trim());
     }
 

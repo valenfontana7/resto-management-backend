@@ -4,6 +4,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { CommonModule } from '../common/common.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
 import { EmailModule } from '../email/email.module';
+import { BusinessHealthModule } from '../business-health/business-health.module';
 import { DigestPreferencesService } from './digest-preferences.service';
 import { DigestSchedulerService } from './digest-scheduler.service';
 import { DigestController } from './digest.controller';
@@ -15,6 +16,7 @@ import { DigestController } from './digest.controller';
     CommonModule,
     AnalyticsModule,
     EmailModule,
+    BusinessHealthModule,
   ],
   controllers: [DigestController],
   providers: [DigestPreferencesService, DigestSchedulerService],

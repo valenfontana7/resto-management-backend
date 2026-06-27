@@ -19,6 +19,7 @@ import {
 } from '../dto/cash-register.dto';
 import type { CashRegisterCloseReport } from '../types/cash-register-close-report.types';
 import { MainCashRegisterService } from './main-cash-register.service';
+import { FloorAccessService } from './floor-access.service';
 
 @Injectable()
 export class CashRegisterService {
@@ -26,6 +27,7 @@ export class CashRegisterService {
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
     private readonly mainCashRegister: MainCashRegisterService,
+    private readonly floorAccess: FloorAccessService,
   ) {}
 
   async getOpenSession(restaurantId: string, userId: string) {
@@ -55,6 +57,7 @@ export class CashRegisterService {
     dto: OpenCashRegisterDto,
   ) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+    await this.floorAccess.verifyCollectAccess(restaurantId, userId);
 
     const existing = await this.getOpenSessionRecord(restaurantId);
     if (existing) {
@@ -115,6 +118,7 @@ export class CashRegisterService {
     dto: CloseCashRegisterDto,
   ) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+    await this.floorAccess.verifyCollectAccess(restaurantId, userId);
     const open = await this.getOpenSessionRecord(restaurantId);
     if (!open) {
       throw new NotFoundException('No hay caja parcial abierta');
@@ -235,6 +239,7 @@ export class CashRegisterService {
     dto: CreateCashMovementDto,
   ) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+    await this.floorAccess.verifyCollectAccess(restaurantId, userId);
     const open = await this.getOpenSessionRecord(restaurantId);
     if (!open) {
       throw new BadRequestException('No hay caja parcial abierta');

@@ -18,6 +18,7 @@ import { DeliveryService } from '../delivery/delivery.service';
 import { GeocodeService } from '../delivery/services/geocode.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CustomersService } from '../customers/customers.service';
+import { InventoryConsumptionService } from '../business-health/inventory-consumption.service';
 import * as crypto from 'crypto';
 import { Prisma, OrderSource, ComandaItemStatus } from '@prisma/client';
 import {
@@ -49,6 +50,7 @@ export class OrdersService {
     private readonly geocodeService: GeocodeService,
     private readonly loyaltyService: LoyaltyService,
     private readonly customersService: CustomersService,
+    private readonly inventoryConsumption: InventoryConsumptionService,
   ) {}
 
   async create(
@@ -1080,6 +1082,10 @@ export class OrdersService {
         },
       });
 
+      if (parsed.paymentStatus === PaymentStatus.PAID) {
+        void this.tryInventoryDeduction(id);
+      }
+
       return updatedOrder;
     }
 
@@ -1227,6 +1233,7 @@ export class OrdersService {
     });
 
     this.notifications.emitOrderUpdate(restaurantId, updated);
+    void this.tryInventoryDeduction(id);
     return updated;
   }
 
@@ -1751,7 +1758,19 @@ export class OrdersService {
       createdOrder,
     );
 
+    void this.tryInventoryDeduction(createdOrder.id);
+
     return createdOrder;
+  }
+
+  private tryInventoryDeduction(orderId: string): void {
+    void this.inventoryConsumption.tryDeductForOrder(orderId).catch((error) => {
+      this.logger.warn(
+        `Descuento de inventario falló para pedido ${orderId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
   }
 
   private async createDeliveryOrder(

@@ -16,8 +16,8 @@ describe('migrateRestaurantSystemRoles', () => {
 
     const stats = await migrateRestaurantSystemRoles(client as any, 'rest-1');
 
-    expect(create).toHaveBeenCalledTimes(5);
-    expect(stats.rolesCreated).toBe(5);
+    expect(create).toHaveBeenCalledTimes(6);
+    expect(stats.rolesCreated).toBe(6);
   });
 
   it('merges Admin and OWNER into canonical OWNER', async () => {
@@ -94,6 +94,6 @@ describe('migrateRestaurantSystemRoles', () => {
     });
 
     expect(client.role.create).not.toHaveBeenCalled();
-    expect(stats.rolesCreated).toBe(5);
+    expect(stats.rolesCreated).toBe(6);
   });
 });

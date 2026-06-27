@@ -38,6 +38,8 @@ import { RestaurantsService } from './restaurants.service';
 import {
   resolveOnboardingFeatures,
   businessRulesPatchForIntent,
+  getRestaurantProductIntent,
+  requiresOnlinePaymentForOnboardingComplete,
   type OnboardingProductIntent,
 } from './onboarding-product-intent';
 import { RestaurantUsersService } from './services/restaurant-users.service';
@@ -429,34 +431,43 @@ export class RestaurantsController {
     description: 'Onboarding marked as complete.',
   })
   async completeOnboarding(@VerifyRestaurantAccess('id') restaurantId: string) {
-    // Guard: para finalizar onboarding, el restaurante necesita al menos un
-    // proveedor de pago online configurado y validado (Payway con
-    // lastTestStatus='ok' o MercadoPago con accessTokenCiphertext). Esto
-    // garantiza que pueda cobrar en su propia cuenta antes de salir a producción.
-    const [payway, mp] = await Promise.all([
-      this.prisma.paymentProviderCredential.findFirst({
-        where: {
-          restaurantId,
-          isActive: true,
-          lastTestStatus: 'ok',
-        },
-        select: { id: true },
-      }),
-      this.prisma.mercadoPagoCredential.findUnique({
-        where: { restaurantId },
-        select: { accessTokenCiphertext: true },
-      }),
-    ]);
+    const current = await this.prisma.restaurant.findUnique({
+      where: { id: restaurantId },
+      select: { businessRules: true },
+    });
 
-    const hasMpConfigured = Boolean(mp?.accessTokenCiphertext);
-    const hasPayway = Boolean(payway);
+    if (!current) {
+      throw new NotFoundException('Restaurant not found');
+    }
 
-    if (!hasPayway && !hasMpConfigured) {
-      throw new BadRequestException({
-        code: 'PAYMENT_PROVIDER_REQUIRED',
-        message:
-          'Configurá al menos un proveedor de pago (Payway o MercadoPago) y probá la conexión antes de finalizar el onboarding.',
-      });
+    const productIntent = getRestaurantProductIntent(current.businessRules);
+
+    if (requiresOnlinePaymentForOnboardingComplete(productIntent)) {
+      const [payway, mp] = await Promise.all([
+        this.prisma.paymentProviderCredential.findFirst({
+          where: {
+            restaurantId,
+            isActive: true,
+            lastTestStatus: 'ok',
+          },
+          select: { id: true },
+        }),
+        this.prisma.mercadoPagoCredential.findUnique({
+          where: { restaurantId },
+          select: { accessTokenCiphertext: true },
+        }),
+      ]);
+
+      const hasMpConfigured = Boolean(mp?.accessTokenCiphertext);
+      const hasPayway = Boolean(payway);
+
+      if (!hasPayway && !hasMpConfigured) {
+        throw new BadRequestException({
+          code: 'PAYMENT_PROVIDER_REQUIRED',
+          message:
+            'Configurá al menos un proveedor de pago (Payway o MercadoPago) y probá la conexión antes de finalizar el onboarding.',
+        });
+      }
     }
 
     const restaurant = await this.restaurantsService.update(restaurantId, {
@@ -684,6 +695,8 @@ export class RestaurantsController {
       activationCode,
       activationCodeExpiresAt,
       activationCodeEmailSent,
+      restaurantAccessEmailSent,
+      linkedExisting,
       ...user
     } = newUser;
 
@@ -693,6 +706,28 @@ export class RestaurantsController {
       activationCode,
       activationCodeExpiresAt,
       activationCodeEmailSent,
+      restaurantAccessEmailSent,
+      linkedExisting,
+    };
+  }
+
+  @ApiOperation({ summary: 'Resend activation code email' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  @ApiParam({ name: 'userId', description: 'The id of the user' })
+  @Post(':id/users/:userId/resend-activation')
+  @ApiBearerAuth()
+  async resendActivationEmail(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+    @Param('userId') userId: string,
+  ) {
+    const result = await this.usersService.resendActivationEmail(
+      restaurantId,
+      userId,
+    );
+
+    return {
+      success: true,
+      ...result,
     };
   }
 

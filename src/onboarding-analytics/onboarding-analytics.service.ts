@@ -190,7 +190,7 @@ export class OnboardingAnalyticsService {
 
   /**
    * Cohorte de retención por día de primer evento (proxy de “activación”).
-   * D1 = usó la app al día siguiente. D7 = volvió una semana después.
+   * D1 = usó la app al día siguiente. D7 = volvió una semana después. D30 = volvió al mes.
    * Ignora cohortes sin suficiente madurez para D7 (últimos 7 días).
    */
   async getRetentionCohorts(days = 30) {
@@ -202,6 +202,7 @@ export class OnboardingAnalyticsService {
         users: bigint;
         d1: bigint;
         d7: bigint;
+        d30: bigint;
       }>
     >`
       WITH cohort AS (
@@ -220,7 +221,8 @@ export class OnboardingAnalyticsService {
         c.cohort_day,
         COUNT(DISTINCT c."userId")::bigint AS users,
         COUNT(DISTINCT CASE WHEN a.day = c.cohort_day + INTERVAL '1 day' THEN c."userId" END)::bigint AS d1,
-        COUNT(DISTINCT CASE WHEN a.day = c.cohort_day + INTERVAL '7 day' THEN c."userId" END)::bigint AS d7
+        COUNT(DISTINCT CASE WHEN a.day = c.cohort_day + INTERVAL '7 day' THEN c."userId" END)::bigint AS d7,
+        COUNT(DISTINCT CASE WHEN a.day = c.cohort_day + INTERVAL '30 day' THEN c."userId" END)::bigint AS d30
       FROM cohort c
       LEFT JOIN activity a ON a."userId" = c."userId"
       GROUP BY c.cohort_day
@@ -231,13 +233,16 @@ export class OnboardingAnalyticsService {
       const users = Number(r.users);
       const d1 = Number(r.d1);
       const d7 = Number(r.d7);
+      const d30 = Number(r.d30);
       return {
         cohortDay: r.cohort_day.toISOString().slice(0, 10),
         users,
         d1Count: d1,
         d7Count: d7,
+        d30Count: d30,
         d1Rate: users > 0 ? Math.round((d1 / users) * 1000) / 10 : null,
         d7Rate: users > 0 ? Math.round((d7 / users) * 1000) / 10 : null,
+        d30Rate: users > 0 ? Math.round((d30 / users) * 1000) / 10 : null,
       };
     });
 
@@ -249,11 +254,18 @@ export class OnboardingAnalyticsService {
       (c) =>
         new Date(c.cohortDay).getTime() <= Date.now() - 8 * 24 * 60 * 60 * 1000,
     );
+    const matureForD30 = cohorts.filter(
+      (c) =>
+        new Date(c.cohortDay).getTime() <=
+        Date.now() - 31 * 24 * 60 * 60 * 1000,
+    );
 
     const sumUsersD1 = matureForD1.reduce((acc, c) => acc + c.users, 0);
     const sumD1 = matureForD1.reduce((acc, c) => acc + c.d1Count, 0);
     const sumUsersD7 = matureForD7.reduce((acc, c) => acc + c.users, 0);
     const sumD7 = matureForD7.reduce((acc, c) => acc + c.d7Count, 0);
+    const sumUsersD30 = matureForD30.reduce((acc, c) => acc + c.users, 0);
+    const sumD30 = matureForD30.reduce((acc, c) => acc + c.d30Count, 0);
 
     return {
       sinceDays: safeDays,
@@ -262,8 +274,11 @@ export class OnboardingAnalyticsService {
         sumUsersD1 > 0 ? Math.round((sumD1 / sumUsersD1) * 1000) / 10 : null,
       averageD7Rate:
         sumUsersD7 > 0 ? Math.round((sumD7 / sumUsersD7) * 1000) / 10 : null,
+      averageD30Rate:
+        sumUsersD30 > 0 ? Math.round((sumD30 / sumUsersD30) * 1000) / 10 : null,
       sampleUsersD1: sumUsersD1,
       sampleUsersD7: sumUsersD7,
+      sampleUsersD30: sumUsersD30,
     };
   }
 

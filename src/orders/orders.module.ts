@@ -17,6 +17,7 @@ import { CouponsModule } from '../coupons/coupons.module';
 import { DeliveryModule } from '../delivery/delivery.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { CustomersModule } from '../customers/customers.module';
+import { BusinessHealthModule } from '../business-health/business-health.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { CustomersModule } from '../customers/customers.module';
     ScheduleModule.forRoot(),
     PrismaModule,
     CommonModule,
+    BusinessHealthModule,
     MercadoPagoModule,
     EmailModule,
     WebsocketModule,

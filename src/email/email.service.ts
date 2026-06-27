@@ -160,8 +160,20 @@ export class EmailService {
     restaurantAddress?: string;
     restaurantPhone?: string;
     restaurantEmail?: string;
+    couponCode?: string | null;
+    couponPercent?: number | null;
   }): Promise<boolean> {
     const name = params.customerName.trim().split(/\s+/)[0] || 'Cliente';
+    const couponBlock =
+      params.couponCode && params.couponPercent
+        ? subscriptionContentParagraph(
+            `Usá el código <strong>${params.couponCode}</strong> y obtené ${params.couponPercent}% off en tu próximo pedido.`,
+            true,
+          )
+        : subscriptionContentParagraph(
+            `Tenemos novedades en el menú y te esperamos con la misma calidez de siempre.`,
+            true,
+          );
     const html = renderSubscriptionEmail({
       title: `Te extrañamos, ${name}`,
       subtitle: 'Será un placer recibirte de nuevo',
@@ -175,12 +187,9 @@ export class EmailService {
       },
       content: `
         ${subscriptionContentParagraph(`Hace un tiempo que no nos visitás y queríamos saludarte.`)}
-        ${subscriptionContentParagraph(
-          `Tenemos novedades en el menú y te esperamos con la misma calidez de siempre.`,
-          true,
-        )}
+        ${couponBlock}
       `,
-      ctaText: 'Ver menú y pedir',
+      ctaText: params.couponCode ? 'Pedir con descuento' : 'Ver menú y pedir',
       ctaUrl: params.menuUrl,
     });
 

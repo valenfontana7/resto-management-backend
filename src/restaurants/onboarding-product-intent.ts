@@ -68,3 +68,27 @@ export function businessRulesPatchForIntent(intent?: OnboardingProductIntent) {
     },
   };
 }
+
+type BusinessRulesWithIntent = {
+  onboarding?: { productIntent?: OnboardingProductIntent };
+};
+
+export function getRestaurantProductIntent(
+  businessRules: unknown,
+): OnboardingProductIntent {
+  const intent = (businessRules as BusinessRulesWithIntent | null | undefined)
+    ?.onboarding?.productIntent;
+
+  if (intent === 'digital' || intent === 'operations' || intent === 'both') {
+    return intent;
+  }
+
+  return 'both';
+}
+
+/** Canal digital requiere proveedor online antes de cerrar el onboarding formal. */
+export function requiresOnlinePaymentForOnboardingComplete(
+  intent: OnboardingProductIntent,
+): boolean {
+  return intent === 'digital' || intent === 'both';
+}
