@@ -10,9 +10,16 @@ import { MercadoPagoOAuthRefreshTask } from './mercadopago-oauth-refresh.task';
 import { EncryptionService } from './encryption.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
+import { BusinessEventsModule } from '../business-events/business-events.module';
 
 @Module({
-  imports: [PrismaModule, ConfigModule, ScheduleModule.forRoot(), AuthModule],
+  imports: [
+    PrismaModule,
+    ConfigModule,
+    ScheduleModule.forRoot(),
+    AuthModule,
+    BusinessEventsModule,
+  ],
   controllers: [MercadoPagoController],
   providers: [
     EncryptionService,

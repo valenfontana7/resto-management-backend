@@ -94,6 +94,61 @@ export class BusinessMemoryEventSubscriber implements OnModuleInit {
           event as BentooBusinessEvent<BentooBusinessEventType.MarketingPublished>,
         );
         break;
+      case BentooBusinessEventType.MarketingSkipped:
+        await this.recordMarketingSkipped(
+          event as BentooBusinessEvent<BentooBusinessEventType.MarketingSkipped>,
+        );
+        break;
+      case BentooBusinessEventType.RestaurantOpened:
+        await this.recordRestaurantOpened(
+          event as BentooBusinessEvent<BentooBusinessEventType.RestaurantOpened>,
+        );
+        break;
+      case BentooBusinessEventType.RestaurantClosed:
+        await this.recordRestaurantClosed(
+          event as BentooBusinessEvent<BentooBusinessEventType.RestaurantClosed>,
+        );
+        break;
+      case BentooBusinessEventType.DeliveryAssigned:
+        await this.recordDeliveryAssigned(
+          event as BentooBusinessEvent<BentooBusinessEventType.DeliveryAssigned>,
+        );
+        break;
+      case BentooBusinessEventType.DeliveryCompleted:
+        await this.recordDeliveryCompleted(
+          event as BentooBusinessEvent<BentooBusinessEventType.DeliveryCompleted>,
+        );
+        break;
+      case BentooBusinessEventType.ReservationCreated:
+        await this.recordReservationCreated(
+          event as BentooBusinessEvent<BentooBusinessEventType.ReservationCreated>,
+        );
+        break;
+      case BentooBusinessEventType.ReservationCancelled:
+        await this.recordReservationCancelled(
+          event as BentooBusinessEvent<BentooBusinessEventType.ReservationCancelled>,
+        );
+        break;
+      case BentooBusinessEventType.ReservationPendingConfirmation:
+        await this.recordReservationPendingConfirmation(
+          event as BentooBusinessEvent<BentooBusinessEventType.ReservationPendingConfirmation>,
+        );
+        break;
+      case BentooBusinessEventType.LoyaltyPointsEarned:
+        await this.recordLoyaltyPointsEarned(
+          event as BentooBusinessEvent<BentooBusinessEventType.LoyaltyPointsEarned>,
+        );
+        break;
+      case BentooBusinessEventType.LoyaltyPointsRedeemed:
+        await this.recordLoyaltyPointsRedeemed(
+          event as BentooBusinessEvent<BentooBusinessEventType.LoyaltyPointsRedeemed>,
+        );
+        break;
+      case BentooBusinessEventType.LoyaltyTierUpgraded:
+        await this.recordLoyaltyTierUpgraded(
+          event as BentooBusinessEvent<BentooBusinessEventType.LoyaltyTierUpgraded>,
+        );
+        break;
       default:
         await this.recordGenericEvent(event);
         break;
@@ -322,6 +377,181 @@ export class BusinessMemoryEventSubscriber implements OnModuleInit {
       category: BusinessMemoryCategory.MARKETING,
       title: `Publicado — ${payload.title}`,
       summary: `Canal: ${payload.channel}`,
+      sourceProvider: 'business-events',
+      sourceInsightId: event.id,
+      metadata: { eventId: event.id, payload },
+    });
+  }
+
+  private async recordMarketingSkipped(
+    event: BentooBusinessEvent<BentooBusinessEventType.MarketingSkipped>,
+  ): Promise<void> {
+    const payload = event.payload;
+    await this.businessMemory.recordFromBusinessEvent(event.restaurantId, {
+      memoryKey: `event:marketing:skipped:${event.correlationId ?? event.id}`,
+      category: BusinessMemoryCategory.MARKETING,
+      title: 'Publicación pendiente',
+      summary: payload.reason,
+      sourceProvider: 'business-events',
+      sourceInsightId: event.id,
+      metadata: { eventId: event.id, payload },
+    });
+  }
+
+  private async recordRestaurantOpened(
+    event: BentooBusinessEvent<BentooBusinessEventType.RestaurantOpened>,
+  ): Promise<void> {
+    const payload = event.payload;
+
+    await this.businessMemory.resolveByKeysSystem(event.restaurantId, [
+      'daily-operation:opening-checklist',
+      'daily-operation:opening-review',
+    ]);
+
+    await this.businessMemory.recordFromBusinessEvent(event.restaurantId, {
+      memoryKey: `event:restaurant:opened:${payload.date}`,
+      category: BusinessMemoryCategory.OPERATIONAL,
+      title: 'Turno abierto',
+      summary: `Apertura del día ${payload.date}`,
+      sourceProvider: 'business-events',
+      sourceInsightId: event.id,
+      metadata: { eventId: event.id, payload },
+    });
+  }
+
+  private async recordRestaurantClosed(
+    event: BentooBusinessEvent<BentooBusinessEventType.RestaurantClosed>,
+  ): Promise<void> {
+    const payload = event.payload;
+    await this.businessMemory.recordFromBusinessEvent(event.restaurantId, {
+      memoryKey: `event:restaurant:closed:${payload.date}`,
+      category: BusinessMemoryCategory.OPERATIONAL,
+      title: 'Turno cerrado',
+      summary: `Cierre operativo del ${payload.date}`,
+      sourceProvider: 'business-events',
+      sourceInsightId: event.id,
+      metadata: { eventId: event.id, payload },
+    });
+  }
+
+  private async recordDeliveryAssigned(
+    event: BentooBusinessEvent<BentooBusinessEventType.DeliveryAssigned>,
+  ): Promise<void> {
+    const payload = event.payload;
+    await this.businessMemory.recordFromBusinessEvent(event.restaurantId, {
+      memoryKey: `event:delivery:assigned:${payload.orderId}`,
+      category: BusinessMemoryCategory.OPERATIONAL,
+      title: `Reparto asignado #${payload.orderNumber}`,
+      summary: `${payload.driverName} tomó el pedido`,
+      sourceProvider: 'business-events',
+      sourceInsightId: event.id,
+      metadata: { eventId: event.id, payload },
+    });
+  }
+
+  private async recordDeliveryCompleted(
+    event: BentooBusinessEvent<BentooBusinessEventType.DeliveryCompleted>,
+  ): Promise<void> {
+    const payload = event.payload;
+    await this.businessMemory.recordFromBusinessEvent(event.restaurantId, {
+      memoryKey: `event:delivery:completed:${payload.orderId}`,
+      category: BusinessMemoryCategory.SALES,
+      title: `Entrega completada #${payload.orderNumber}`,
+      summary: payload.driverName
+        ? `Entregado por ${payload.driverName}`
+        : 'Pedido entregado al cliente',
+      sourceProvider: 'business-events',
+      sourceInsightId: event.id,
+      metadata: { eventId: event.id, payload },
+    });
+  }
+
+  private async recordReservationCreated(
+    event: BentooBusinessEvent<BentooBusinessEventType.ReservationCreated>,
+  ): Promise<void> {
+    const payload = event.payload;
+    await this.businessMemory.recordFromBusinessEvent(event.restaurantId, {
+      memoryKey: `event:reservation:created:${payload.reservationId}`,
+      category: BusinessMemoryCategory.CUSTOMER,
+      title: `Reserva nueva — ${payload.customerName}`,
+      summary: `${payload.date} ${payload.time} · ${payload.partySize} personas`,
+      sourceProvider: 'business-events',
+      sourceInsightId: event.id,
+      metadata: { eventId: event.id, payload },
+    });
+  }
+
+  private async recordReservationCancelled(
+    event: BentooBusinessEvent<BentooBusinessEventType.ReservationCancelled>,
+  ): Promise<void> {
+    const payload = event.payload;
+    await this.businessMemory.recordFromBusinessEvent(event.restaurantId, {
+      memoryKey: `event:reservation:cancelled:${payload.reservationId}`,
+      category: BusinessMemoryCategory.CUSTOMER,
+      title: `Reserva cancelada — ${payload.customerName}`,
+      summary: `${payload.date} ${payload.time}`,
+      sourceProvider: 'business-events',
+      sourceInsightId: event.id,
+      metadata: { eventId: event.id, payload },
+    });
+  }
+
+  private async recordReservationPendingConfirmation(
+    event: BentooBusinessEvent<BentooBusinessEventType.ReservationPendingConfirmation>,
+  ): Promise<void> {
+    const payload = event.payload;
+    await this.businessMemory.recordFromBusinessEvent(event.restaurantId, {
+      memoryKey: `event:reservation:pending:${payload.reservationId}`,
+      category: BusinessMemoryCategory.OPERATIONAL,
+      title: `Confirmar reserva — ${payload.customerName}`,
+      summary: `Servicio en ${payload.hoursUntilService}h (${payload.time})`,
+      sourceProvider: 'business-events',
+      sourceInsightId: event.id,
+      metadata: { eventId: event.id, payload },
+    });
+  }
+
+  private async recordLoyaltyPointsEarned(
+    event: BentooBusinessEvent<BentooBusinessEventType.LoyaltyPointsEarned>,
+  ): Promise<void> {
+    const payload = event.payload;
+    await this.businessMemory.recordFromBusinessEvent(event.restaurantId, {
+      memoryKey: `event:loyalty:earned:${event.correlationId ?? event.id}`,
+      category: BusinessMemoryCategory.CUSTOMER,
+      title: 'Puntos acreditados',
+      summary: `+${payload.points} pts — saldo ${payload.newBalance}`,
+      sourceProvider: 'business-events',
+      sourceInsightId: event.id,
+      metadata: { eventId: event.id, payload },
+    });
+  }
+
+  private async recordLoyaltyPointsRedeemed(
+    event: BentooBusinessEvent<BentooBusinessEventType.LoyaltyPointsRedeemed>,
+  ): Promise<void> {
+    const payload = event.payload;
+    await this.businessMemory.recordFromBusinessEvent(event.restaurantId, {
+      memoryKey: `event:loyalty:redeemed:${event.correlationId ?? event.id}`,
+      category: BusinessMemoryCategory.CUSTOMER,
+      title: 'Puntos canjeados',
+      summary: `-${payload.points} pts — saldo ${payload.newBalance}`,
+      sourceProvider: 'business-events',
+      sourceInsightId: event.id,
+      metadata: { eventId: event.id, payload },
+    });
+  }
+
+  private async recordLoyaltyTierUpgraded(
+    event: BentooBusinessEvent<BentooBusinessEventType.LoyaltyTierUpgraded>,
+  ): Promise<void> {
+    const payload = event.payload;
+    await this.businessMemory.recordFromBusinessEvent(event.restaurantId, {
+      memoryKey: `event:loyalty:tier:${payload.accountId}:${payload.newTier}`,
+      category: BusinessMemoryCategory.CUSTOMER,
+      title: `Nivel ${payload.newTier}`,
+      summary: payload.customerName
+        ? `${payload.customerName} subió de ${payload.previousTier}`
+        : `Cliente subió de ${payload.previousTier}`,
       sourceProvider: 'business-events',
       sourceInsightId: event.id,
       metadata: { eventId: event.id, payload },

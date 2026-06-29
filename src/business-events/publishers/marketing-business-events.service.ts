@@ -27,4 +27,27 @@ export class MarketingBusinessEventsService {
       })
       .catch(() => undefined);
   }
+
+  publishMarketingSkipped(input: {
+    restaurantId: string;
+    reason: string;
+    campaignId?: string;
+    source?: string;
+  }): void {
+    void this.publisher
+      .publishDeduped(
+        {
+          eventType: BentooBusinessEventType.MarketingSkipped,
+          restaurantId: input.restaurantId,
+          source: input.source ?? 'builder',
+          correlationId: input.campaignId ?? `site:${input.restaurantId}`,
+          payload: {
+            campaignId: input.campaignId,
+            reason: input.reason,
+          },
+        },
+        7 * 24 * 60,
+      )
+      .catch(() => undefined);
+  }
 }

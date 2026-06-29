@@ -8,6 +8,7 @@ import { renderDigestEmail } from '../email/email-templates';
 import { ImageProcessingService } from '../common/services/image-processing.service';
 import { DigestPreferencesService } from './digest-preferences.service';
 import { BusinessHealthService } from '../business-health/business-health.service';
+import { BusinessEventDigestService } from '../business-events/business-event-digest.service';
 
 @Injectable()
 export class DigestSchedulerService {
@@ -20,6 +21,7 @@ export class DigestSchedulerService {
     private readonly images: ImageProcessingService,
     private readonly preferencesService: DigestPreferencesService,
     private readonly businessHealthService: BusinessHealthService,
+    private readonly businessEventDigest: BusinessEventDigestService,
   ) {}
 
   /**
@@ -167,6 +169,13 @@ export class DigestSchedulerService {
         ? await this.businessHealthService.getDigestSnapshot(restaurantId)
         : null;
 
+    const { since, until } = this.resolveEventWindow(frequency);
+    const eventHighlights = await this.businessEventDigest.getHighlights(
+      restaurantId,
+      since,
+      until,
+    );
+
     return renderDigestEmail({
       title: this.getSubject(restaurantName, frequency),
       periodLabel: periodLabel[frequency] || '',
@@ -178,6 +187,22 @@ export class DigestSchedulerService {
       logoUrl,
       restaurantName,
       healthInsights,
+      eventHighlights,
     });
+  }
+
+  private resolveEventWindow(frequency: string): { since: Date; until: Date } {
+    const until = new Date();
+    const since = new Date(until);
+
+    if (frequency === 'DAILY') {
+      since.setDate(since.getDate() - 1);
+    } else if (frequency === 'WEEKLY') {
+      since.setDate(since.getDate() - 7);
+    } else {
+      since.setMonth(since.getMonth() - 1);
+    }
+
+    return { since, until };
   }
 }

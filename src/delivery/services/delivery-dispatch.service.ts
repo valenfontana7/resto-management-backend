@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DeliveryRunService } from './delivery-run.service';
+import { DeliveryBusinessEventsService } from '../../business-events/publishers/delivery-business-events.service';
 
 type ExternalPlatformConfig = {
   dispatchUrl?: string;
@@ -16,6 +17,7 @@ export class DeliveryDispatchService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly deliveryRunService: DeliveryRunService,
+    private readonly deliveryEvents: DeliveryBusinessEventsService,
   ) {}
 
   async dispatchOrder(restaurantId: string, orderId: string) {
@@ -131,6 +133,15 @@ export class DeliveryDispatchService {
         deliveryAddress: deliveryOrder.deliveryAddress,
       },
     );
+
+    this.deliveryEvents.publishDeliveryAssigned({
+      restaurantId,
+      orderId: deliveryOrder.orderId,
+      orderNumber: String(deliveryOrder.order.orderNumber),
+      driverId: candidate.driver.id,
+      driverName: candidate.driver.name,
+      source: 'delivery-dispatch.autoAssign',
+    });
 
     return {
       success: true,

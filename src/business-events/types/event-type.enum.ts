@@ -20,6 +20,18 @@ export enum BentooBusinessEventType {
   DailyClosingMissing = 'DailyClosingMissing',
   MarketingPublished = 'MarketingPublished',
   MarketingSkipped = 'MarketingSkipped',
+  DeliveryAssigned = 'DeliveryAssigned',
+  DeliveryCompleted = 'DeliveryCompleted',
+  ReservationCreated = 'ReservationCreated',
+  ReservationCancelled = 'ReservationCancelled',
+  ReservationPendingConfirmation = 'ReservationPendingConfirmation',
+  ReservationNoShowRisk = 'ReservationNoShowRisk',
+  InventoryLowStock = 'InventoryLowStock',
+  SiteStalePublished = 'SiteStalePublished',
+  PaymentsVerified = 'PaymentsVerified',
+  LoyaltyPointsEarned = 'LoyaltyPointsEarned',
+  LoyaltyPointsRedeemed = 'LoyaltyPointsRedeemed',
+  LoyaltyTierUpgraded = 'LoyaltyTierUpgraded',
 }
 
 export type BentooBusinessEventTypeName = `${BentooBusinessEventType}`;

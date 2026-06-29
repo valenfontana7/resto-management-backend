@@ -20,6 +20,7 @@ import {
   computeDefaultExpiresAt,
   daysBetween,
   isMemoryExpired,
+  isSameUtcDay,
 } from './business-memory.utils';
 
 const INSIGHT_CATEGORY_MAP: Record<string, BusinessMemoryCategory> = {
@@ -178,13 +179,15 @@ export class BusinessMemoryService {
       };
     }
 
+    const sameDay = isSameUtcDay(existing.lastSeenAt, now);
+
     const updated = await this.prisma.businessMemory.update({
       where: { id: existing.id },
       data: {
         status: BusinessMemoryStatus.ACTIVE,
         title: dto.title,
         summary: dto.summary ?? existing.summary,
-        occurrenceCount: { increment: 1 },
+        ...(sameDay ? {} : { occurrenceCount: { increment: 1 } }),
         lastSeenAt: now,
         resolvedAt: null,
         resolvedBy: null,
@@ -437,6 +440,27 @@ export class BusinessMemoryService {
     return mapped;
   }
 
+  async resolveByKeysSystem(restaurantId: string, memoryKeys: string[]) {
+    if (memoryKeys.length === 0) {
+      return { resolvedCount: 0 };
+    }
+
+    const result = await this.prisma.businessMemory.updateMany({
+      where: {
+        restaurantId,
+        status: BusinessMemoryStatus.ACTIVE,
+        memoryKey: { in: memoryKeys },
+      },
+      data: {
+        status: BusinessMemoryStatus.RESOLVED,
+        resolvedAt: new Date(),
+        resolvedBy: null,
+      },
+    });
+
+    return { resolvedCount: result.count };
+  }
+
   /**
    * System-level upsert from business event subscribers — no user auth required.
    * Used by the reactive event bus, not by HTTP clients directly.
@@ -484,13 +508,15 @@ export class BusinessMemoryService {
       return { memory: this.toRecord(created), lifecycle: 'created' as const };
     }
 
+    const sameDay = isSameUtcDay(existing.lastSeenAt, now);
+
     const updated = await this.prisma.businessMemory.update({
       where: { id: existing.id },
       data: {
         status: BusinessMemoryStatus.ACTIVE,
         title: dto.title,
         summary: dto.summary ?? existing.summary,
-        occurrenceCount: { increment: 1 },
+        ...(sameDay ? {} : { occurrenceCount: { increment: 1 } }),
         lastSeenAt: now,
         resolvedAt: null,
         resolvedBy: null,

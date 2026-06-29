@@ -607,6 +607,12 @@ export class BuilderService {
         isPublished: false,
       },
     });
+
+    this.marketingEvents.publishMarketingSkipped({
+      restaurantId,
+      reason: 'site-unpublished',
+      source: 'builder.unpublish',
+    });
   }
 
   /**

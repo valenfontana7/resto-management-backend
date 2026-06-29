@@ -30,6 +30,7 @@ import { DeliveryDriversService } from './services/delivery-drivers.service';
 import { DeliveryPricingService } from './services/delivery-pricing.service';
 import { GeocodeService } from './services/geocode.service';
 import { DeliveryRunService } from './services/delivery-run.service';
+import { DeliveryBusinessEventsService } from '../business-events/publishers/delivery-business-events.service';
 import { computeLiveDeliveryEta } from './utils/delivery-eta.util';
 
 @Injectable()
@@ -43,6 +44,7 @@ export class DeliveryService {
     private readonly pricingService: DeliveryPricingService,
     private readonly geocodeService: GeocodeService,
     private readonly deliveryRunService: DeliveryRunService,
+    private readonly deliveryEvents: DeliveryBusinessEventsService,
   ) {}
 
   // ============================================
@@ -508,6 +510,15 @@ export class DeliveryService {
       deliveryAddress: updated.deliveryAddress,
     });
 
+    this.deliveryEvents.publishDeliveryAssigned({
+      restaurantId,
+      orderId: updated.orderId,
+      orderNumber: String(updated.order.orderNumber),
+      driverId: dto.driverId,
+      driverName: driver.name,
+      source: 'delivery.assignDriver',
+    });
+
     return {
       success: true,
       order: updated,
@@ -558,6 +569,10 @@ export class DeliveryService {
     const updated = await this.prisma.deliveryOrder.update({
       where: { id: delivery.id },
       data: updateData,
+      include: {
+        driver: { select: { id: true, name: true } },
+        order: { select: { orderNumber: true } },
+      },
     });
 
     // Si hay ubicación, actualizarla
@@ -565,6 +580,17 @@ export class DeliveryService {
       await this.updateDriverLocation(restaurantId, delivery.driverId, {
         lat: dto.lat,
         lng: dto.lng,
+      });
+    }
+
+    if (dto.status === DeliveryStatus.DELIVERED) {
+      this.deliveryEvents.publishDeliveryCompleted({
+        restaurantId,
+        orderId,
+        orderNumber: String(updated.order.orderNumber),
+        driverId: updated.driver?.id,
+        driverName: updated.driver?.name,
+        source: 'delivery.updateStatus',
       });
     }
 

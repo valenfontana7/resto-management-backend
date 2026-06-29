@@ -40,6 +40,10 @@ export function startOfUtcDay(date: Date): Date {
   return copy;
 }
 
+export function isSameUtcDay(a: Date, b: Date): boolean {
+  return startOfUtcDay(a).getTime() === startOfUtcDay(b).getTime();
+}
+
 export function daysBetween(start: Date, end: Date): number {
   const ms = startOfUtcDay(end).getTime() - startOfUtcDay(start).getTime();
   return Math.max(0, Math.floor(ms / 86_400_000));

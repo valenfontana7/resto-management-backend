@@ -25,6 +25,7 @@ import {
   UpdateDriverWhatsappDto,
 } from '../dto/delivery.dto';
 import { DeliveryDriversService } from './delivery-drivers.service';
+import { DeliveryBusinessEventsService } from '../../business-events/publishers/delivery-business-events.service';
 import { normalizeRoleCode } from '../../common/utils/role.utils';
 import { computeLiveDeliveryEta } from '../utils/delivery-eta.util';
 
@@ -44,6 +45,7 @@ export class DeliveryRunService {
     private readonly callMeBot: CallMeBotService,
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
+    private readonly deliveryEvents: DeliveryBusinessEventsService,
   ) {}
 
   async getSession(restaurantId: string, userId: string) {
@@ -173,6 +175,9 @@ export class DeliveryRunService {
         order: { restaurantId },
         driverId: driver.id,
       },
+      include: {
+        order: { select: { orderNumber: true } },
+      },
     });
 
     if (!delivery) {
@@ -217,6 +222,15 @@ export class DeliveryRunService {
       await this.prisma.order.update({
         where: { id: orderId },
         data: { status: 'DELIVERED' },
+      });
+
+      this.deliveryEvents.publishDeliveryCompleted({
+        restaurantId,
+        orderId,
+        orderNumber: String(delivery.order.orderNumber),
+        driverId: driver.id,
+        driverName: driver.name,
+        source: 'delivery-run.updateOrderStatus',
       });
     }
 

@@ -10,9 +10,15 @@ import { DeliveryRunService } from './services/delivery-run.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { BusinessEventsModule } from '../business-events/business-events.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule, forwardRef(() => NotificationsModule)],
+  imports: [
+    PrismaModule,
+    AuthModule,
+    forwardRef(() => NotificationsModule),
+    BusinessEventsModule,
+  ],
   controllers: [DeliveryController, TrackingController],
   providers: [
     DeliveryService,

@@ -7,6 +7,8 @@ import {
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { MercadoPagoCredentialsService } from './mercadopago-credentials.service';
+import { BusinessEventPublisherService } from '../business-events/business-event-publisher.service';
+import { BentooBusinessEventType } from '../business-events/types/event-type.enum';
 
 interface OAuthStatePayload {
   restaurantId: string;
@@ -38,6 +40,7 @@ export class MercadoPagoOAuthService {
   constructor(
     private readonly config: ConfigService,
     private readonly credentialsService: MercadoPagoCredentialsService,
+    private readonly businessEvents: BusinessEventPublisherService,
   ) {}
 
   private getClientId(): string {
@@ -204,6 +207,21 @@ export class MercadoPagoOAuthService {
           ? token.live_mode
           : !token.access_token.startsWith('TEST-'),
     });
+
+    void this.businessEvents
+      .publish({
+        eventType: BentooBusinessEventType.PaymentsVerified,
+        restaurantId: statePayload.restaurantId,
+        source: 'mercadopago-oauth',
+        correlationId: `mp-verified:${statePayload.restaurantId}`,
+        payload: {
+          provider: 'MercadoPago',
+          verifiedAt: new Date().toISOString(),
+        },
+      })
+      .catch((err) => {
+        this.logger.warn(`Failed to publish PaymentsVerified: ${err}`);
+      });
 
     return {
       restaurantId: statePayload.restaurantId,

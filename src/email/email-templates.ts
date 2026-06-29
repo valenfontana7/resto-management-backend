@@ -1171,6 +1171,11 @@ export function renderDigestEmail(params: {
     d7Rate: number | null;
     d30Rate: number | null;
   } | null;
+  eventHighlights?: Array<{
+    label: string;
+    count: number;
+    tone: 'positive' | 'attention' | 'neutral';
+  }>;
 }): string {
   const topDishesHtml =
     params.topDishes.length > 0
@@ -1262,6 +1267,29 @@ export function renderDigestEmail(params: {
     }`
     : '';
 
+  const eventHighlightsHtml =
+    params.eventHighlights && params.eventHighlights.length > 0
+      ? `
+    ${emailSectionTitle('Señales del negocio')}
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 20px;">
+      ${params.eventHighlights
+        .map((item) => {
+          const color =
+            item.tone === 'attention'
+              ? '#B45309'
+              : item.tone === 'positive'
+                ? '#0F766E'
+                : C.textMuted;
+          return `
+      <tr style="border-top: 1px solid ${C.borderLight};">
+        <td style="padding: 10px 0; color: ${C.text};">${escapeHtml(item.label)}</td>
+        <td style="padding: 10px 0; text-align: right; font-weight: 600; color: ${color};">${item.count}</td>
+      </tr>`;
+        })
+        .join('')}
+    </table>`
+      : '';
+
   const content = `
 ${emailHeader({
   eyebrow: params.restaurantName ?? 'Resumen del negocio',
@@ -1291,6 +1319,7 @@ ${emailHeader({
     </table>
     ${topDishesHtml}
     ${breakdownHtml}
+    ${eventHighlightsHtml}
     ${healthHtml}
     ${emailParagraph(
       'Este resumen te ayuda a tomar mejores decisiones para tu local. ¡Gracias por confiar en Bentoo!',

@@ -107,6 +107,102 @@ export interface MarketingSkippedPayload {
   reason: string;
 }
 
+export interface DeliveryAssignedPayload {
+  orderId: string;
+  orderNumber: string;
+  driverId: string;
+  driverName: string;
+}
+
+export interface DeliveryCompletedPayload {
+  orderId: string;
+  orderNumber: string;
+  driverId?: string;
+  driverName?: string;
+}
+
+export interface ReservationCreatedPayload {
+  reservationId: string;
+  customerName: string;
+  date: string;
+  time: string;
+  partySize: number;
+  channel: 'public' | 'admin';
+}
+
+export interface ReservationCancelledPayload {
+  reservationId: string;
+  customerName: string;
+  date: string;
+  time: string;
+  partySize: number;
+}
+
+export interface ReservationPendingConfirmationPayload {
+  reservationId: string;
+  customerName: string;
+  date: string;
+  time: string;
+  partySize: number;
+  hoursUntilService: number;
+}
+
+export interface ReservationNoShowRiskPayload {
+  reservationId: string;
+  customerName: string;
+  date: string;
+  time: string;
+  partySize: number;
+  minutesOverdue: number;
+}
+
+export interface InventoryLowStockPayload {
+  inventoryItemId: string;
+  itemName: string;
+  currentStock: number;
+  minStock: number;
+  unit: string;
+  affectedDishIds: string[];
+  affectedDishNames: string[];
+}
+
+export interface SiteStalePublishedPayload {
+  daysSincePublish: number;
+  daysSinceUpdate: number;
+}
+
+export interface PaymentsVerifiedPayload {
+  provider: string;
+  verifiedAt: string;
+}
+
+export interface LoyaltyPointsEarnedPayload {
+  accountId: string;
+  customerEmail: string;
+  customerName?: string;
+  points: number;
+  orderId?: string;
+  newBalance: number;
+}
+
+export interface LoyaltyPointsRedeemedPayload {
+  accountId: string;
+  customerEmail: string;
+  customerName?: string;
+  points: number;
+  orderId?: string;
+  newBalance: number;
+}
+
+export interface LoyaltyTierUpgradedPayload {
+  accountId: string;
+  customerEmail: string;
+  customerName?: string;
+  previousTier: string;
+  newTier: string;
+  totalEarned: number;
+}
+
 /** Maps event types to their payload shapes for type-safe publishing. */
 export interface BentooBusinessEventPayloadMap {
   [BentooBusinessEventType.RestaurantOpened]: RestaurantOpenedPayload;
@@ -126,6 +222,18 @@ export interface BentooBusinessEventPayloadMap {
   [BentooBusinessEventType.DailyClosingMissing]: DailyClosingMissingPayload;
   [BentooBusinessEventType.MarketingPublished]: MarketingPublishedPayload;
   [BentooBusinessEventType.MarketingSkipped]: MarketingSkippedPayload;
+  [BentooBusinessEventType.DeliveryAssigned]: DeliveryAssignedPayload;
+  [BentooBusinessEventType.DeliveryCompleted]: DeliveryCompletedPayload;
+  [BentooBusinessEventType.ReservationCreated]: ReservationCreatedPayload;
+  [BentooBusinessEventType.ReservationCancelled]: ReservationCancelledPayload;
+  [BentooBusinessEventType.ReservationPendingConfirmation]: ReservationPendingConfirmationPayload;
+  [BentooBusinessEventType.ReservationNoShowRisk]: ReservationNoShowRiskPayload;
+  [BentooBusinessEventType.InventoryLowStock]: InventoryLowStockPayload;
+  [BentooBusinessEventType.SiteStalePublished]: SiteStalePublishedPayload;
+  [BentooBusinessEventType.PaymentsVerified]: PaymentsVerifiedPayload;
+  [BentooBusinessEventType.LoyaltyPointsEarned]: LoyaltyPointsEarnedPayload;
+  [BentooBusinessEventType.LoyaltyPointsRedeemed]: LoyaltyPointsRedeemedPayload;
+  [BentooBusinessEventType.LoyaltyTierUpgraded]: LoyaltyTierUpgradedPayload;
 }
 
 export type BentooBusinessEventPayload<T extends BentooBusinessEventType> =

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CustomersService } from '../customers/customers.service';
+import { LoyaltyBusinessEventsService } from '../business-events/publishers/loyalty-business-events.service';
 
 const POINTS_PER_CURRENCY_UNIT = 1; // 1 punto por cada $100 gastados (centavos)
 const TIER_THRESHOLDS = {
@@ -20,6 +21,7 @@ export class LoyaltyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly customersService: CustomersService,
+    private readonly loyaltyEvents: LoyaltyBusinessEventsService,
   ) {}
 
   async getOrCreateAccount(
@@ -206,6 +208,8 @@ export class LoyaltyService {
       if (existingEarn) return account;
     }
 
+    const previousTier = account.tier;
+
     const [updatedAccount] = await this.prisma.$transaction([
       this.prisma.loyaltyAccount.update({
         where: { id: account.id },
@@ -226,6 +230,28 @@ export class LoyaltyService {
         },
       }),
     ]);
+
+    this.loyaltyEvents.publishPointsEarned({
+      restaurantId,
+      accountId: updatedAccount.id,
+      customerEmail: normalizedEmail,
+      customerName: account.customerName ?? undefined,
+      points,
+      orderId,
+      newBalance: updatedAccount.points,
+    });
+
+    if (updatedAccount.tier !== previousTier) {
+      this.loyaltyEvents.publishTierUpgraded({
+        restaurantId,
+        accountId: updatedAccount.id,
+        customerEmail: normalizedEmail,
+        customerName: account.customerName ?? undefined,
+        previousTier,
+        newTier: updatedAccount.tier,
+        totalEarned: updatedAccount.totalEarned,
+      });
+    }
 
     return updatedAccount;
   }
@@ -273,6 +299,16 @@ export class LoyaltyService {
         },
       }),
     ]);
+
+    this.loyaltyEvents.publishPointsRedeemed({
+      restaurantId,
+      accountId: updatedAccount.id,
+      customerEmail: normalizedEmail,
+      customerName: account.customerName ?? undefined,
+      points,
+      orderId,
+      newBalance: updatedAccount.points,
+    });
 
     return updatedAccount;
   }

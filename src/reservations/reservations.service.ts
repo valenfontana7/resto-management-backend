@@ -17,8 +17,7 @@ import {
   ReservationStatus,
 } from './dto/reservation.dto';
 import { CreateReservationDto as CreateReservationDtoPublic } from './dto/create-reservation.dto';
-import { BusinessEventPublisherService } from '../business-events/business-event-publisher.service';
-import { BentooBusinessEventType } from '../business-events/types/event-type.enum';
+import { ReservationBusinessEventsService } from '../business-events/publishers/reservation-business-events.service';
 
 /**
  * Servicio para gestión de reservaciones.
@@ -31,7 +30,7 @@ export class ReservationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
-    private readonly businessEvents: BusinessEventPublisherService,
+    private readonly reservationEvents: ReservationBusinessEventsService,
     @Optional() private readonly customersService?: CustomersService,
   ) {}
 
@@ -95,6 +94,12 @@ export class ReservationsService {
       `Reserva creada: ${reservation.id} para ${createDto.customer.name} en ${restaurant.name}`,
     );
 
+    this.reservationEvents.publishReservationCreated(
+      restaurantId,
+      reservation,
+      'public',
+    );
+
     return {
       ...this.formatReservation(reservation),
       publicAccessToken,
@@ -149,12 +154,20 @@ export class ReservationsService {
       reservationData.tableId = createDto.tableId;
     }
 
-    return this.prisma.reservation.create({
+    const reservation = await this.prisma.reservation.create({
       data: reservationData,
       include: {
         table: true,
       },
     });
+
+    this.reservationEvents.publishReservationCreated(
+      restaurantId,
+      reservation,
+      'admin',
+    );
+
+    return reservation;
   }
 
   async findAll(
@@ -297,49 +310,27 @@ export class ReservationsService {
     },
     status: ReservationStatus,
   ): void {
-    const payloadBase = {
-      reservationId: reservation.id,
-      customerName: reservation.customerName,
-      date: reservation.date.toISOString().slice(0, 10),
-      time: reservation.time,
-      partySize: reservation.partySize,
-    };
-
     if (status === ReservationStatus.CONFIRMED) {
-      void this.businessEvents
-        .publish({
-          eventType: BentooBusinessEventType.ReservationConfirmed,
-          restaurantId,
-          source: 'reservations.service',
-          payload: payloadBase,
-          correlationId: reservation.id,
-        })
-        .catch((error) => {
-          this.logger.warn(
-            `Failed to publish ReservationConfirmed for ${reservation.id}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        });
+      this.reservationEvents.publishReservationConfirmed(
+        restaurantId,
+        reservation,
+      );
       return;
     }
 
     if (status === ReservationStatus.NO_SHOW) {
-      void this.businessEvents
-        .publish({
-          eventType: BentooBusinessEventType.ReservationNoShow,
-          restaurantId,
-          source: 'reservations.service',
-          payload: payloadBase,
-          correlationId: reservation.id,
-        })
-        .catch((error) => {
-          this.logger.warn(
-            `Failed to publish ReservationNoShow for ${reservation.id}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        });
+      this.reservationEvents.publishReservationNoShow(
+        restaurantId,
+        reservation,
+      );
+      return;
+    }
+
+    if (status === ReservationStatus.CANCELLED) {
+      this.reservationEvents.publishReservationCancelled(
+        restaurantId,
+        reservation,
+      );
     }
   }
 
@@ -383,13 +374,19 @@ export class ReservationsService {
       throw new NotFoundException(`Reservation with ID ${id} not found`);
     }
 
-    return this.prisma.reservation.update({
+    const updated = await this.prisma.reservation.update({
       where: { id },
       data: { status },
       include: {
         table: true,
       },
     });
+
+    if ((status as string) !== (reservation.status as string)) {
+      void this.publishReservationStatusEvent(restaurantId, updated, status);
+    }
+
+    return updated;
   }
 
   /**
