@@ -5,6 +5,7 @@ import { PaymentProviderFactory } from '../../payment-providers/payment-provider
 import { PaymentProviderName } from '../../payment-providers/interfaces';
 import { OrdersService } from '../orders.service';
 import { PaymentStatus } from '../dto/order.dto';
+import { PaymentBusinessEventsService } from '../../business-events/publishers/payment-business-events.service';
 
 /**
  * Cron de conciliación de pagos online.
@@ -29,6 +30,7 @@ export class PaymentReconciliationService {
     private readonly prisma: PrismaService,
     private readonly paymentProviderFactory: PaymentProviderFactory,
     private readonly ordersService: OrdersService,
+    private readonly paymentEvents: PaymentBusinessEventsService,
   ) {}
 
   @Cron('*/5 * * * *')
@@ -50,6 +52,7 @@ export class PaymentReconciliationService {
         restaurantId: true,
         preferenceId: true,
         paymentProvider: true,
+        total: true,
       },
     });
 
@@ -75,6 +78,7 @@ export class PaymentReconciliationService {
     restaurantId: string;
     preferenceId: string | null;
     paymentProvider: string;
+    total: number;
   }): Promise<void> {
     if (!session.preferenceId) return;
 
@@ -113,6 +117,13 @@ export class PaymentReconciliationService {
       await this.prisma.checkoutSession.update({
         where: { id: session.id },
         data: { paymentStatus: PaymentStatus.FAILED },
+      });
+      this.paymentEvents.publishPaymentFailed({
+        restaurantId: session.restaurantId,
+        checkoutSessionId: session.id,
+        amount: session.total,
+        reason: status.status,
+        source: 'payment-reconciliation',
       });
       this.logger.log(
         `Checkout ${session.id} reconciliado como ${status.status}`,

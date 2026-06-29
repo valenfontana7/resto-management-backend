@@ -17,6 +17,8 @@ import {
   ReservationStatus,
 } from './dto/reservation.dto';
 import { CreateReservationDto as CreateReservationDtoPublic } from './dto/create-reservation.dto';
+import { BusinessEventPublisherService } from '../business-events/business-event-publisher.service';
+import { BentooBusinessEventType } from '../business-events/types/event-type.enum';
 
 /**
  * Servicio para gestión de reservaciones.
@@ -29,6 +31,7 @@ export class ReservationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
+    private readonly businessEvents: BusinessEventPublisherService,
     @Optional() private readonly customersService?: CustomersService,
   ) {}
 
@@ -261,13 +264,83 @@ export class ReservationsService {
     if (updateDto.status) updateData.status = updateDto.status;
     if (updateDto.notes !== undefined) updateData.notes = updateDto.notes;
 
-    return this.prisma.reservation.update({
+    const updated = await this.prisma.reservation.update({
       where: { id },
       data: updateData,
       include: {
         table: true,
       },
     });
+
+    if (
+      updateDto.status &&
+      (updateDto.status as string) !== (reservation.status as string)
+    ) {
+      void this.publishReservationStatusEvent(
+        restaurantId,
+        updated,
+        updateDto.status,
+      );
+    }
+
+    return updated;
+  }
+
+  private publishReservationStatusEvent(
+    restaurantId: string,
+    reservation: {
+      id: string;
+      customerName: string;
+      date: Date;
+      time: string;
+      partySize: number;
+    },
+    status: ReservationStatus,
+  ): void {
+    const payloadBase = {
+      reservationId: reservation.id,
+      customerName: reservation.customerName,
+      date: reservation.date.toISOString().slice(0, 10),
+      time: reservation.time,
+      partySize: reservation.partySize,
+    };
+
+    if (status === ReservationStatus.CONFIRMED) {
+      void this.businessEvents
+        .publish({
+          eventType: BentooBusinessEventType.ReservationConfirmed,
+          restaurantId,
+          source: 'reservations.service',
+          payload: payloadBase,
+          correlationId: reservation.id,
+        })
+        .catch((error) => {
+          this.logger.warn(
+            `Failed to publish ReservationConfirmed for ${reservation.id}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        });
+      return;
+    }
+
+    if (status === ReservationStatus.NO_SHOW) {
+      void this.businessEvents
+        .publish({
+          eventType: BentooBusinessEventType.ReservationNoShow,
+          restaurantId,
+          source: 'reservations.service',
+          payload: payloadBase,
+          correlationId: reservation.id,
+        })
+        .catch((error) => {
+          this.logger.warn(
+            `Failed to publish ReservationNoShow for ${reservation.id}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        });
+    }
   }
 
   async delete(id: string, restaurantId: string, userId: string) {

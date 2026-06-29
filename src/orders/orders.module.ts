@@ -18,6 +18,7 @@ import { DeliveryModule } from '../delivery/delivery.module';
 import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { CustomersModule } from '../customers/customers.module';
 import { BusinessHealthModule } from '../business-health/business-health.module';
+import { BusinessEventsModule } from '../business-events/business-events.module';
 
 @Module({
   imports: [
@@ -25,7 +26,8 @@ import { BusinessHealthModule } from '../business-health/business-health.module'
     ScheduleModule.forRoot(),
     PrismaModule,
     CommonModule,
-    BusinessHealthModule,
+    forwardRef(() => BusinessHealthModule),
+    BusinessEventsModule,
     MercadoPagoModule,
     EmailModule,
     WebsocketModule,

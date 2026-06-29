@@ -1,8 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { CommonModule } from '../common/common.module';
 import { EmailModule } from '../email/email.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { BusinessEventsModule } from '../business-events/business-events.module';
 import { BusinessHealthController } from './business-health.controller';
 import { BusinessHealthService } from './business-health.service';
 import { BusinessHealthAlertsService } from './business-health-alerts.service';
@@ -19,7 +20,8 @@ import { InventoryConsumptionService } from './inventory-consumption.service';
     ScheduleModule.forRoot(),
     CommonModule,
     EmailModule,
-    NotificationsModule,
+    BusinessEventsModule,
+    forwardRef(() => NotificationsModule),
   ],
   controllers: [
     BusinessHealthController,

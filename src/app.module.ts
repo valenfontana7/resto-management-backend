@@ -50,6 +50,8 @@ import { DemoExamplesModule } from './demo-examples/demo-examples.module';
 import { LeadsModule } from './leads/leads.module';
 import { FloorModule } from './floor/floor.module';
 import { BusinessHealthModule } from './business-health/business-health.module';
+import { BusinessMemoryModule } from './business-memory/business-memory.module';
+import { BusinessEventsModule } from './business-events/business-events.module';
 import { getJwtSecret } from './common/config/jwt.config';
 import { validateEnvironment } from './common/config/env.validation';
 import { isLocalMode } from './common/config/bentoo-mode.config';
@@ -158,6 +160,8 @@ import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage';
     LeadsModule,
     FloorModule,
     BusinessHealthModule,
+    BusinessMemoryModule,
+    BusinessEventsModule,
     EdgeSyncModule,
     SalonDesktopModule,
     ...(isLocalMode() ? [LocalDiscoveryModule] : []),

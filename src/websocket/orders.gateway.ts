@@ -267,4 +267,29 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
   getConnectedClients(restaurantId: string): number {
     return this.restaurantClients.get(restaurantId)?.size || 0;
   }
+
+  /**
+   * Push a business event to admin clients — powers reactive cognitive layers.
+   */
+  emitBusinessEvent(
+    restaurantId: string,
+    event: {
+      id: string;
+      eventType: string;
+      restaurantId: string;
+      source: string;
+      importance: string;
+      replayPolicy: string;
+      payload: unknown;
+      occurredAt: string;
+      correlationId?: string | null;
+    },
+  ) {
+    this.server.to(`restaurant:${restaurantId}`).emit('business-event', {
+      type: 'business-event',
+      restaurantId,
+      event,
+      timestamp: new Date().toISOString(),
+    });
+  }
 }

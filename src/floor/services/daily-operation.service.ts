@@ -25,6 +25,8 @@ import type {
 import { resolveDailyCloseConfig } from '../utils/daily-close-config.util';
 import { buildDailyCloseReport } from '../utils/daily-close-report.builder';
 import { isSalonFloorOrder } from '../../orders/utils/order-channel.util';
+import { BusinessEventPublisherService } from '../../business-events/business-event-publisher.service';
+import { BentooBusinessEventType } from '../../business-events/types/event-type.enum';
 
 function parseBusinessDate(dateStr?: string): Date {
   if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
@@ -71,6 +73,7 @@ export class DailyOperationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
+    private readonly businessEvents: BusinessEventPublisherService,
   ) {}
 
   async getDailyOperation(
@@ -114,6 +117,8 @@ export class DailyOperationService {
       dto.closingCompleted ??
       isChecklistComplete(CLOSING_CHECKLIST_IDS, closingChecklist);
 
+    const wasOpeningComplete = Boolean(existing.openingCompletedAt);
+
     const updated = await this.prisma.dailyOperation.update({
       where: { id: existing.id },
       data: {
@@ -130,6 +135,19 @@ export class DailyOperationService {
           : null,
       },
     });
+
+    if (openingComplete && !wasOpeningComplete) {
+      void this.businessEvents.publish({
+        eventType: BentooBusinessEventType.RestaurantOpened,
+        restaurantId,
+        source: 'daily-operation.service',
+        correlationId: `restaurant-opened:${formatBusinessDate(businessDate)}`,
+        payload: {
+          date: formatBusinessDate(businessDate),
+          openedAt: new Date().toISOString(),
+        },
+      });
+    }
 
     const summary = await this.buildSummary(restaurantId, businessDate);
 
@@ -180,6 +198,28 @@ export class DailyOperationService {
         dailyClosedByName: userName,
         closingCompletedAt: record.closingCompletedAt ?? closedAt,
         closingChecklist,
+      },
+    });
+
+    void this.businessEvents.publish({
+      eventType: BentooBusinessEventType.DailyClosingCompleted,
+      restaurantId,
+      source: 'daily-operation.service',
+      correlationId: `daily-closing-completed:${formatBusinessDate(businessDate)}`,
+      payload: {
+        date: formatBusinessDate(businessDate),
+        totalSales: dailyCloseReport.totalRevenue,
+      },
+    });
+
+    void this.businessEvents.publish({
+      eventType: BentooBusinessEventType.RestaurantClosed,
+      restaurantId,
+      source: 'daily-operation.service',
+      correlationId: `restaurant-closed:${formatBusinessDate(businessDate)}`,
+      payload: {
+        date: formatBusinessDate(businessDate),
+        closedAt: closedAt.toISOString(),
       },
     });
 

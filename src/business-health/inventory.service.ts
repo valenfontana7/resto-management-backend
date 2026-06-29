@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
+import { BusinessEventPublisherService } from '../business-events/business-event-publisher.service';
+import { BentooBusinessEventType } from '../business-events/types/event-type.enum';
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -11,6 +13,7 @@ export class InventoryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
+    private readonly businessEvents: BusinessEventPublisherService,
   ) {}
 
   async list(restaurantId: string, userId: string) {
@@ -131,7 +134,7 @@ export class InventoryService {
           isAvailable: true,
           deletedAt: null,
         },
-        select: { id: true },
+        select: { id: true, name: true },
       });
       if (toDisable.length > 0) {
         const ids = toDisable.map((d) => d.id);
@@ -140,6 +143,7 @@ export class InventoryService {
           data: { isAvailable: false, autoDisabledByStock: true },
         });
         disabledDishIds.push(...ids);
+        this.publishOutOfStockEvents(restaurantId, toDisable);
       }
     }
 
@@ -168,5 +172,25 @@ export class InventoryService {
     }
 
     return { disabledDishIds, reEnabledDishIds };
+  }
+
+  private publishOutOfStockEvents(
+    restaurantId: string,
+    dishes: Array<{ id: string; name: string }>,
+  ): void {
+    for (const dish of dishes) {
+      void this.businessEvents
+        .publish({
+          eventType: BentooBusinessEventType.ProductOutOfStock,
+          restaurantId,
+          source: 'inventory.service',
+          correlationId: dish.id,
+          payload: {
+            dishId: dish.id,
+            dishName: dish.name,
+          },
+        })
+        .catch(() => undefined);
+    }
   }
 }

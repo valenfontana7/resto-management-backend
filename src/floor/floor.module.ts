@@ -24,12 +24,14 @@ import { TablesModule } from '../tables/tables.module';
 import { StorageModule } from '../storage/storage.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { BusinessHealthModule } from '../business-health/business-health.module';
+import { BusinessEventsModule } from '../business-events/business-events.module';
 
 @Module({
   imports: [
     PrismaModule,
     CommonModule,
     BusinessHealthModule,
+    BusinessEventsModule,
     KitchenModule,
     FiscalModule,
     DeliveryModule,

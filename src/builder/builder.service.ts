@@ -20,10 +20,16 @@ import {
 import { UpdateBuilderConfigDto } from './dto/builder-config.dto';
 import { normalizeRestaurantDraftPayload } from './utils/restaurant-draft.util';
 import { normalizeAssetReference } from './utils/asset-reference.util';
+import { MarketingBusinessEventsService } from '../business-events/publishers/marketing-business-events.service';
 
 @Injectable()
 export class BuilderService {
   private readonly logger = new Logger(BuilderService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly marketingEvents: MarketingBusinessEventsService,
+  ) {}
 
   private readonly restaurantDraftFields: (keyof RestaurantDraft)[] = [
     'name',
@@ -61,8 +67,6 @@ export class BuilderService {
     socialMedia: true,
     isPublished: true,
   } as const;
-
-  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Get builder configuration for a restaurant.
@@ -562,6 +566,12 @@ export class BuilderService {
     });
 
     this.logger.log(`Published builder config for restaurant ${restaurantId}`);
+
+    this.marketingEvents.publishMarketingPublished({
+      restaurantId,
+      title: draftData?.name || restaurant.name,
+      channel: 'website',
+    });
   }
 
   /**

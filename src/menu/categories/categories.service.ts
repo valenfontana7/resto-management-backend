@@ -15,6 +15,7 @@ import { PlanType } from '../../subscriptions/dto';
 import { PlanEntitlementsService } from '../../subscriptions/plans/plan-entitlements.service';
 import { SubscriptionResolverService } from '../../subscriptions/subscription-resolver.service';
 import { isUnlimitedLimit } from '../../subscriptions/constants/plan-restrictions.fallback';
+import { MenuBusinessEventsService } from '../../business-events/publishers/menu-business-events.service';
 
 /**
  * Servicio para gestión de categorías.
@@ -30,6 +31,7 @@ export class CategoriesService {
     private readonly imageProcessing: ImageProcessingService,
     private readonly planEntitlements: PlanEntitlementsService,
     private readonly subscriptionResolver: SubscriptionResolverService,
+    private readonly menuEvents: MenuBusinessEventsService,
   ) {}
 
   async findAll(restaurantId: string, userId: string) {
@@ -144,6 +146,14 @@ export class CategoriesService {
       },
     });
 
+    this.menuEvents.publishMenuUpdated(
+      restaurantId,
+      'category',
+      category.id,
+      category.name,
+      'menu.categories',
+    );
+
     return {
       category: this.imageProcessing.transformImageFields(category, ['image']),
     };
@@ -208,6 +218,14 @@ export class CategoriesService {
       },
     });
 
+    this.menuEvents.publishMenuUpdated(
+      category.restaurantId,
+      'category',
+      updated.id,
+      updated.name,
+      'menu.categories',
+    );
+
     return {
       category: this.imageProcessing.transformImageFields(updated, ['image']),
     };
@@ -251,6 +269,14 @@ export class CategoriesService {
       where: { id: categoryId },
       data: { deletedAt: new Date() },
     });
+
+    this.menuEvents.publishMenuUpdated(
+      category.restaurantId,
+      'category',
+      category.id,
+      category.name,
+      'menu.categories',
+    );
   }
 
   async reorder(

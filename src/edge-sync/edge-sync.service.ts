@@ -157,7 +157,6 @@ export class EdgeSyncService {
             name: true,
             slug: true,
             businessRules: true,
-            settings: true,
             updatedAt: true,
           },
         });

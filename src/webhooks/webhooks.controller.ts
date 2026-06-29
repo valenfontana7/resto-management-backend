@@ -19,6 +19,7 @@ import { PaymentProviderFactory } from '../payment-providers/payment-provider.fa
 import { PaymentProviderCredentialsService } from '../payment-providers/payment-provider-credentials.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PlanType } from '../subscriptions/dto';
+import { PaymentBusinessEventsService } from '../business-events/publishers/payment-business-events.service';
 
 @ApiTags('webhooks')
 @Controller()
@@ -32,6 +33,7 @@ export class WebhooksController {
     private readonly paymentProviderFactory: PaymentProviderFactory,
     private readonly credentialsService: PaymentProviderCredentialsService,
     private readonly prisma: PrismaService,
+    private readonly paymentEvents: PaymentBusinessEventsService,
   ) {}
 
   @Post()
@@ -147,6 +149,19 @@ export class WebhooksController {
           `Error processing payment for checkout ${result.checkoutSessionId}: ${error.message}`,
         );
       }
+    } else if (
+      result.checkoutSessionId &&
+      result.status &&
+      result.status !== 'approved'
+    ) {
+      await this.publishCheckoutPaymentFailed(
+        result.checkoutSessionId,
+        result.status,
+      );
+      await this.webhookService.markWebhookEventProcessed(
+        eventKey,
+        result.error,
+      );
     } else {
       await this.webhookService.markWebhookEventProcessed(
         eventKey,
@@ -155,6 +170,26 @@ export class WebhooksController {
     }
 
     return { ...result, duplicate: isDuplicate };
+  }
+
+  private async publishCheckoutPaymentFailed(
+    checkoutSessionId: string,
+    reason: string,
+  ): Promise<void> {
+    const checkout = await this.prisma.checkoutSession.findUnique({
+      where: { id: checkoutSessionId },
+      select: { id: true, restaurantId: true, total: true },
+    });
+
+    if (!checkout) return;
+
+    this.paymentEvents.publishPaymentFailed({
+      restaurantId: checkout.restaurantId,
+      checkoutSessionId: checkout.id,
+      amount: checkout.total,
+      reason,
+      source: 'webhooks',
+    });
   }
 
   private isMercadoPagoWebhookLike(
@@ -414,6 +449,15 @@ export class WebhooksController {
               `Payway subscription payment approved for restaurant ${restaurantId}`,
             );
           }
+        }
+      } else if (webhook.eventType === 'payment') {
+        const ref = webhook.externalReference || '';
+        if (ref.startsWith('order_')) {
+          const checkoutSessionId = ref.replace('order_', '');
+          await this.publishCheckoutPaymentFailed(
+            checkoutSessionId,
+            webhook.status ?? 'failed',
+          );
         }
       }
 

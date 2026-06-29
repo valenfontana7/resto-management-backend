@@ -4,9 +4,10 @@ import { BuilderPublicController } from './builder-public.controller';
 import { BuilderService } from './builder.service';
 import { AuthModule } from '../auth/auth.module';
 import { CommonModule } from '../common/common.module';
+import { BusinessEventsModule } from '../business-events/business-events.module';
 
 @Module({
-  imports: [AuthModule, CommonModule],
+  imports: [AuthModule, CommonModule, BusinessEventsModule],
   controllers: [BuilderController, BuilderPublicController],
   providers: [BuilderService],
   exports: [BuilderService],

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { InventoryService } from './inventory.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
+import { BusinessEventPublisherService } from '../business-events/business-event-publisher.service';
 
 describe('InventoryService.applyStockAvailability', () => {
   let service: InventoryService;
@@ -23,6 +24,13 @@ describe('InventoryService.applyStockAvailability', () => {
         {
           provide: OwnershipService,
           useValue: { verifyUserBelongsToRestaurant: jest.fn() },
+        },
+        {
+          provide: BusinessEventPublisherService,
+          useValue: {
+            publish: jest.fn().mockResolvedValue({}),
+            publishDeduped: jest.fn().mockResolvedValue(null),
+          },
         },
       ],
     }).compile();

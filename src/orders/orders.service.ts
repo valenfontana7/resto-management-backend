@@ -19,6 +19,9 @@ import { GeocodeService } from '../delivery/services/geocode.service';
 import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CustomersService } from '../customers/customers.service';
 import { InventoryConsumptionService } from '../business-health/inventory-consumption.service';
+import { BusinessEventPublisherService } from '../business-events/business-event-publisher.service';
+import { PaymentBusinessEventsService } from '../business-events/publishers/payment-business-events.service';
+import { BentooBusinessEventType } from '../business-events/types/event-type.enum';
 import * as crypto from 'crypto';
 import { Prisma, OrderSource, ComandaItemStatus } from '@prisma/client';
 import {
@@ -51,6 +54,8 @@ export class OrdersService {
     private readonly loyaltyService: LoyaltyService,
     private readonly customersService: CustomersService,
     private readonly inventoryConsumption: InventoryConsumptionService,
+    private readonly businessEvents: BusinessEventPublisherService,
+    private readonly paymentEvents: PaymentBusinessEventsService,
   ) {}
 
   async create(
@@ -337,6 +342,14 @@ export class OrdersService {
       void this.notifications.emitKitchenNotification(
         order,
         OrderStatus.CONFIRMED,
+      );
+
+      void this.publishOrderCreatedEvent(restaurantId, order);
+      void this.publishCustomerReturnedIfApplicable(
+        restaurantId,
+        customerProfile?.id,
+        customerName,
+        order.id,
       );
 
       return {
@@ -1561,6 +1574,8 @@ export class OrdersService {
       return null;
     }
 
+    const previousPaymentStatus = checkout.paymentStatus;
+
     const existingOrder = await this.prisma.order.findUnique({
       where: { id: checkoutSessionId },
     });
@@ -1758,6 +1773,36 @@ export class OrdersService {
       createdOrder,
     );
 
+    void this.publishOrderCreatedEvent(checkout.restaurantId, createdOrder);
+
+    if (
+      (previousPaymentStatus as string) === (PaymentStatus.FAILED as string)
+    ) {
+      void this.paymentEvents
+        .publishPaymentRecovered({
+          restaurantId: checkout.restaurantId,
+          orderId: createdOrder.id,
+          orderNumber: String(createdOrder.orderNumber),
+          amount: Number(createdOrder.total),
+          checkoutSessionId: checkout.id,
+          source: 'orders.service',
+        })
+        .catch((error) => {
+          this.logger.warn(
+            `Failed to publish PaymentRecovered for ${createdOrder.id}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        });
+    }
+
+    void this.publishCustomerReturnedIfApplicable(
+      checkout.restaurantId,
+      customerProfile?.id,
+      checkout.customerName,
+      createdOrder.id,
+    );
+
     void this.tryInventoryDeduction(createdOrder.id);
 
     return createdOrder;
@@ -1896,5 +1941,91 @@ export class OrdersService {
     if (!match) return undefined;
 
     return Number(match[1]);
+  }
+
+  private publishOrderCreatedEvent(
+    restaurantId: string,
+    order: {
+      id: string;
+      orderNumber: string;
+      type: string;
+      total: number;
+      customerName: string;
+      items?: unknown[];
+    },
+  ): void {
+    void this.businessEvents
+      .publish({
+        eventType: BentooBusinessEventType.OrderCreated,
+        restaurantId,
+        source: 'orders.service',
+        payload: {
+          orderId: order.id,
+          orderNumber: String(order.orderNumber),
+          type: order.type,
+          total: Number(order.total),
+          customerName: order.customerName,
+          itemCount: Array.isArray(order.items) ? order.items.length : 0,
+        },
+        correlationId: order.id,
+      })
+      .catch((error) => {
+        this.logger.warn(
+          `Failed to publish OrderCreated for ${order.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
+  }
+
+  private publishCustomerReturnedIfApplicable(
+    restaurantId: string,
+    customerProfileId: string | undefined | null,
+    customerName: string,
+    orderId: string,
+  ): void {
+    if (!customerProfileId) return;
+
+    void this.prisma.order
+      .findFirst({
+        where: {
+          restaurantId,
+          customerProfileId,
+          id: { not: orderId },
+          status: { not: OrderStatus.CANCELLED },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      })
+      .then((previous) => {
+        if (!previous) return;
+
+        const daysSinceLastOrder = Math.floor(
+          (Date.now() - previous.createdAt.getTime()) / 86_400_000,
+        );
+        if (daysSinceLastOrder < 14) return;
+
+        return this.businessEvents.publishDeduped(
+          {
+            eventType: BentooBusinessEventType.CustomerReturned,
+            restaurantId,
+            source: 'orders.service',
+            correlationId: `${customerProfileId}:${orderId}`,
+            payload: {
+              customerProfileId,
+              customerName,
+              daysSinceLastOrder,
+            },
+          },
+          24 * 60,
+        );
+      })
+      .catch((error) => {
+        this.logger.warn(
+          `Failed to publish CustomerReturned for ${orderId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
   }
 }

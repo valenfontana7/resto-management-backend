@@ -15,6 +15,7 @@ import { PlanType } from '../../subscriptions/dto';
 import { PlanEntitlementsService } from '../../subscriptions/plans/plan-entitlements.service';
 import { SubscriptionResolverService } from '../../subscriptions/subscription-resolver.service';
 import { isUnlimitedLimit } from '../../subscriptions/constants/plan-restrictions.fallback';
+import { MenuBusinessEventsService } from '../../business-events/publishers/menu-business-events.service';
 
 export interface DishFilters {
   categoryId?: string;
@@ -37,6 +38,7 @@ export class DishesService {
     private readonly imageProcessing: ImageProcessingService,
     private readonly planEntitlements: PlanEntitlementsService,
     private readonly subscriptionResolver: SubscriptionResolverService,
+    private readonly menuEvents: MenuBusinessEventsService,
   ) {}
 
   async findAllPublic(restaurantId: string, filters?: DishFilters) {
@@ -163,6 +165,14 @@ export class DishesService {
       include: { category: { select: { id: true, name: true } } },
     });
 
+    this.menuEvents.publishMenuUpdated(
+      restaurantId,
+      'dish',
+      dish.id,
+      dish.name,
+      'menu.dishes',
+    );
+
     return {
       dish: this.imageProcessing.transformImageFields(dish, ['image']),
     };
@@ -236,6 +246,23 @@ export class DishesService {
       include: { category: { select: { id: true, name: true } } },
     });
 
+    if (dto.price !== undefined && dto.price !== dish.price) {
+      this.menuEvents.publishPriceChanged(dish.restaurantId, {
+        id: updated.id,
+        name: updated.name,
+        previousPrice: dish.price,
+        newPrice: updated.price,
+      });
+    } else {
+      this.menuEvents.publishMenuUpdated(
+        dish.restaurantId,
+        'dish',
+        updated.id,
+        updated.name,
+        'menu.dishes',
+      );
+    }
+
     return {
       dish: this.imageProcessing.transformImageFields(updated, ['image']),
     };
@@ -257,6 +284,14 @@ export class DishesService {
       where: { id: dishId },
       data: { deletedAt: new Date() },
     });
+
+    this.menuEvents.publishMenuUpdated(
+      dish.restaurantId,
+      'dish',
+      dish.id,
+      dish.name,
+      'menu.dishes',
+    );
   }
 
   async toggleAvailability(
@@ -277,6 +312,14 @@ export class DishesService {
       data: { isAvailable },
       select: { id: true, name: true, isAvailable: true },
     });
+
+    this.menuEvents.publishMenuUpdated(
+      dish.restaurantId,
+      'dish',
+      updated.id,
+      updated.name,
+      'menu.dishes.toggleAvailability',
+    );
 
     return { dish: updated };
   }

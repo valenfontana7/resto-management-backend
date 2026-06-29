@@ -80,6 +80,8 @@ model Restaurant {
   dailyOperations       DailyOperation[]
   inventoryItems        InventoryItem[]
   businessHealthSnapshots BusinessHealthSnapshot[]
+  businessMemories        BusinessMemory[]
+  businessEvents          BusinessEvent[]
   winBackEmailLogs        WinBackEmailLog[]
   orderInventoryDeductions OrderInventoryDeduction[]
   edgeLocalServer       EdgeLocalServer?
@@ -230,6 +232,59 @@ model WinBackEmailLog {
 
   @@index([restaurantId, customerKey, sentAt])
   @@index([restaurantId, sentAt])
+}
+
+/// Long-lived semantic memory for continuity (insights shown, recurring issues, recommendations).
+/// Distinct from operational tables (orders, inventory rows) — stores *meaning* over time.
+model BusinessMemory {
+  id              String                 @id @default(cuid())
+  restaurantId    String
+  /// Stable dedupe key, e.g. `operational:pending-sla` or `inventory:low:mozzarella`
+  memoryKey       String
+  category        BusinessMemoryCategory
+  status          BusinessMemoryStatus   @default(ACTIVE)
+  title           String
+  summary         String?
+  occurrenceCount Int                    @default(1)
+  firstSeenAt     DateTime               @default(now())
+  lastSeenAt      DateTime               @default(now())
+  resolvedAt      DateTime?
+  resolvedBy      String?
+  expiresAt       DateTime?
+  sourceProvider  String?
+  sourceInsightId String?
+  metadata        Json?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  restaurant      Restaurant             @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, memoryKey])
+  @@index([restaurantId, status])
+  @@index([restaurantId, category, status])
+  @@index([restaurantId, lastSeenAt])
+  @@index([expiresAt])
+}
+
+/// Append-only log of meaningful business changes — distinct from operational rows.
+/// Powers reactive cognitive layers, replay, and future AI agent subscriptions.
+model BusinessEvent {
+  id            String                    @id @default(cuid())
+  restaurantId  String
+  /// Canonical type, e.g. OrderCreated, ReservationNoShow
+  eventType     String
+  /// Module or service that emitted the event
+  source        String
+  importance    BusinessEventImportance   @default(NORMAL)
+  replayPolicy  BusinessEventReplayPolicy @default(FULL)
+  payload       Json
+  occurredAt    DateTime                  @default(now())
+  correlationId String?
+  createdAt     DateTime                  @default(now())
+  restaurant    Restaurant                @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, occurredAt])
+  @@index([restaurantId, eventType, occurredAt])
+  @@index([correlationId])
 }
 
 model OrderInventoryDeduction {
@@ -1309,6 +1364,39 @@ enum NotificationPriority {
   NORMAL
   HIGH
   URGENT
+}
+
+enum BusinessMemoryCategory {
+  OPERATIONAL
+  INVENTORY
+  SALES
+  MARKETING
+  CUSTOMER
+  RECOMMENDATION
+  CONFIGURATION
+  GROWTH
+}
+
+enum BusinessMemoryStatus {
+  ACTIVE
+  RESOLVED
+  EXPIRED
+}
+
+enum BusinessEventImportance {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum BusinessEventReplayPolicy {
+  /// Re-dispatch to all subscribers during replay
+  FULL
+  /// Aggregate or summarize during replay (subscribers may skip duplicates)
+  SUMMARY
+  /// Ephemeral — stored for audit but excluded from replay
+  SKIP
 }
 
 enum NotificationChannel {

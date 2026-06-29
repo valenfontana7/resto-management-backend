@@ -20,14 +20,13 @@ export async function pullMenuStream(
       updatedAt: true,
       dishes: {
         where: { deletedAt: null },
-        orderBy: { order: 'asc' },
+        orderBy: { name: 'asc' },
         select: {
           id: true,
           name: true,
           price: true,
           isAvailable: true,
           isAvailableInSalon: true,
-          order: true,
           updatedAt: true,
         },
       },
