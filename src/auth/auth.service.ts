@@ -1044,9 +1044,29 @@ export class AuthService {
   async validateUser(userId: string): Promise<any> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        restaurant: true,
-        role: true,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        roleId: true,
+        restaurantId: true,
+        isActive: true,
+        role: {
+          select: {
+            id: true,
+            name: true,
+            permissions: true,
+            color: true,
+          },
+        },
+        restaurant: {
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+            status: true,
+          },
+        },
       },
     });
 
@@ -1398,15 +1418,6 @@ export class AuthService {
     });
     if (!user) {
       throw new UnauthorizedException('User not found');
-    }
-
-    if (user.restaurantId) {
-      await this.ensureMembership(
-        userId,
-        user.restaurantId,
-        user.roleId ?? null,
-        true,
-      ).catch(() => undefined);
     }
 
     const memberships = await this.prisma.restaurantMembership.findMany({

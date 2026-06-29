@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { NotificationPriority, NotificationType } from '@prisma/client';
 import { NotificationsService } from '../../notifications/notifications.service';
+import { formatOrderStatusLabel } from '../../common/utils/order-status-labels';
 import { shouldReceiveRestaurantOrderAlerts } from '../../notifications/order-notification-channels.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BusinessEventBusService } from '../business-event-bus.service';
@@ -113,7 +114,7 @@ export class InAppNotificationsEventSubscriber implements OnModuleInit {
     await this.notifyStaff(staff, event.restaurantId, {
       type: NotificationType.CUSTOM,
       title: `Pedido demorado #${payload.orderNumber}`,
-      message: `Lleva ${payload.delayMinutes} minutos en ${payload.status}.`,
+      message: `Lleva ${payload.delayMinutes} minutos en ${formatOrderStatusLabel(payload.status, { sentenceCase: false })}.`,
       priority: NotificationPriority.HIGH,
       data: {
         eventId: event.id,

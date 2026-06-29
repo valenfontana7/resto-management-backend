@@ -187,6 +187,16 @@ export class DeliveryService {
   // DELIVERY ORDERS
   // ============================================
 
+  async getAdminBundle(restaurantId: string, limit = 100) {
+    const [orders, drivers, zones] = await Promise.all([
+      this.getOrders(restaurantId, { limit }),
+      this.getDrivers(restaurantId, {}),
+      this.getZones(restaurantId),
+    ]);
+
+    return { orders, drivers, zones };
+  }
+
   async getOrders(restaurantId: string, filters: DeliveryOrderFiltersDto) {
     const where: Prisma.DeliveryOrderWhereInput = {
       order: { restaurantId },

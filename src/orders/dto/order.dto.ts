@@ -9,8 +9,9 @@ import {
   ValidateNested,
   IsNotEmpty,
   IsNumber,
+  IsBoolean,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { BotDefenseDto } from '../../common/dto/bot-defense.dto';
 
 export enum OrderType {
@@ -213,4 +214,9 @@ export class OrderFiltersDto {
   @Min(1)
   @Type(() => Number)
   limit?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === '1')
+  @IsBoolean()
+  lite?: boolean;
 }

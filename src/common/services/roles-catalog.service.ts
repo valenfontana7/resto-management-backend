@@ -24,6 +24,14 @@ export class RolesCatalogService {
    */
   async getOwnerRoleId(restaurantId: string, tx?: Tx): Promise<string> {
     const client = tx ?? this.prisma;
+    const existingOwner = await client.role.findFirst({
+      where: { restaurantId, name: 'OWNER' },
+      select: { id: true },
+    });
+    if (existingOwner) {
+      return existingOwner.id;
+    }
+
     await this.ensureSystemRoles(restaurantId, tx);
     const owner = await client.role.findFirst({
       where: { restaurantId, name: 'OWNER' },

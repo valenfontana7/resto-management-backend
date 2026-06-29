@@ -13,6 +13,9 @@ import { AdminAlertsModule } from '../admin-alerts/admin-alerts.module';
 import { EmailModule } from '../email/email.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { MercadoPagoModule } from '../mercadopago/mercadopago.module';
+import { EdgeSyncModule } from '../edge-sync/edge-sync.module';
+import { GoLiveReadinessService } from './services/go-live-readiness.service';
 
 @Module({
   imports: [
@@ -22,6 +25,8 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
     EmailModule,
     NotificationsModule,
     SubscriptionsModule,
+    MercadoPagoModule,
+    EdgeSyncModule,
   ],
   controllers: [
     RestaurantsController,
@@ -34,6 +39,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
     RestaurantBrandingV2Service,
     RestaurantSettingsService,
     BranchesService,
+    GoLiveReadinessService,
   ],
   exports: [
     RestaurantsService,

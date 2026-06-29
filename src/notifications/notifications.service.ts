@@ -12,6 +12,7 @@ import {
 } from '@prisma/client';
 import { resolveOrderNotificationChannels } from './order-notification-channels.util';
 import { sanitizeNotificationData } from './notification-data.util';
+import { formatOrderStatusLabel } from '../common/utils/order-status-labels';
 
 export interface CreateNotificationDto {
   userId: string;
@@ -358,9 +359,17 @@ export class NotificationsService {
       ORDER_READY: 'Pedido listo',
     };
 
+    const statusLabel = orderData.status
+      ? formatOrderStatusLabel(String(orderData.status), {
+          sentenceCase: false,
+        })
+      : null;
+
     const messages = {
       ORDER_CREATED: `Se ha recibido un nuevo pedido #${orderData.orderNumber}`,
-      ORDER_UPDATED: `El pedido #${orderData.orderNumber} ha cambiado de estado`,
+      ORDER_UPDATED: statusLabel
+        ? `El pedido #${orderData.orderNumber} pasó a ${statusLabel}`
+        : `El pedido #${orderData.orderNumber} ha cambiado de estado`,
       ORDER_CANCELLED: `El pedido #${orderData.orderNumber} ha sido cancelado`,
       ORDER_READY: `El pedido #${orderData.orderNumber} está listo para recoger/entregar`,
     };

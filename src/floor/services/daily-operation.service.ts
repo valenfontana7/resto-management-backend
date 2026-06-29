@@ -6,6 +6,7 @@ import {
 import {
   CashRegisterSessionStatus,
   CashRegisterLevel,
+  OrderSource,
   OrderStatus,
   Prisma,
   ReservationStatus,
@@ -24,7 +25,6 @@ import type {
 } from '../types/daily-close-report.types';
 import { resolveDailyCloseConfig } from '../utils/daily-close-config.util';
 import { buildDailyCloseReport } from '../utils/daily-close-report.builder';
-import { isSalonFloorOrder } from '../../orders/utils/order-channel.util';
 import { BusinessEventPublisherService } from '../../business-events/business-event-publisher.service';
 import { BentooBusinessEventType } from '../../business-events/types/event-type.enum';
 
@@ -68,6 +68,13 @@ function isChecklistComplete(
   return ids.every((id) => checklist[id]);
 }
 
+type DailySummaryView = 'full' | 'dashboard';
+
+type SalesTodayAggregates = {
+  channelBreakdown: { salon: number; online: number; delivery: number };
+  salesByMethod: Array<{ paymentMethod: string; total: number; count: number }>;
+};
+
 @Injectable()
 export class DailyOperationService {
   constructor(
@@ -80,11 +87,15 @@ export class DailyOperationService {
     restaurantId: string,
     userId: string,
     dateStr?: string,
+    view: DailySummaryView = 'full',
   ) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
     const businessDate = parseBusinessDate(dateStr);
     const record = await this.ensureRecord(restaurantId, businessDate);
-    const summary = await this.buildSummary(restaurantId, businessDate);
+    const summary = await this.buildSummary(restaurantId, businessDate, {
+      view,
+      operationRecord: record,
+    });
 
     return {
       operation: this.formatOperation(record),
@@ -301,19 +312,64 @@ export class DailyOperationService {
     });
   }
 
-  private async buildSummary(restaurantId: string, businessDate: Date) {
+  private async buildSummary(
+    restaurantId: string,
+    businessDate: Date,
+    options: {
+      view?: DailySummaryView;
+      operationRecord?: {
+        openingChecklist: Prisma.JsonValue | null;
+        closingChecklist: Prisma.JsonValue | null;
+        dailyClosedAt: Date | null;
+        dailyClosedByName: string | null;
+      } | null;
+    } = {},
+  ) {
+    const view = options.view ?? 'full';
     const { start, end } = dayBoundsUtc(businessDate);
     const yesterday = new Date(businessDate);
     yesterday.setUTCDate(yesterday.getUTCDate() - 1);
     const yesterdayBounds = dayBoundsUtc(yesterday);
 
-    const operationRecord = await this.prisma.dailyOperation.findUnique({
-      where: {
-        restaurantId_businessDate: { restaurantId, businessDate },
-      },
-    });
+    const operationRecordPromise =
+      options.operationRecord !== undefined
+        ? Promise.resolve(options.operationRecord)
+        : this.prisma.dailyOperation.findUnique({
+            where: {
+              restaurantId_businessDate: { restaurantId, businessDate },
+            },
+          });
+
+    const partialSessionsPromise =
+      view === 'dashboard'
+        ? Promise.resolve([])
+        : this.prisma.cashRegisterSession.findMany({
+            where: {
+              restaurantId,
+              level: CashRegisterLevel.PARTIAL,
+              status: CashRegisterSessionStatus.CLOSED,
+              closedAt: { gte: start, lte: end },
+            },
+            orderBy: { closedAt: 'asc' },
+            include: { terminal: true },
+          });
+
+    const lastClosedCashPromise =
+      view === 'dashboard'
+        ? Promise.resolve(null)
+        : this.prisma.cashRegisterSession.findFirst({
+            where: {
+              restaurantId,
+              level: CashRegisterLevel.PARTIAL,
+              status: CashRegisterSessionStatus.CLOSED,
+            },
+            orderBy: { closedAt: 'desc' },
+            include: { terminal: true },
+          });
 
     const [
+      operationRecord,
+      restaurantMeta,
       todayOrders,
       todayRevenue,
       pendingReservations,
@@ -322,10 +378,15 @@ export class DailyOperationService {
       lastClosedCashSession,
       yesterdayClosedCash,
       partialSessionsToday,
-      todayOrderRows,
+      salesAggregates,
       yesterdayOrders,
       yesterdayRevenue,
     ] = await Promise.all([
+      operationRecordPromise,
+      this.prisma.restaurant.findUnique({
+        where: { id: restaurantId },
+        select: { businessRules: true },
+      }),
       this.prisma.order.count({
         where: {
           restaurantId,
@@ -362,15 +423,7 @@ export class DailyOperationService {
         orderBy: { openedAt: 'desc' },
         include: { terminal: true },
       }),
-      this.prisma.cashRegisterSession.findFirst({
-        where: {
-          restaurantId,
-          level: CashRegisterLevel.PARTIAL,
-          status: CashRegisterSessionStatus.CLOSED,
-        },
-        orderBy: { closedAt: 'desc' },
-        include: { terminal: true },
-      }),
+      lastClosedCashPromise,
       this.prisma.cashRegisterSession.findFirst({
         where: {
           restaurantId,
@@ -380,30 +433,8 @@ export class DailyOperationService {
         },
         orderBy: { closedAt: 'desc' },
       }),
-      this.prisma.cashRegisterSession.findMany({
-        where: {
-          restaurantId,
-          level: CashRegisterLevel.PARTIAL,
-          status: CashRegisterSessionStatus.CLOSED,
-          closedAt: { gte: start, lte: end },
-        },
-        orderBy: { closedAt: 'asc' },
-        include: { terminal: true },
-      }),
-      this.prisma.order.findMany({
-        where: {
-          restaurantId,
-          createdAt: { gte: start, lte: end },
-          status: { not: OrderStatus.CANCELLED },
-        },
-        select: {
-          total: true,
-          paymentMethod: true,
-          orderSource: true,
-          tableSessionId: true,
-          type: true,
-        },
-      }),
+      partialSessionsPromise,
+      this.fetchSalesTodayAggregates(restaurantId, start, end),
       this.prisma.order.count({
         where: {
           restaurantId,
@@ -421,8 +452,12 @@ export class DailyOperationService {
       }),
     ]);
 
+    const dailyCloseConfig = resolveDailyCloseConfig(
+      restaurantMeta?.businessRules,
+    );
+
     const salesToday = this.buildSalesTodaySnapshot(
-      todayOrderRows,
+      salesAggregates,
       openCashRegister,
       partialSessionsToday,
     );
@@ -507,7 +542,70 @@ export class DailyOperationService {
           cashRegisterOpen: Boolean(openCashRegister),
           openTableSessions,
         },
+        dailyCloseConfig,
       ),
+    };
+  }
+
+  private async fetchSalesTodayAggregates(
+    restaurantId: string,
+    start: Date,
+    end: Date,
+  ): Promise<SalesTodayAggregates> {
+    const [channelRows, methodRows] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ channel: string; total: bigint | number }>>`
+        SELECT
+          CASE
+            WHEN "orderSource" IN (${OrderSource.FLOOR_FINAL}, ${OrderSource.FLOOR_COMANDA})
+              OR "tableSessionId" IS NOT NULL THEN 'salon'
+            WHEN type = 'DELIVERY' THEN 'delivery'
+            ELSE 'online'
+          END AS channel,
+          SUM("total") AS total
+        FROM "Order"
+        WHERE "restaurantId" = ${restaurantId}
+          AND "createdAt" >= ${start}
+          AND "createdAt" <= ${end}
+          AND status <> ${OrderStatus.CANCELLED}
+        GROUP BY 1
+      `,
+      this.prisma.order.groupBy({
+        by: ['paymentMethod'],
+        where: {
+          restaurantId,
+          createdAt: { gte: start, lte: end },
+          status: { not: OrderStatus.CANCELLED },
+        },
+        _sum: { total: true },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const channelBreakdown = { salon: 0, online: 0, delivery: 0 };
+    for (const row of channelRows) {
+      const total = Number(row.total ?? 0);
+      switch (row.channel) {
+        case 'salon':
+          channelBreakdown.salon += total;
+          break;
+        case 'delivery':
+          channelBreakdown.delivery += total;
+          break;
+        default:
+          channelBreakdown.online += total;
+          break;
+      }
+    }
+
+    return {
+      channelBreakdown,
+      salesByMethod: methodRows
+        .map((row) => ({
+          paymentMethod: row.paymentMethod ?? 'unknown',
+          total: row._sum.total ?? 0,
+          count: row._count._all,
+        }))
+        .sort((a, b) => b.total - a.total),
     };
   }
 
@@ -522,8 +620,10 @@ export class DailyOperationService {
       cashRegisterOpen: boolean;
       openTableSessions: number;
     },
+    configOverride?: ReturnType<typeof resolveDailyCloseConfig>,
   ) {
-    const config = await this.loadDailyCloseConfig(restaurantId);
+    const config =
+      configOverride ?? (await this.loadDailyCloseConfig(restaurantId));
     const blockers = await this.collectCloseBlockers(
       restaurantId,
       operationRecord,
@@ -625,13 +725,7 @@ export class DailyOperationService {
   }
 
   private buildSalesTodaySnapshot(
-    orders: Array<{
-      total: number;
-      paymentMethod: string;
-      orderSource: import('@prisma/client').OrderSource;
-      tableSessionId: string | null;
-      type: import('@prisma/client').OrderType;
-    }>,
+    salesAggregates: SalesTodayAggregates,
     openCashRegister: {
       expectedCash: number;
       countedCash: number | null;
@@ -643,33 +737,6 @@ export class DailyOperationService {
       difference: number | null;
     }>,
   ) {
-    const salesByMethodMap = new Map<
-      string,
-      { total: number; count: number }
-    >();
-    const channelBreakdown = {
-      salon: 0,
-      online: 0,
-      delivery: 0,
-    };
-
-    for (const order of orders) {
-      const salon = isSalonFloorOrder(order);
-      if (salon) {
-        channelBreakdown.salon += order.total;
-      } else if (order.type === 'DELIVERY') {
-        channelBreakdown.delivery += order.total;
-      } else {
-        channelBreakdown.online += order.total;
-      }
-
-      const method = order.paymentMethod ?? 'unknown';
-      const bucket = salesByMethodMap.get(method) ?? { total: 0, count: 0 };
-      bucket.total += order.total;
-      bucket.count += 1;
-      salesByMethodMap.set(method, bucket);
-    }
-
     const closedPartialDifference = partialSessionsToday.reduce(
       (sum, session) => sum + (session.difference ?? 0),
       0,
@@ -684,14 +751,8 @@ export class DailyOperationService {
     );
 
     return {
-      channelBreakdown,
-      salesByMethod: [...salesByMethodMap.entries()]
-        .map(([paymentMethod, stats]) => ({
-          paymentMethod,
-          total: stats.total,
-          count: stats.count,
-        }))
-        .sort((a, b) => b.total - a.total),
+      channelBreakdown: salesAggregates.channelBreakdown,
+      salesByMethod: salesAggregates.salesByMethod,
       cash: {
         openSessionExpected: openCashRegister?.expectedCash ?? null,
         closedSessionsExpected: closedPartialExpected,

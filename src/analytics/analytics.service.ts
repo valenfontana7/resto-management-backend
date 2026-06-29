@@ -69,6 +69,41 @@ export class AnalyticsService {
     return { salesData };
   }
 
+  async getAdminDashboard(
+    restaurantId: string,
+    period: AnalyticsPeriod,
+    startDate?: string,
+    endDate?: string,
+  ) {
+    const [
+      sales,
+      categories,
+      hourly,
+      customers,
+      tables,
+      performance,
+      comparison,
+    ] = await Promise.all([
+      this.getSales(restaurantId, period, startDate, endDate),
+      this.getCategoryBreakdown(restaurantId, period, startDate, endDate),
+      this.getHourlyData(restaurantId, period, startDate, endDate),
+      this.getTopCustomers(restaurantId, period, 10, startDate, endDate),
+      this.getTopTables(restaurantId, period, 10, startDate, endDate),
+      this.getPerformance(restaurantId, period, startDate, endDate),
+      this.getComparison(restaurantId, period, startDate, endDate),
+    ]);
+
+    return {
+      salesData: sales.salesData,
+      categoryBreakdown: categories.categoryBreakdown,
+      hourlyData: hourly.hourlyData,
+      topCustomers: customers.topCustomers,
+      topTables: tables.topTables,
+      metrics: performance.metrics,
+      comparison: comparison.comparison,
+    };
+  }
+
   /**
    * Get sales breakdown by category
    */

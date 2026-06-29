@@ -24,7 +24,6 @@ import { MercadoPagoCredentialsService } from './mercadopago-credentials.service
 import { MercadoPagoService } from './mercadopago.service';
 import { MercadoPagoWebhookService } from './mercadopago-webhook.service';
 import { MercadoPagoOAuthService } from './mercadopago-oauth.service';
-import { AuthService } from '../auth/auth.service';
 import type { PreferenceRequestBody } from './mercadopago.service';
 import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
 import { getClientIp } from '../common/utils/client-ip.util';
@@ -38,7 +37,6 @@ export class MercadoPagoController {
     private readonly mercadoPagoService: MercadoPagoService,
     private readonly webhookService: MercadoPagoWebhookService,
     private readonly oauthService: MercadoPagoOAuthService,
-    private readonly authService: AuthService,
     private readonly publicWriteAbuse: PublicWriteAbuseService,
   ) {}
 
@@ -54,8 +52,7 @@ export class MercadoPagoController {
     }
 
     if (!user) throw new ForbiddenException('Unauthorized');
-    const freshUser = await this.authService.validateUser(user.userId);
-    assertRestaurantAccess(freshUser, id);
+    assertRestaurantAccess(user, id);
 
     return this.credentialsService.getStatus(id);
   }
@@ -78,8 +75,7 @@ export class MercadoPagoController {
     }
 
     if (!user) throw new ForbiddenException('Unauthorized');
-    const freshUser = await this.authService.validateUser(user.userId);
-    assertRestaurantAccess(freshUser, restaurantId);
+    assertRestaurantAccess(user, restaurantId);
 
     const accessToken = (body?.accessToken ?? '').trim();
     if (!accessToken) {
@@ -124,8 +120,7 @@ export class MercadoPagoController {
     }
 
     if (!user) throw new ForbiddenException('Unauthorized');
-    const freshUser = await this.authService.validateUser(user.userId);
-    assertRestaurantAccess(freshUser, restaurantId);
+    assertRestaurantAccess(user, restaurantId);
 
     const accessToken = (body?.accessToken ?? '').trim();
     if (!accessToken) {
@@ -164,8 +159,7 @@ export class MercadoPagoController {
     }
 
     if (!user) throw new ForbiddenException('Unauthorized');
-    const freshUser = await this.authService.validateUser(user.userId);
-    assertRestaurantAccess(freshUser, restaurantId);
+    assertRestaurantAccess(user, restaurantId);
 
     await this.credentialsService.clearToken(restaurantId);
     return { success: true };
@@ -182,8 +176,7 @@ export class MercadoPagoController {
     }
 
     if (!user) throw new ForbiddenException('Unauthorized');
-    const freshUser = await this.authService.validateUser(user.userId);
-    assertRestaurantAccess(freshUser, restaurantId);
+    assertRestaurantAccess(user, restaurantId);
 
     await this.credentialsService.clearTokenAndDisableDigitalWallet(
       restaurantId,
@@ -200,8 +193,7 @@ export class MercadoPagoController {
 
     if (id) {
       if (!user) throw new ForbiddenException('Unauthorized');
-      const freshUser = await this.authService.validateUser(user.userId);
-      assertRestaurantAccess(freshUser, id);
+      assertRestaurantAccess(user, id);
     } else {
       // Require authentication even if no restaurantId provided
       if (!user) throw new BadRequestException('Unauthorized');
@@ -235,8 +227,7 @@ export class MercadoPagoController {
     }
     if (!user) throw new ForbiddenException('Unauthorized');
 
-    const freshUser = await this.authService.validateUser(user.userId);
-    assertRestaurantAccess(freshUser, id);
+    assertRestaurantAccess(user, id);
 
     if (!this.oauthService.isConfigured()) {
       throw new BadRequestException({
@@ -321,8 +312,7 @@ export class MercadoPagoController {
     }
     if (!user) throw new ForbiddenException('Unauthorized');
 
-    const freshUser = await this.authService.validateUser(user.userId);
-    assertRestaurantAccess(freshUser, id);
+    assertRestaurantAccess(user, id);
 
     await this.credentialsService.clearTokenAndDisableDigitalWallet(id);
     return { success: true };

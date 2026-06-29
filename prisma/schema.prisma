@@ -1158,6 +1158,7 @@ model Analytics {
 
   @@index([restaurantId, date])
   @@index([restaurantId, metric])
+  @@index([restaurantId, metric, date])
 }
 
 model PushSubscription {

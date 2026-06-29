@@ -919,6 +919,45 @@ export class OrdersService {
     const limit = filters.limit || 50;
     const skip = (page - 1) * limit;
 
+    if (filters.lite) {
+      const [orders, total] = await Promise.all([
+        this.prisma.order.findMany({
+          where,
+          select: {
+            id: true,
+            status: true,
+            total: true,
+            createdAt: true,
+            type: true,
+            customerName: true,
+            customerPhone: true,
+            customerEmail: true,
+            orderSource: true,
+            paymentMethod: true,
+            paymentStatus: true,
+            restaurantId: true,
+            _count: { select: { items: true } },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          skip,
+          take: limit,
+        }),
+        this.prisma.order.count({ where }),
+      ]);
+
+      return {
+        orders,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      };
+    }
+
     const [orders, total, stats] = await Promise.all([
       this.prisma.order.findMany({
         where,

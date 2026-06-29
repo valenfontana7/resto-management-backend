@@ -426,12 +426,14 @@ export class FloorController {
   getDailyOperation(
     @Param('restaurantId') restaurantId: string,
     @Query('date') date: string | undefined,
+    @Query('view') view: 'full' | 'dashboard' | undefined,
     @CurrentUser() user: RequestUser,
   ) {
     return this.dailyOperations.getDailyOperation(
       restaurantId,
       user.userId,
       date,
+      view === 'dashboard' ? 'dashboard' : 'full',
     );
   }
 

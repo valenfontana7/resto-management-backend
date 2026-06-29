@@ -526,8 +526,28 @@ export class SubscriptionsService {
       };
     }> | null;
 
+    if (!subscription) {
+      return { subscription: null };
+    }
+
+    const allPaymentMethods = await this.buildSubscriptionPaymentMethods(
+      subscription,
+      userId,
+    );
+
+    return {
+      subscription: { ...subscription, paymentMethods: allPaymentMethods },
+    };
+  }
+
+  private async buildSubscriptionPaymentMethods(
+    subscription: Prisma.SubscriptionGetPayload<{
+      include: { paymentMethods: true };
+    }>,
+    userId?: string,
+  ) {
     let allPaymentMethods: any[] =
-      subscription?.paymentMethods.map((pm) => ({
+      subscription.paymentMethods.map((pm) => ({
         id: pm.id,
         mpCardId: pm.mpCardId,
         mpCustomerId: subscription.mpCustomerId ?? null,
@@ -548,14 +568,12 @@ export class SubscriptionsService {
         type: 'subscription' as const,
       })) || [];
 
-    // If userId provided, include user's payment methods
     if (userId) {
       const userMethods = await this.prisma.userPaymentMethod.findMany({
         where: { userId },
         orderBy: { isDefault: 'desc' },
       });
 
-      // Map user methods to similar structure
       const mappedUserMethods = userMethods.map((pm) => ({
         id: pm.id,
         mpCardId: pm.mpCardId,
@@ -580,11 +598,7 @@ export class SubscriptionsService {
       allPaymentMethods = [...allPaymentMethods, ...mappedUserMethods];
     }
 
-    return {
-      subscription: subscription
-        ? { ...subscription, paymentMethods: allPaymentMethods }
-        : null,
-    };
+    return allPaymentMethods;
   }
 
   /**
@@ -618,10 +632,9 @@ export class SubscriptionsService {
     let nextBillingDate: Date | null = null;
     let nextBillingAmount = 0;
 
-    // Obtener precio del plan dinámicamente
-    const currentPlan = await this.plansService
-      .findOne(subscription.planId)
-      .catch(() => null);
+    const currentPlan =
+      subscription.plan ??
+      (await this.plansService.findOne(subscription.planId).catch(() => null));
     const planPrice = currentPlan?.price || 0;
 
     if (isTrialing && subscription.trialEnd) {
@@ -1508,14 +1521,72 @@ export class SubscriptionsService {
   /**
    * Suscripción de la cuenta del usuario (fuente de verdad de billing).
    */
-  async getAccountSubscription(userId: string) {
-    const anchor = await this.subscriptionResolver.resolveForUser(userId, {
-      select: { restaurantId: true },
-    });
-    if (!anchor?.restaurantId) {
+  async getAccountSubscription(
+    userId: string,
+    options?: { minimal?: boolean },
+  ) {
+    if (options?.minimal) {
+      const subscription = await this.subscriptionResolver.resolveForUser(
+        userId,
+        {
+          select: {
+            id: true,
+            planType: true,
+            status: true,
+            trialEnd: true,
+            currentPeriodStart: true,
+            currentPeriodEnd: true,
+            restaurantId: true,
+            cancelAtPeriodEnd: true,
+            createdAt: true,
+            updatedAt: true,
+            planId: true,
+            userId: true,
+            isBillingAnchor: true,
+          },
+        },
+      );
+      return { subscription: subscription ?? null };
+    }
+
+    const subscription = (await this.subscriptionResolver.resolveForUser(
+      userId,
+      {
+        include: {
+          plan: {
+            include: {
+              restrictions: true,
+            },
+          },
+          invoices: {
+            take: 5,
+            orderBy: { createdAt: 'desc' },
+          },
+          paymentMethods: {
+            orderBy: { isDefault: 'desc' },
+          },
+        },
+      },
+    )) as Prisma.SubscriptionGetPayload<{
+      include: {
+        plan: { include: { restrictions: true } };
+        invoices: true;
+        paymentMethods: true;
+      };
+    }> | null;
+
+    if (!subscription) {
       return { subscription: null };
     }
-    return this.getSubscription(anchor.restaurantId, userId);
+
+    const allPaymentMethods = await this.buildSubscriptionPaymentMethods(
+      subscription,
+      userId,
+    );
+
+    return {
+      subscription: { ...subscription, paymentMethods: allPaymentMethods },
+    };
   }
 
   async getAccountInvoices(userId: string) {

@@ -60,6 +60,21 @@ export class AnalyticsController {
     return { visits };
   }
 
+  @Get('restaurant/:restaurantId/dashboard')
+  async getAdminDashboard(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Query() query: AnalyticsQueryDto,
+  ) {
+    await this.assertAccess(restaurantId, user);
+    return this.analyticsService.getAdminDashboard(
+      restaurantId,
+      query.period,
+      query.startDate,
+      query.endDate,
+    );
+  }
+
   @Get('restaurant/:restaurantId/sales')
   async getSales(
     @Param('restaurantId') restaurantId: string,

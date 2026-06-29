@@ -31,6 +31,14 @@ export class BusinessHealthController {
     return this.businessHealth.getDashboard(restaurantId, user.userId);
   }
 
+  @Get('insights-summary')
+  getInsightsSummary(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.businessHealth.getInsightsSummary(restaurantId, user.userId);
+  }
+
   @Get('snapshots')
   getSnapshots(
     @Param('restaurantId') restaurantId: string,

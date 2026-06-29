@@ -99,6 +99,22 @@ export class DeliveryController {
   // DELIVERY ORDERS - 5 endpoints
   // ============================================
 
+  @Get('admin')
+  @ApiOperation({ summary: 'Bundle admin delivery (orders + drivers + zones)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Datos iniciales de delivery admin',
+  })
+  async getAdminBundle(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @Query('limit') limit?: string,
+  ) {
+    const orderLimit = limit
+      ? Math.min(Math.max(Number(limit) || 100, 1), 200)
+      : 100;
+    return this.deliveryService.getAdminBundle(restaurantId, orderLimit);
+  }
+
   @Get('orders')
   @ApiOperation({ summary: 'Listar pedidos delivery con filtros' })
   @ApiResponse({ status: 200, description: 'Lista de pedidos delivery' })

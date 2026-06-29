@@ -77,6 +77,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { Throttle } from '@nestjs/throttler';
 import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
 import { getClientIp } from '../common/utils/client-ip.util';
+import { GoLiveReadinessService } from './services/go-live-readiness.service';
 
 @ApiTags('Restaurants')
 @Controller('api/restaurants')
@@ -92,6 +93,7 @@ export class RestaurantsController {
     private readonly callMeBot: CallMeBotService,
     private readonly prisma: PrismaService,
     private readonly publicWriteAbuse: PublicWriteAbuseService,
+    private readonly goLiveReadiness: GoLiveReadinessService,
     @Optional() private readonly adminAlerts?: AdminAlertsService,
   ) {}
 
@@ -173,11 +175,9 @@ export class RestaurantsController {
   @ApiResponse({ status: 200, description: 'Return the restaurant.' })
   @ApiResponse({ status: 404, description: 'Restaurant not found.' })
   async getMyRestaurant(@CurrentUser() user: RequestUser) {
-    // Always fetch fresh user data from DB to ensure restaurantId is up-to-date
-    const freshUser = await this.authService.validateUser(user.userId);
-    if (freshUser.restaurantId) {
+    if (user.restaurantId) {
       const restaurant = await this.restaurantsService.findById(
-        freshUser.restaurantId,
+        user.restaurantId,
       );
       return { restaurant };
     }
@@ -208,6 +208,21 @@ export class RestaurantsController {
   async getById(@VerifyRestaurantAccess('id') restaurantId: string) {
     const restaurant = await this.restaurantsService.findById(restaurantId);
     return { restaurant };
+  }
+
+  @Get(':id/go-live/readiness')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Aggregated go-live readiness metrics' })
+  @ApiParam({ name: 'id', description: 'Restaurant id' })
+  async getGoLiveReadiness(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+  ) {
+    const readiness = await this.goLiveReadiness.getReadiness(
+      restaurantId,
+      user.userId,
+    );
+    return { readiness };
   }
 
   @ApiOperation({ summary: 'Get restaurant analytics (visits count)' })

@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import { CouponType, OrderStatus } from '@prisma/client';
+import { CouponType, OrderSource, OrderStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
 import { EmailService } from '../email/email.service';
@@ -15,6 +15,7 @@ import {
   computeOperationalScore,
   countPendingActionableOrders,
   countStuckKitchenOrders,
+  KITCHEN_STUCK_MINUTES,
   marginPercent,
 } from './business-health.utils';
 import { BusinessHealthAlertsService } from './business-health-alerts.service';
@@ -438,6 +439,188 @@ export class BusinessHealthService {
       });
 
     return dashboard;
+  }
+
+  async getInsightsSummary(restaurantId: string, userId: string) {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    const periodStart = new Date();
+    periodStart.setDate(periodStart.getDate() - PERIOD_DAYS);
+    const stuckThreshold = new Date(
+      Date.now() - KITCHEN_STUCK_MINUTES * 60_000,
+    );
+
+    const [
+      dishes,
+      inventoryItems,
+      openTableSessions,
+      openCash,
+      pendingActionableOrders,
+      stuckKitchenOrders,
+      periodOrderCount,
+      onlineOrderCount,
+    ] = await Promise.all([
+      this.prisma.dish.findMany({
+        where: { restaurantId, deletedAt: null },
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          costPrice: true,
+          isAvailable: true,
+        },
+      }),
+      this.prisma.inventoryItem.findMany({
+        where: { restaurantId },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.tableSession.count({
+        where: { restaurantId, status: 'OPEN' },
+      }),
+      this.prisma.cashRegisterSession.findFirst({
+        where: { restaurantId, status: 'OPEN', level: 'PARTIAL' },
+      }),
+      this.prisma.order.count({
+        where: {
+          restaurantId,
+          status: {
+            in: [OrderStatus.PENDING, OrderStatus.PAID, OrderStatus.CONFIRMED],
+          },
+        },
+      }),
+      this.prisma.order.count({
+        where: {
+          restaurantId,
+          status: {
+            in: [
+              OrderStatus.CONFIRMED,
+              OrderStatus.PREPARING,
+              OrderStatus.PAID,
+            ],
+          },
+          createdAt: { lte: stuckThreshold },
+        },
+      }),
+      this.prisma.order.count({
+        where: {
+          restaurantId,
+          createdAt: { gte: periodStart },
+          status: { not: OrderStatus.CANCELLED },
+        },
+      }),
+      this.prisma.order.count({
+        where: {
+          restaurantId,
+          createdAt: { gte: periodStart },
+          status: { not: OrderStatus.CANCELLED },
+          type: { not: 'DELIVERY' },
+          NOT: {
+            OR: [
+              {
+                orderSource: {
+                  in: [OrderSource.FLOOR_FINAL, OrderSource.FLOOR_COMANDA],
+                },
+              },
+              { tableSessionId: { not: null } },
+            ],
+          },
+        },
+      }),
+    ]);
+
+    const dishRows = dishes.map((dish) => {
+      const marginPct = marginPercent(dish.price, dish.costPrice);
+      return {
+        dishId: dish.id,
+        name: dish.name,
+        salePrice: dish.price,
+        costPrice: dish.costPrice,
+        marginPercent: marginPct,
+        unitsSold: 0,
+        revenue: 0,
+        grossMarginTotal: null,
+        isAvailable: dish.isAvailable,
+        hasCost: dish.costPrice != null,
+      };
+    });
+
+    const dishesWithCost = dishRows.filter((row) => row.hasCost);
+    const avgMargin =
+      dishesWithCost.length > 0
+        ? dishesWithCost.reduce(
+            (sum, row) => sum + (row.marginPercent ?? 0),
+            0,
+          ) / dishesWithCost.length
+        : null;
+
+    const lowStockItems = inventoryItems
+      .filter((item) => item.currentStock <= item.minStock)
+      .map((item) => ({
+        id: item.id,
+        name: item.name,
+        unit: item.unit,
+        currentStock: item.currentStock,
+        minStock: item.minStock,
+        linkedDishIds: item.linkedDishIds,
+      }));
+
+    const onlineShare =
+      periodOrderCount > 0
+        ? Math.round((onlineOrderCount / periodOrderCount) * 1000) / 10
+        : 0;
+
+    const growthActions = buildGrowthActions({
+      onlineShare,
+      inactiveCustomers: [],
+      dishesWithoutCost: dishes.length - dishesWithCost.length,
+      lowStockCount: lowStockItems.length,
+    });
+
+    const operationalScore = computeOperationalScore({
+      openTableSessions,
+      cashRegisterOpen: Boolean(openCash),
+      pendingActionableOrders,
+      stuckKitchenOrders,
+    });
+    const commercialScore = computeCommercialScore(
+      periodOrderCount,
+      onlineShare,
+    );
+    const marginScore = computeMarginScore(
+      dishes.length,
+      dishesWithCost.length,
+      avgMargin,
+    );
+
+    return {
+      periodDays: PERIOD_DAYS,
+      healthScore: {
+        overall: clampScore(
+          (operationalScore + commercialScore + marginScore) / 3,
+        ),
+        operational: operationalScore,
+        commercial: commercialScore,
+        margin: marginScore,
+      },
+      margin: {
+        dishesWithCostCount: dishesWithCost.length,
+        dishesWithoutCostCount: dishes.length - dishesWithCost.length,
+        averageMarginPercent: avgMargin,
+        items: dishRows,
+        topProfitable: [],
+        lowMarginAlerts: [],
+      },
+      inventory: {
+        totalItems: inventoryItems.length,
+        lowStockItems,
+        affectedDishes: [],
+      },
+      growth: {
+        inactiveCustomers: [],
+        recommendations: [],
+        actions: growthActions,
+      },
+    };
   }
 
   async getSnapshotHistory(restaurantId: string, userId: string, days = 30) {
