@@ -25,6 +25,22 @@ type RestaurantRow = {
   slug: string;
 };
 
+function getRequestHeader(
+  headers: HeadersInit | undefined,
+  name: string,
+): string {
+  if (!headers) return '';
+  if (headers instanceof Headers) return headers.get(name) ?? '';
+  if (Array.isArray(headers)) {
+    const match = headers.find(
+      ([key]) => key.toLowerCase() === name.toLowerCase(),
+    );
+    return match?.[1] ?? '';
+  }
+  const record = headers;
+  return record[name] ?? record[name.toLowerCase()] ?? '';
+}
+
 class InMemoryPrisma {
   private credentials = new Map<string, CredentialRow>();
   private webhookKeys = new Set<string>();
@@ -278,15 +294,6 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
       data: {
         id: 'r1',
         slug: 'mi-resto',
-        name: 'Mi Resto',
-        type: 'restaurant',
-        cuisineTypes: ['argentina'],
-        description: 'Test restaurant',
-        email: 'test@example.com',
-        phone: '+123456789',
-        address: 'Test Address',
-        city: 'Test City',
-        country: 'Argentina',
       },
     });
     prisma.seedCheckout({
@@ -489,11 +496,7 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
             : ''
         ).includes('/checkout/preferences') &&
         String(
-          (options as RequestInit)?.headers &&
-            typeof (options as RequestInit).headers === 'object' &&
-            'Authorization' in (options as RequestInit).headers!
-            ? (options as RequestInit).headers!.Authorization
-            : '',
+          getRequestHeader((options as RequestInit)?.headers, 'Authorization'),
         ).includes('TEST-TENANT-TOKEN'),
     );
     expect(call).toBeDefined();
@@ -552,11 +555,7 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
             : ''
         ).includes('/checkout/preferences') &&
         String(
-          (options as RequestInit)?.headers &&
-            typeof (options as RequestInit).headers === 'object' &&
-            'Authorization' in (options as RequestInit).headers!
-            ? (options as RequestInit).headers!.Authorization
-            : '',
+          getRequestHeader((options as RequestInit)?.headers, 'Authorization'),
         ).includes('GLOBAL_SANDBOX'),
     );
     expect(call).toBeDefined();

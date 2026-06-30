@@ -5,6 +5,7 @@ describe('LoyaltyService', () => {
   let service: LoyaltyService;
   let prisma: any;
   let customersService: any;
+  let loyaltyEvents: any;
 
   beforeEach(() => {
     prisma = {
@@ -19,7 +20,13 @@ describe('LoyaltyService', () => {
       upsertProfile: jest.fn(),
     };
 
-    service = new LoyaltyService(prisma, customersService);
+    loyaltyEvents = {
+      publishPointsEarned: jest.fn(),
+      publishPointsRedeemed: jest.fn(),
+      publishTierUpgraded: jest.fn(),
+    };
+
+    service = new LoyaltyService(prisma, customersService, loyaltyEvents);
   });
 
   it('returns the loyalty account tied to the active customer session', async () => {
