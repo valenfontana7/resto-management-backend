@@ -25,13 +25,14 @@ import {
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 
-const RESTAURANT_SLUG = 'parrilla-buenos-aires';
+const RESTAURANT_SLUG = 'la-parrilla-de-buenos-aires';
 const DEMO_TAG = 'seed-pba-demo';
 
 /** URLs estables (mismas que scripts/sync-demo-photos.mjs y mock demo). */
 const PBA_MEDIA = {
   logo: 'https://images.unsplash.com/photo-1558030006-450675393462?w=400&h=400&fit=crop&q=85',
-  cover: 'https://images.pexels.com/photos/2233348/pexels-photo-2233348.jpeg?auto=compress&cs=tinysrgb&w=1200&h=600&fit=crop',
+  cover:
+    'https://images.pexels.com/photos/2233348/pexels-photo-2233348.jpeg?auto=compress&cs=tinysrgb&w=1200&h=600&fit=crop',
   hero: 'https://images.pexels.com/photos/2233348/pexels-photo-2233348.jpeg?auto=compress&cs=tinysrgb&w=1600&h=900&fit=crop',
   interior: [
     'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&h=600&fit=crop&q=85',
@@ -112,7 +113,8 @@ const REVIEW_SEEDS: ReviewSeed[] = [
     customerName: 'Sofía López',
     customerEmail: 'sofia@example.com',
     rating: 5,
-    comment: 'El mejor bife del barrio. Jugoso, bien marcado y con chimichurri de la casa.',
+    comment:
+      'El mejor bife del barrio. Jugoso, bien marcado y con chimichurri de la casa.',
     daysAgo: 12,
   },
   {
@@ -127,7 +129,8 @@ const REVIEW_SEEDS: ReviewSeed[] = [
     dishName: 'Bife de chorizo (400g)',
     customerName: 'Lucía Fernández',
     rating: 4,
-    comment: 'Muy bueno, solo que el punto vino un poco más hecho de lo pedido.',
+    comment:
+      'Muy bueno, solo que el punto vino un poco más hecho de lo pedido.',
     daysAgo: 3,
   },
   {
@@ -164,7 +167,8 @@ const REVIEW_SEEDS: ReviewSeed[] = [
     dishName: 'Provoleta a la parrilla',
     customerName: 'Julieta Sosa',
     rating: 5,
-    comment: 'Entrada obligada. El queso queda dorado y el orégano le da un toque único.',
+    comment:
+      'Entrada obligada. El queso queda dorado y el orégano le da un toque único.',
     daysAgo: 9,
   },
   {
@@ -193,7 +197,8 @@ const REVIEW_SEEDS: ReviewSeed[] = [
     dishName: 'Milanesa napolitana',
     customerName: 'Tomás Herrera',
     rating: 5,
-    comment: 'Crujiente por fuera, jugosa por dentro. La napolitana está muy bien lograda.',
+    comment:
+      'Crujiente por fuera, jugosa por dentro. La napolitana está muy bien lograda.',
     daysAgo: 11,
   },
   {
@@ -249,7 +254,8 @@ const REVIEW_SEEDS: ReviewSeed[] = [
     customerName: 'María García',
     customerEmail: 'maria.garcia@example.com',
     rating: 5,
-    comment: 'Celebramos un cumpleaños y la atención fue excelente de punta a punta.',
+    comment:
+      'Celebramos un cumpleaños y la atención fue excelente de punta a punta.',
     daysAgo: 18,
   },
   {
@@ -305,7 +311,9 @@ type DemoCustomer = {
 
 function todayBusinessDate(): Date {
   const now = new Date();
-  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 12));
+  return new Date(
+    Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), 12),
+  );
 }
 
 /** Alineado con GoLiveReadinessService.todayBusinessDate() */
@@ -316,13 +324,17 @@ function businessDateOnly(): Date {
 function encryptMpToken(plaintext: string): string {
   const raw = process.env.MP_TOKEN_ENCRYPTION_KEY?.trim();
   if (!raw) {
-    throw new Error('MP_TOKEN_ENCRYPTION_KEY es necesario para sembrar Mercado Pago demo');
+    throw new Error(
+      'MP_TOKEN_ENCRYPTION_KEY es necesario para sembrar Mercado Pago demo',
+    );
   }
   const key = /^[0-9a-fA-F]{64}$/.test(raw)
     ? Buffer.from(raw, 'hex')
     : Buffer.from(raw, 'base64');
   if (key.length !== 32) {
-    throw new Error('MP_TOKEN_ENCRYPTION_KEY debe ser 32 bytes (hex 64 chars o base64)');
+    throw new Error(
+      'MP_TOKEN_ENCRYPTION_KEY debe ser 32 bytes (hex 64 chars o base64)',
+    );
   }
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
@@ -383,6 +395,31 @@ async function seedMercadoPagoCredential(restaurantId: string) {
   });
 }
 
+async function wipeFloorData(restaurantId: string) {
+  await prisma.tableSession.updateMany({
+    where: { restaurantId },
+    data: { orderId: null, cashRegisterSessionId: null },
+  });
+  await prisma.order.updateMany({
+    where: { restaurantId },
+    data: { tableSessionId: null },
+  });
+
+  await prisma.fiscalDocument.updateMany({
+    where: { restaurantId },
+    data: { relatedFiscalDocumentId: null },
+  });
+  await prisma.fiscalDocument.deleteMany({ where: { restaurantId } });
+
+  await prisma.cashMovement.deleteMany({
+    where: { cashSession: { restaurantId } },
+  });
+
+  // Cascades TableSessionItem + modifiers; must run before dish.deleteMany.
+  await prisma.tableSession.deleteMany({ where: { restaurantId } });
+  await prisma.cashRegisterSession.deleteMany({ where: { restaurantId } });
+}
+
 async function wipeOperationalData(restaurantId: string) {
   console.log('🧹 Limpiando datos operativos previos...');
 
@@ -397,6 +434,8 @@ async function wipeOperationalData(restaurantId: string) {
       occupiedSince: null,
     },
   });
+
+  await wipeFloorData(restaurantId);
 
   const loyaltyAccounts = await prisma.loyaltyAccount.findMany({
     where: { restaurantId },
@@ -427,7 +466,9 @@ async function wipeOperationalData(restaurantId: string) {
   await prisma.deliveryZone.deleteMany({ where: { restaurantId } });
   await prisma.table.deleteMany({ where: { restaurantId } });
   await prisma.tableArea.deleteMany({ where: { restaurantId } });
-  await prisma.restaurantCustomerProfile.deleteMany({ where: { restaurantId } });
+  await prisma.restaurantCustomerProfile.deleteMany({
+    where: { restaurantId },
+  });
   await prisma.category.deleteMany({ where: { restaurantId } });
 }
 
@@ -701,8 +742,9 @@ async function seedMenuAndInventory(restaurantId: string) {
         name: categoryName,
         description: `Categoría ${categoryName}`,
         image:
-          PBA_MEDIA.categories[categoryName as keyof typeof PBA_MEDIA.categories] ??
-          null,
+          PBA_MEDIA.categories[
+            categoryName as keyof typeof PBA_MEDIA.categories
+          ] ?? null,
         order: i,
         isActive: true,
       },
@@ -725,7 +767,8 @@ async function seedMenuAndInventory(restaurantId: string) {
         tags: [...(item.tags ?? []), DEMO_TAG],
         isFeatured: item.featured ?? false,
         isAvailable: !item.unavailable,
-        image: PBA_MEDIA.dishes[item.name as keyof typeof PBA_MEDIA.dishes] ?? null,
+        image:
+          PBA_MEDIA.dishes[item.name as keyof typeof PBA_MEDIA.dishes] ?? null,
         avgRating: 0,
         reviewCount: 0,
       },
@@ -801,11 +844,19 @@ async function seedMenuAndInventory(restaurantId: string) {
     inventoryKey: keyof typeof inventory;
     quantity: number;
   }> = [
-    { dishName: 'Bife de chorizo (400g)', inventoryKey: 'vacio', quantity: 0.42 },
+    {
+      dishName: 'Bife de chorizo (400g)',
+      inventoryKey: 'vacio',
+      quantity: 0.42,
+    },
     { dishName: 'Entraña (350g)', inventoryKey: 'entrania', quantity: 0.38 },
     { dishName: 'Choripán artesanal', inventoryKey: 'chorizo', quantity: 1 },
     { dishName: 'Papas rústicas', inventoryKey: 'papas', quantity: 0.25 },
-    { dishName: 'Provoleta a la parrilla', inventoryKey: 'provolone', quantity: 1 },
+    {
+      dishName: 'Provoleta a la parrilla',
+      inventoryKey: 'provolone',
+      quantity: 1,
+    },
   ];
 
   for (const line of recipeLines) {
@@ -872,7 +923,9 @@ async function syncDishReviewStats(restaurantId: string) {
     await prisma.dish.update({
       where: { id: dish.id },
       data: {
-        avgRating: stats._avg.rating ? Math.round(stats._avg.rating * 10) / 10 : 0,
+        avgRating: stats._avg.rating
+          ? Math.round(stats._avg.rating * 10) / 10
+          : 0,
         reviewCount: stats._count,
       },
     });
@@ -1102,7 +1155,8 @@ async function createOrder(input: OrderSeedInput) {
                 {
                   fromStatus: OrderStatus.PENDING,
                   toStatus: input.status,
-                  createdAt: input.confirmedAt ?? input.preparingAt ?? input.createdAt,
+                  createdAt:
+                    input.confirmedAt ?? input.preparingAt ?? input.createdAt,
                 },
               ]
             : []),
@@ -1310,7 +1364,10 @@ async function seedOrders(
       paymentStatus: PaymentStatus.PAID,
       paymentMethod: 'cash',
       items: [
-        { dishName: i % 2 === 0 ? 'Entraña (350g)' : 'Tira de asado (500g)', quantity: 1 },
+        {
+          dishName: i % 2 === 0 ? 'Entraña (350g)' : 'Tira de asado (500g)',
+          quantity: 1,
+        },
         { dishName: 'Flan casero con dulce de leche', quantity: 1 },
       ],
       createdAt: todayAt(11 + i, 10 + i * 5),
@@ -1320,7 +1377,9 @@ async function seedOrders(
       readyAt: todayAt(11 + i, 40 + i * 5),
       paidAt: todayAt(11 + i, 45 + i * 5),
       tableId: i % 2 === 0 ? tables[i % tables.length].id : undefined,
-      orderSource: (i % 2 === 0 ? OrderSource.FLOOR_FINAL : OrderSource.ONLINE) as OrderSource,
+      orderSource: (i % 2 === 0
+        ? OrderSource.FLOOR_FINAL
+        : OrderSource.ONLINE) as OrderSource,
     })),
   ];
 
@@ -1330,7 +1389,9 @@ async function seedOrders(
   }
 
   const activeDelivery = createdToday.find(
-    (o) => o.customerName === customers[2].displayName && o.status === OrderStatus.READY,
+    (o) =>
+      o.customerName === customers[2].displayName &&
+      o.status === OrderStatus.READY,
   );
   if (activeDelivery) {
     await prisma.deliveryOrder.create({
@@ -1441,7 +1502,11 @@ async function seedDailyOperation(restaurantId: string) {
         items: [
           { id: 'grill', label: 'Parrilla encendida', done: true },
           { id: 'stock', label: 'Stock crítico revisado', done: true },
-          { id: 'reservations', label: 'Reservas del día confirmadas', done: true },
+          {
+            id: 'reservations',
+            label: 'Reservas del día confirmadas',
+            done: true,
+          },
         ],
       },
       openingCompletedAt: todayAt(10, 30),
@@ -1468,9 +1533,17 @@ async function seedHealthSnapshots(restaurantId: string) {
 
 async function seedBusinessEvents(
   restaurantId: string,
-  orders: Array<{ id: string; orderNumber: string; customerName: string; total: number }>,
+  orders: Array<{
+    id: string;
+    orderNumber: string;
+    customerName: string;
+    total: number;
+  }>,
 ) {
-  const delayed = orders.find((o) => o.orderNumber.includes('1005') || o.customerName === 'Cocina atrasada');
+  const delayed = orders.find(
+    (o) =>
+      o.orderNumber.includes('1005') || o.customerName === 'Cocina atrasada',
+  );
   const failed = orders.find((o) => o.customerName.includes('pago fallido'));
 
   const events: Prisma.BusinessEventCreateManyInput[] = [
@@ -1481,7 +1554,10 @@ async function seedBusinessEvents(
       importance: BusinessEventImportance.NORMAL,
       replayPolicy: BusinessEventReplayPolicy.FULL,
       occurredAt: todayAt(10, 30),
-      payload: { date: businessDateOnly().toISOString(), openedAt: todayAt(10, 30).toISOString() },
+      payload: {
+        date: businessDateOnly().toISOString(),
+        openedAt: todayAt(10, 30).toISOString(),
+      },
     },
     {
       restaurantId,
@@ -1627,7 +1703,10 @@ async function seedBusinessEvents(
       importance: BusinessEventImportance.NORMAL,
       replayPolicy: BusinessEventReplayPolicy.FULL,
       occurredAt: hoursAgo(0.2),
-      payload: { orderNumber: 'PBA-active-delivery', driverName: 'Martín Reparto' },
+      payload: {
+        orderNumber: 'PBA-active-delivery',
+        driverName: 'Martín Reparto',
+      },
     },
     {
       restaurantId,
@@ -1636,7 +1715,11 @@ async function seedBusinessEvents(
       importance: BusinessEventImportance.NORMAL,
       replayPolicy: BusinessEventReplayPolicy.FULL,
       occurredAt: daysAgo(2, 19, 0),
-      payload: { orderId: orders[5]?.id, orderNumber: orders[5]?.orderNumber, amount: 19800 },
+      payload: {
+        orderId: orders[5]?.id,
+        orderNumber: orders[5]?.orderNumber,
+        amount: 19800,
+      },
     },
     {
       restaurantId,
@@ -1823,7 +1906,9 @@ async function main() {
     await wipeOperationalData(restaurant.id);
   }
 
-  console.log(`🥩 Sembrando demo para "${restaurant.name}" (${RESTAURANT_SLUG})...`);
+  console.log(
+    `🥩 Sembrando demo para "${restaurant.name}" (${RESTAURANT_SLUG})...`,
+  );
 
   await ensureRestaurantConfig(restaurant.id);
   await seedBusinessHours(restaurant.id);
@@ -1875,7 +1960,9 @@ async function main() {
   console.log(`   Reservas: ${summary[2]}`);
   console.log(`   Eventos de negocio: ${summary[3]}`);
   console.log(`   Insumos: ${summary[4]}`);
-  console.log(`   Reseñas: ${summary[5]} (platos + local, con moderación pendiente)`);
+  console.log(
+    `   Reseñas: ${summary[5]} (platos + local, con moderación pendiente)`,
+  );
   console.log('   Branding: logo, portada, hero y galería cargados');
   console.log('\n📍 Escenarios incluidos:');
   console.log('   • Pedido con pago fallido y otro demorado en cocina');
@@ -1885,8 +1972,12 @@ async function main() {
   console.log('   • 30 días de pedidos + snapshots de salud del negocio');
   console.log('   • Memorias y eventos para Diario / Centro de atención');
   console.log('   • Logo, fotos de platos/categorías y reseñas por producto');
-  console.log('   • Go-live completo: contacto, MP, directorio, apertura, delivery');
-  console.log(`\n🔑 Ingresá al admin con tu usuario existente y elegí "${restaurant.name}".`);
+  console.log(
+    '   • Go-live completo: contacto, MP, directorio, apertura, delivery',
+  );
+  console.log(
+    `\n🔑 Ingresá al admin con tu usuario existente y elegí "${restaurant.name}".`,
+  );
   console.log(`   Sitio público: /${RESTAURANT_SLUG}`);
 }
 
