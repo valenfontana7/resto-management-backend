@@ -464,7 +464,7 @@ export class ActivationDashboardService {
           AND o."paidAt" IS NOT NULL
           AND o."paidAt" <= c."createdAt" + INTERVAL '7 day'
           AND o."paymentMethod" IN ('mercadopago', 'card', 'credit-card', 'debit-card')
-        WHERE mp.id IS NOT NULL OR o.id IS NOT NULL
+        WHERE mp."restaurantId" IS NOT NULL OR o.id IS NOT NULL
       )
       SELECT
         (SELECT COUNT(*)::bigint FROM cohort) AS total,
