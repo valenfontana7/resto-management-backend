@@ -9,6 +9,7 @@ import {
   AdminAlertEventToggles,
   normalizeAdminAlertEventToggles,
 } from './admin-alert-events.config';
+import { formatDurationMinutes } from '../common/utils/format-duration.util';
 
 export interface UserRegisteredAlertPayload {
   source: string;
@@ -336,8 +337,8 @@ export class AdminAlertsService {
     payload: EdgeSyncStaleAlertPayload,
   ): Promise<boolean> {
     const message =
-      `La caja principal de ${payload.restaurantName} lleva ${payload.minutesSinceActivity} minutos sin sincronizar con la nube ` +
-      `(umbral ${payload.staleThresholdMinutes} min). Revisá conectividad, servicio BentooSalonLocal o outbox pendiente.`;
+      `La caja principal de ${payload.restaurantName} lleva ${formatDurationMinutes(payload.minutesSinceActivity)} sin sincronizar con la nube ` +
+      `(umbral ${formatDurationMinutes(payload.staleThresholdMinutes, 'short')}). Revisá conectividad, servicio BentooSalonLocal o outbox pendiente.`;
 
     return this.notifyAdminEvent({
       source: payload.source,

@@ -24,6 +24,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "build:seed": "tsc prisma/seed.ts --outDir dist/prisma --module commonjs --target es2020 --esModuleInterop --skipLibCheck",
+    "seed:parrilla": "npx ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/scripts/seed-parrilla-demo.ts",
+    "seed:parrilla:fresh": "npx ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/scripts/seed-parrilla-demo.ts -- --fresh",
     "prisma:seed": "node dist/prisma/seed.js",
     "migrate:roles": "npx ts-node scripts/migrate-system-roles.ts",
     "audit:duplicate-emails": "node scripts/audit-duplicate-user-emails.js",

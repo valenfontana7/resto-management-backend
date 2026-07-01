@@ -201,6 +201,10 @@ class InMemoryPrisma {
   };
 }
 
+function getTestPrisma(app: INestApplication): InMemoryPrisma {
+  return app.get(PrismaService);
+}
+
 class MockAuthGuard implements CanActivate {
   canActivate(context: any) {
     const req = context.switchToHttp().getRequest();
@@ -289,8 +293,8 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
     app = moduleRef.createNestApplication();
     await app.init();
 
-    const prisma = app.get(PrismaService);
-    await prisma.restaurant.create({
+    const prisma = getTestPrisma(app);
+    prisma.restaurant.create({
       data: {
         id: 'r1',
         slug: 'mi-resto',
@@ -456,7 +460,7 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
     delete process.env.MERCADOPAGO_ACCESS_TOKEN;
     delete process.env.MERCADOPAGO_SANDBOX_ACCESS_TOKEN;
 
-    const prisma = app.get(PrismaService);
+    const prisma = getTestPrisma(app);
     prisma.seedCheckout({
       id: 'o2',
       restaurantId: 'r1',
@@ -524,7 +528,7 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
 
     expect(delRes.status).toBe(200);
 
-    const prisma = app.get(PrismaService);
+    const prisma = getTestPrisma(app);
     prisma.seedCheckout({
       id: 'o3',
       restaurantId: 'r1',

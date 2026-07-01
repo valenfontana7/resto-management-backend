@@ -48,8 +48,8 @@ export class AnalyticsService {
         AND "status" = 'DELIVERED'
         AND "createdAt" >= ${start}
         AND "createdAt" <= ${end}
-      GROUP BY DATE(("createdAt" AT TIME ZONE ${tz}))
-      ORDER BY "date" ASC
+      GROUP BY 1
+      ORDER BY 1 ASC
     `;
 
     const salesData = rows.map((r) => {
@@ -198,8 +198,8 @@ export class AnalyticsService {
         AND "status" != 'CANCELLED'
         AND "createdAt" >= ${start}
         AND "createdAt" <= ${end}
-      GROUP BY EXTRACT(HOUR FROM ("createdAt" AT TIME ZONE ${tz}))
-      ORDER BY "hour" ASC
+      GROUP BY 1
+      ORDER BY 1 ASC
     `;
 
     const hourlyMap = new Map<number, { orders: number; sales: number }>();

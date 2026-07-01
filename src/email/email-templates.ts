@@ -4,6 +4,7 @@
  */
 
 import { getEmailPublicBaseUrl } from '../common/utils/email-public-base-url.util';
+import { formatDurationMinutes } from '../common/utils/format-duration.util';
 
 export interface OrderData {
   id: string;
@@ -469,10 +470,10 @@ function getEstimatedTime(order: OrderData): string | null {
   let baseMinutes = 15 + totalItems * 3;
   if (order.type === 'DELIVERY') {
     baseMinutes += 20;
-    return `Estimado: ${baseMinutes}–${baseMinutes + 15} min`;
+    return `Estimado: ${formatDurationMinutes(baseMinutes, 'short')}–${formatDurationMinutes(baseMinutes + 15, 'short')}`;
   }
   if (order.type === 'PICKUP') {
-    return `Listo en ~${baseMinutes} min`;
+    return `Listo en ~${formatDurationMinutes(baseMinutes, 'short')}`;
   }
   return null;
 }

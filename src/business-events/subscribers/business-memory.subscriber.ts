@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { BusinessMemoryCategory } from '@prisma/client';
 import { BusinessMemoryService } from '../../business-memory/business-memory.service';
+import { formatDurationMinutes } from '../../common/utils/format-duration.util';
 import { BusinessEventBusService } from '../business-event-bus.service';
 import type { BentooBusinessEvent } from '../types/business-event.types';
 import { BentooBusinessEventType } from '../types/event-type.enum';
@@ -238,7 +239,7 @@ export class BusinessMemoryEventSubscriber implements OnModuleInit {
       memoryKey: `event:order:delayed:${payload.orderId}`,
       category: BusinessMemoryCategory.OPERATIONAL,
       title: `Pedido demorado #${payload.orderNumber}`,
-      summary: `${payload.delayMinutes} minutos en ${payload.status}`,
+      summary: `${formatDurationMinutes(payload.delayMinutes)} en ${payload.status}`,
       sourceProvider: 'business-events',
       sourceInsightId: event.id,
       metadata: { eventId: event.id, payload },
