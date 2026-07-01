@@ -168,6 +168,11 @@ export function validateEnvironment(config: Record<string, unknown>) {
     }
   }
 
+  const googleClientId = env.GOOGLE_CLIENT_ID?.trim();
+  if (googleClientId && googleClientId.length < 10) {
+    errors.push('GOOGLE_CLIENT_ID must be a valid Google OAuth client id');
+  }
+
   if (errors.length > 0) {
     throw new Error(`Invalid environment configuration: ${errors.join('; ')}`);
   }

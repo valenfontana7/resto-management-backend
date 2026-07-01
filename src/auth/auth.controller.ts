@@ -34,6 +34,8 @@ import {
   RequestEmailVerificationDto,
   ConsumeEmailVerificationDto,
   IssueDeviceTokenDto,
+  GoogleAuthDto,
+  GoogleLinkDto,
 } from './dto/auth.dto';
 import { ImpersonateDto } from './dto/impersonate.dto';
 import { SwitchRestaurantDto } from './dto/switch-restaurant.dto';
@@ -175,6 +177,92 @@ export class AuthController {
 
     try {
       const result = await this.authService.consumeMagicLink(dto);
+      this.setAuthCookie(res, result.token);
+      return result;
+    } catch (err) {
+      await this.botDefense.applyBotDelayMs();
+      throw err;
+    }
+  }
+
+  @Public()
+  @Post('google')
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @ApiOperation({
+    summary: 'Sign in or register with Google Identity credential',
+  })
+  @ApiResponse({ status: 200, description: 'Google auth successful' })
+  @ApiResponse({
+    status: 409,
+    description: 'Email account exists with password',
+  })
+  async loginWithGoogle(
+    @Body() dto: GoogleAuthDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (this.botDefense.isHoneypotTriggered(dto.companyWebsite)) {
+      this.botDefense.logHoneypotHit('auth.google', {
+        ip: this.getClientIp(req),
+      });
+      await this.botDefense.applyBotDelayMs();
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (dto.intent !== 'login') {
+      await this.botDefense.assertTurnstileToken(dto.turnstileToken);
+    }
+
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: this.getClientIp(req),
+      scope: 'login_attempt',
+    });
+
+    try {
+      const result = await this.authService.loginWithGoogle(dto, {
+        ip: this.getClientIp(req),
+      });
+      this.setAuthCookie(res, result.token);
+      return result;
+    } catch (err) {
+      await this.botDefense.applyBotDelayMs();
+      throw err;
+    }
+  }
+
+  @Public()
+  @Post('google/link')
+  @Throttle({ default: { ttl: 60000, limit: 10 } })
+  @ApiOperation({
+    summary: 'Link Google to an existing password account',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Google linked and session started',
+  })
+  @ApiResponse({ status: 401, description: 'Invalid password or credential' })
+  async linkGoogleWithPassword(
+    @Body() dto: GoogleLinkDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    if (this.botDefense.isHoneypotTriggered(dto.companyWebsite)) {
+      this.botDefense.logHoneypotHit('auth.google-link', {
+        ip: this.getClientIp(req),
+      });
+      await this.botDefense.applyBotDelayMs();
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: this.getClientIp(req),
+      scope: 'login_attempt',
+    });
+
+    try {
+      const result = await this.authService.linkGoogleWithPassword(dto, {
+        ip: this.getClientIp(req),
+      });
       this.setAuthCookie(res, result.token);
       return result;
     } catch (err) {

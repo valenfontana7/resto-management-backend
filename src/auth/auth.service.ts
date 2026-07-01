@@ -22,6 +22,8 @@ import {
   ChangePasswordDto,
   RequestPasswordResetDto,
   ResetPasswordDto,
+  GoogleAuthDto,
+  GoogleLinkDto,
 } from './dto/auth.dto';
 import { Prisma, User } from '@prisma/client';
 import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
@@ -40,6 +42,7 @@ import { RegistrationAbuseService } from './services/registration-abuse.service'
 import { AuthEmailAbuseService } from './services/auth-email-abuse.service';
 import { BotDefenseService } from '../common/services/bot-defense.service';
 import { OwnerEmailVerificationService } from './services/owner-email-verification.service';
+import { GoogleAuthService } from './services/google-auth.service';
 import { OwnershipService } from '../common/services/ownership.service';
 import { hashDeviceToken, verifyDeviceToken } from './device-token.crypto';
 import type { RequestUser } from './strategies/jwt.strategy';
@@ -102,6 +105,7 @@ export class AuthService {
     @Optional() private readonly botDefense?: BotDefenseService,
     @Optional()
     private readonly ownerEmailVerification?: OwnerEmailVerificationService,
+    @Optional() private readonly googleAuth?: GoogleAuthService,
   ) {}
 
   private normalizeEmail(email: string): string {
@@ -228,6 +232,7 @@ export class AuthService {
           data: {
             email: normalizedEmail,
             password: hashedPassword,
+            authProviders: ['email'],
             name: dto.name,
             isActive: true,
             // No tiene restaurante ni rol por ahora
@@ -289,6 +294,7 @@ export class AuthService {
           data: {
             email: normalizedEmail,
             password: hashedPassword,
+            authProviders: ['email'],
             name: dto.name,
             restaurantId: restaurant.id,
             roleId: ownerRoleId,
@@ -391,6 +397,7 @@ export class AuthService {
           data: {
             email: normalizedEmail,
             password: hashedPassword,
+            authProviders: ['email'],
             name,
             isActive: true,
             passwordSetupRequired: false,
@@ -616,6 +623,10 @@ export class AuthService {
     );
 
     for (const candidate of configuredActiveUsers) {
+      if (!candidate.password) {
+        continue;
+      }
+
       const isPasswordValid = await bcrypt.compare(
         dto.password,
         candidate.password,
@@ -652,6 +663,247 @@ export class AuthService {
     }
 
     throw new UnauthorizedException('Invalid credentials');
+  }
+
+  async loginWithGoogle(
+    dto: GoogleAuthDto,
+    meta?: { ip?: string },
+  ): Promise<AuthResponse> {
+    if (!this.googleAuth?.isConfigured()) {
+      throw new UnauthorizedException('Google sign-in is not configured');
+    }
+
+    if (this.botDefense?.isHoneypotTriggered(dto.companyWebsite)) {
+      this.botDefense.logHoneypotHit('auth.google', {
+        ip: meta?.ip,
+      });
+      await this.botDefense.applyBotDelayMs();
+      throw new UnauthorizedException('Invalid Google credential');
+    }
+
+    const intent = dto.intent === 'login' ? 'login' : 'register';
+    const googleProfile = await this.googleAuth.verifyIdToken(dto.credential);
+    const normalizedEmail = this.normalizeEmail(googleProfile.email);
+
+    if (intent === 'register') {
+      await this.botDefense?.assertTurnstileToken(dto.turnstileToken);
+      this.botDefense?.assertRegistrationEmailPolicy(googleProfile.email);
+
+      await this.registrationAbuse?.assertRegistrationAllowed({
+        ip: meta?.ip ?? 'unknown',
+        email: googleProfile.email,
+        name: googleProfile.name,
+        source: 'auth.google',
+      });
+    }
+
+    const byGoogleSub = await this.prisma.user.findFirst({
+      where: { googleSub: googleProfile.sub, deletedAt: null },
+      include: {
+        restaurant: { include: { hours: true } },
+        role: true,
+      },
+    });
+
+    if (byGoogleSub) {
+      if (!byGoogleSub.isActive) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+
+      const updatedUser = await this.prisma.user.update({
+        where: { id: byGoogleSub.id },
+        data: {
+          lastLogin: new Date(),
+          ...(googleProfile.picture && !byGoogleSub.avatar
+            ? { avatar: googleProfile.picture }
+            : {}),
+        },
+        include: {
+          restaurant: { include: { hours: true } },
+          role: true,
+        },
+      });
+
+      return await this.generateAuthResponse(updatedUser as User);
+    }
+
+    const byEmail = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+        deletedAt: null,
+      },
+      include: {
+        restaurant: { include: { hours: true } },
+        role: true,
+      },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    if (byEmail) {
+      if (!byEmail.isActive) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+
+      if (byEmail.googleSub) {
+        throw new UnauthorizedException('Invalid credentials');
+      }
+
+      if (byEmail.password) {
+        throw new ConflictException({
+          message:
+            'Ya existe una cuenta con este email. Vinculá Google con tu contraseña.',
+          code: 'ACCOUNT_EXISTS_USE_PASSWORD',
+          email: normalizedEmail,
+        });
+      }
+
+      const linkedUser = await this.prisma.user.update({
+        where: { id: byEmail.id },
+        data: {
+          googleSub: googleProfile.sub,
+          authProviders: this.mergeAuthProviders(
+            byEmail.authProviders,
+            'google',
+          ),
+          emailVerifiedAt: byEmail.emailVerifiedAt ?? new Date(),
+          lastLogin: new Date(),
+          ...(googleProfile.picture && !byEmail.avatar
+            ? { avatar: googleProfile.picture }
+            : {}),
+        },
+        include: {
+          restaurant: { include: { hours: true } },
+          role: true,
+        },
+      });
+
+      return await this.generateAuthResponse(linkedUser as User);
+    }
+
+    if (intent === 'login') {
+      throw new UnauthorizedException(
+        'No encontramos una cuenta con ese Google',
+      );
+    }
+
+    let user: User;
+    try {
+      user = await this.prisma.user.create({
+        data: {
+          email: normalizedEmail,
+          name: googleProfile.name,
+          password: null,
+          googleSub: googleProfile.sub,
+          authProviders: ['google'],
+          emailVerifiedAt: new Date(),
+          isActive: true,
+          avatar: googleProfile.picture ?? null,
+        },
+        include: {
+          restaurant: { include: { hours: true } },
+          role: true,
+        },
+      });
+    } catch (error) {
+      this.rethrowIfDuplicateUserEmail(error);
+    }
+
+    void this.maybeNotifyUserRegistered({
+      source: 'auth.google',
+      userId: user.id,
+      name: user.name,
+      email: user.email,
+      restaurantId: null,
+      restaurantName: null,
+    });
+
+    return await this.generateAuthResponse(user);
+  }
+
+  async linkGoogleWithPassword(
+    dto: GoogleLinkDto,
+    meta?: { ip?: string },
+  ): Promise<AuthResponse> {
+    if (!this.googleAuth?.isConfigured()) {
+      throw new UnauthorizedException('Google sign-in is not configured');
+    }
+
+    if (this.botDefense?.isHoneypotTriggered(dto.companyWebsite)) {
+      this.botDefense.logHoneypotHit('auth.google-link', { ip: meta?.ip });
+      await this.botDefense.applyBotDelayMs();
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const googleProfile = await this.googleAuth.verifyIdToken(dto.credential);
+    const normalizedEmail = this.normalizeEmail(googleProfile.email);
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        email: { equals: normalizedEmail, mode: 'insensitive' },
+        deletedAt: null,
+      },
+      include: {
+        restaurant: { include: { hours: true } },
+        role: true,
+      },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
+    });
+
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    if (user.passwordSetupRequired) {
+      throw new BadRequestException(
+        'Completá la activación de tu cuenta antes de vincular Google.',
+      );
+    }
+
+    if (!user.password) {
+      throw new BadRequestException('Esta cuenta no usa contraseña.');
+    }
+
+    if (user.googleSub && user.googleSub !== googleProfile.sub) {
+      throw new ConflictException(
+        'Esta cuenta ya está vinculada a otro Google.',
+      );
+    }
+
+    const isPasswordValid = await bcrypt.compare(dto.password, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException('Contraseña incorrecta');
+    }
+
+    const linkedUser = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        googleSub: googleProfile.sub,
+        authProviders: this.mergeAuthProviders(user.authProviders, 'google'),
+        emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
+        lastLogin: new Date(),
+        ...(googleProfile.picture && !user.avatar
+          ? { avatar: googleProfile.picture }
+          : {}),
+        ...(googleProfile.name && user.name.trim() === ''
+          ? { name: googleProfile.name }
+          : {}),
+      },
+      include: {
+        restaurant: { include: { hours: true } },
+        role: true,
+      },
+    });
+
+    return await this.generateAuthResponse(linkedUser as User);
+  }
+
+  private mergeAuthProviders(
+    current: string[] | null | undefined,
+    provider: string,
+  ): string[] {
+    const set = new Set(current ?? []);
+    set.add(provider);
+    return Array.from(set);
   }
 
   async completePasswordSetup(
@@ -776,6 +1028,12 @@ export class AuthService {
     if (user.passwordSetupRequired) {
       throw new BadRequestException(
         'Password setup is still pending. Complete your first login first.',
+      );
+    }
+
+    if (!user.password) {
+      throw new BadRequestException(
+        'Tu cuenta usa Google. Configurá una contraseña desde recuperación de acceso si la necesitás.',
       );
     }
 

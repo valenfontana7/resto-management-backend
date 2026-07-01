@@ -10,6 +10,7 @@ import {
 import * as bcrypt from 'bcrypt';
 import { RolesCatalogService } from '../common/services/roles-catalog.service';
 import { OwnershipService } from '../common/services/ownership.service';
+import { GoogleAuthService } from './services/google-auth.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -89,6 +90,13 @@ describe('AuthService', () => {
             verifyUserBelongsToRestaurant: jest
               .fn()
               .mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: GoogleAuthService,
+          useValue: {
+            isConfigured: jest.fn().mockReturnValue(true),
+            verifyIdToken: jest.fn(),
           },
         },
       ],
@@ -607,6 +615,164 @@ describe('AuthService', () => {
 
       expect(result).toHaveProperty('token');
       expect(prisma.user.create).toHaveBeenCalled();
+    });
+  });
+
+  describe('loginWithGoogle', () => {
+    let googleAuth: { isConfigured: jest.Mock; verifyIdToken: jest.Mock };
+
+    beforeEach(() => {
+      googleAuth = (service as any).googleAuth;
+      googleAuth.verifyIdToken.mockResolvedValue({
+        sub: 'google-sub-1',
+        email: 'google@example.com',
+        emailVerified: true,
+        name: 'Google User',
+        picture: 'https://example.com/pic.png',
+      });
+    });
+
+    it('creates a new user on register intent', async () => {
+      prisma.user.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+      prisma.user.create.mockResolvedValue({
+        ...mockUser,
+        id: 'google-user-1',
+        email: 'google@example.com',
+        password: null,
+        googleSub: 'google-sub-1',
+        authProviders: ['google'],
+        emailVerifiedAt: new Date(),
+        restaurant: null,
+        role: null,
+      });
+
+      const result = await service.loginWithGoogle({
+        credential: 'valid-token',
+        intent: 'register',
+      });
+
+      expect(result).toHaveProperty('token');
+      expect(prisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            googleSub: 'google-sub-1',
+            authProviders: ['google'],
+            password: null,
+          }),
+        }),
+      );
+    });
+
+    it('logs in an existing Google user', async () => {
+      prisma.user.findFirst.mockResolvedValueOnce({
+        ...mockUser,
+        googleSub: 'google-sub-1',
+        restaurant: mockUser.restaurant,
+        role: mockUser.role,
+      });
+      prisma.user.update.mockResolvedValue({
+        ...mockUser,
+        googleSub: 'google-sub-1',
+      });
+
+      const result = await service.loginWithGoogle({
+        credential: 'valid-token',
+        intent: 'login',
+      });
+
+      expect(result.user.email).toBe('test@example.com');
+      expect(prisma.user.update).toHaveBeenCalled();
+    });
+
+    it('throws conflict when email account uses password', async () => {
+      prisma.user.findFirst.mockResolvedValueOnce(null).mockResolvedValueOnce({
+        ...mockUser,
+        googleSub: null,
+        password: 'hashed',
+      });
+
+      await expect(
+        service.loginWithGoogle({
+          credential: 'valid-token',
+          intent: 'register',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('throws when login intent and user does not exist', async () => {
+      prisma.user.findFirst
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+
+      await expect(
+        service.loginWithGoogle({
+          credential: 'valid-token',
+          intent: 'login',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('linkGoogleWithPassword', () => {
+    let googleAuth: { isConfigured: jest.Mock; verifyIdToken: jest.Mock };
+
+    beforeEach(() => {
+      googleAuth = (service as any).googleAuth;
+      googleAuth.verifyIdToken.mockResolvedValue({
+        sub: 'google-sub-1',
+        email: 'test@example.com',
+        emailVerified: true,
+        name: 'Google User',
+      });
+    });
+
+    it('links Google when password is valid', async () => {
+      const hashedPassword = await bcrypt.hash('password123', 10);
+      prisma.user.findFirst.mockResolvedValue({
+        ...mockUser,
+        password: hashedPassword,
+        googleSub: null,
+        authProviders: ['email'],
+        restaurant: mockUser.restaurant,
+        role: mockUser.role,
+      });
+      prisma.user.update.mockResolvedValue({
+        ...mockUser,
+        googleSub: 'google-sub-1',
+        authProviders: ['email', 'google'],
+      });
+
+      const result = await service.linkGoogleWithPassword({
+        credential: 'valid-token',
+        password: 'password123',
+      });
+
+      expect(result).toHaveProperty('token');
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            googleSub: 'google-sub-1',
+          }),
+        }),
+      );
+    });
+
+    it('throws when password is wrong', async () => {
+      const hashedPassword = await bcrypt.hash('password123', 10);
+      prisma.user.findFirst.mockResolvedValue({
+        ...mockUser,
+        password: hashedPassword,
+        googleSub: null,
+      });
+
+      await expect(
+        service.linkGoogleWithPassword({
+          credential: 'valid-token',
+          password: 'wrong-password',
+        }),
+      ).rejects.toThrow(UnauthorizedException);
     });
   });
 });

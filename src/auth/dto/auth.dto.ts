@@ -162,3 +162,34 @@ export class IssueDeviceTokenDto {
   @IsString()
   terminalId: string;
 }
+
+export class GoogleAuthDto extends BotDefenseDto {
+  @ApiProperty({ description: 'Google Identity Services credential JWT' })
+  @IsString()
+  credential: string;
+
+  @ApiProperty({
+    example: 'register',
+    enum: ['login', 'register'],
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  intent?: 'login' | 'register';
+
+  @ApiProperty({ example: '/onboarding', required: false })
+  @IsOptional()
+  @IsString()
+  redirect?: string;
+}
+
+export class GoogleLinkDto extends BotDefenseDto {
+  @ApiProperty({ description: 'Google Identity Services credential JWT' })
+  @IsString()
+  credential: string;
+
+  @ApiProperty({ example: 'Str0ngPass!' })
+  @IsString()
+  @MinLength(6)
+  password: string;
+}

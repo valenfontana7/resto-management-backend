@@ -7,6 +7,7 @@ import { AuthService } from './auth.service';
 import { RegistrationAbuseService } from './services/registration-abuse.service';
 import { AuthEmailAbuseService } from './services/auth-email-abuse.service';
 import { OwnerEmailVerificationService } from './services/owner-email-verification.service';
+import { GoogleAuthService } from './services/google-auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { PrismaModule } from '../prisma/prisma.module';
@@ -37,6 +38,7 @@ import { getJwtSecret } from '../common/config/jwt.config';
     RegistrationAbuseService,
     AuthEmailAbuseService,
     OwnerEmailVerificationService,
+    GoogleAuthService,
     JwtStrategy,
     PermissionsGuard,
   ],
