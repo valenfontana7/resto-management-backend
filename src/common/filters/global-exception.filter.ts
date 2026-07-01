@@ -114,6 +114,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message,
       error,
       ...(code ? { code } : {}),
+      ...(typeof payload.email === 'string' ? { email: payload.email } : {}),
       timestamp: new Date().toISOString(),
       path: sanitizedPath,
       ...(isProduction
