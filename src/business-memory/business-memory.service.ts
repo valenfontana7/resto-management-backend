@@ -322,29 +322,28 @@ export class BusinessMemoryService {
   ) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
-    const upserts: Awaited<ReturnType<BusinessMemoryService['upsert']>>[] = [];
-    for (const insight of dto.insights) {
-      if (
-        insight.providerId === 'platform' ||
-        insight.id.startsWith('platform:')
-      ) {
-        continue;
-      }
+    const upserts = await Promise.all(
+      dto.insights
+        .filter(
+          (insight) =>
+            insight.providerId !== 'platform' &&
+            !insight.id.startsWith('platform:'),
+        )
+        .map(async (insight) => {
+          const category =
+            INSIGHT_CATEGORY_MAP[insight.category.toLowerCase()] ??
+            BusinessMemoryCategory.OPERATIONAL;
 
-      const category =
-        INSIGHT_CATEGORY_MAP[insight.category.toLowerCase()] ??
-        BusinessMemoryCategory.OPERATIONAL;
-
-      const result = await this.upsert(restaurantId, userId, {
-        memoryKey: insight.id,
-        category,
-        title: insight.title,
-        summary: insight.message,
-        sourceProvider: insight.providerId,
-        sourceInsightId: insight.id,
-      });
-      upserts.push(result);
-    }
+          return this.upsert(restaurantId, userId, {
+            memoryKey: insight.id,
+            category,
+            title: insight.title,
+            summary: insight.message,
+            sourceProvider: insight.providerId,
+            sourceInsightId: insight.id,
+          });
+        }),
+    );
 
     const providerIds = dto.providerIds ?? [
       ...new Set(dto.insights.map((insight) => insight.providerId)),
