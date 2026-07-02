@@ -641,6 +641,16 @@ export class FeaturesDto {
   @IsBoolean()
   orders?: boolean;
 
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  salon?: boolean;
+
+  @ApiPropertyOptional({ example: false })
+  @IsOptional()
+  @IsBoolean()
+  tables?: boolean;
+
   @ApiPropertyOptional({ example: false })
   @IsOptional()
   @IsBoolean()

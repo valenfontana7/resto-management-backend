@@ -4,17 +4,13 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
+
 import { PrismaService } from '../../prisma/prisma.service';
 
-type FeatureKey =
-  | 'menu'
-  | 'orders'
-  | 'reservations'
-  | 'delivery'
-  | 'loyalty'
-  | 'reviews'
-  | 'giftCards'
-  | 'catering';
+import {
+  normalizeRestaurantFeatures,
+  type RestaurantFeatureKey,
+} from '../utils/restaurant-features.util';
 
 @Injectable()
 export class FeatureFlagsGuard implements CanActivate {
@@ -22,25 +18,39 @@ export class FeatureFlagsGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
+
     const method = request?.method?.toUpperCase?.() || '';
 
     if (method === 'OPTIONS') return true;
 
+    const userRole = request?.user?.role;
+
+    const impersonatedBy = request?.user?.impersonatedBy;
+
+    if (userRole === 'SUPER_ADMIN' || impersonatedBy) {
+      return true;
+    }
+
     const url = (request?.originalUrl || request?.url || '').toLowerCase();
+
     const feature = this.getFeatureFromUrl(url);
+
     if (!feature) return true;
 
     const restaurantId = await this.resolveRestaurantId(request, feature, url);
+
     if (!restaurantId) return true;
 
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { id: restaurantId },
+
       select: { features: true },
     });
 
     if (!restaurant) return true;
 
-    const features = this.normalizeFeatures(restaurant.features);
+    const features = normalizeRestaurantFeatures(restaurant.features);
+
     if (features[feature] === false) {
       throw new ForbiddenException(
         `Feature disabled: ${feature}. Please enable it in restaurant settings.`,
@@ -50,7 +60,7 @@ export class FeatureFlagsGuard implements CanActivate {
     return true;
   }
 
-  private getFeatureFromUrl(url: string): FeatureKey | null {
+  private getFeatureFromUrl(url: string): RestaurantFeatureKey | null {
     if (
       /^\/api\/public\/[^/]+\/menu\b/.test(url) ||
       /^\/api\/restaurants\/[^/]+\/menu\b/.test(url) ||
@@ -68,6 +78,14 @@ export class FeatureFlagsGuard implements CanActivate {
       /^\/admin\/orders\b/.test(url)
     ) {
       return 'orders';
+    }
+
+    if (this.isSalonFloorUrl(url)) {
+      return 'salon';
+    }
+
+    if (/^\/api\/tables\b/.test(url)) {
+      return 'tables';
     }
 
     if (
@@ -108,68 +126,69 @@ export class FeatureFlagsGuard implements CanActivate {
     return null;
   }
 
+  /** Operaciones de piso/salón — excluye turno del día y caja mayor. */
+
+  private isSalonFloorUrl(url: string): boolean {
+    if (!/^\/api\/restaurants\/[^/]+\/floor\b/.test(url)) {
+      return false;
+    }
+
+    if (/^\/api\/restaurants\/[^/]+\/floor\/daily-operation\b/.test(url)) {
+      return false;
+    }
+
+    if (/^\/api\/restaurants\/[^/]+\/floor\/cash-register\/main\b/.test(url)) {
+      return false;
+    }
+
+    return true;
+  }
+
   private async resolveRestaurantId(
     request: any,
-    feature: FeatureKey,
+
+    feature: RestaurantFeatureKey,
+
     url: string,
   ): Promise<string | null> {
     const params = request?.params || {};
 
     if (params.restaurantId) return params.restaurantId;
+
     if (params.id && url.startsWith('/api/restaurants/')) return params.id;
 
     if (feature === 'reservations') {
       const reservationId = params.reservationId || params.id;
+
       if (reservationId && url.startsWith('/api/reservations/')) {
         const reservation = await this.prisma.reservation.findUnique({
           where: { id: reservationId },
+
           select: { restaurantId: true },
         });
+
         return reservation?.restaurantId || null;
       }
     }
 
     if (feature === 'menu') {
       const slug = params.slug;
+
       if (slug && url.startsWith('/api/public/')) {
         const restaurant = await this.prisma.restaurant.findUnique({
           where: { slug },
+
           select: { id: true },
         });
+
         return restaurant?.id || null;
       }
     }
 
     const userRestaurantId = request?.user?.restaurantId;
+
     if (userRestaurantId) return userRestaurantId;
 
     return null;
-  }
-
-  private normalizeFeatures(raw: any) {
-    const defaults = {
-      menu: true,
-      orders: true,
-      reservations: false,
-      delivery: false,
-      loyalty: false,
-      reviews: false,
-      giftCards: false,
-      catering: false,
-      onlineOrdering: true,
-      takeaway: true,
-      socialMedia: true,
-    };
-
-    const input = raw && typeof raw === 'object' ? raw : {};
-    const normalized = { ...defaults, ...input };
-
-    if (normalized.orders === false) {
-      normalized.onlineOrdering = false;
-      normalized.delivery = false;
-      normalized.takeaway = false;
-    }
-
-    return normalized;
   }
 }

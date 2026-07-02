@@ -8,6 +8,7 @@ export interface RequestUser {
   restaurantId?: string | null;
   tokenType?: 'user' | 'device';
   terminalId?: string | null;
+  impersonatedBy?: string | null;
 }
 
 export const CurrentUser = createParamDecorator(

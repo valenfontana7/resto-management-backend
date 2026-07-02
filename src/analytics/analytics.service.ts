@@ -5,6 +5,7 @@ import { OrderSource, OrderStatus } from '@prisma/client';
 import {
   getCustomerRankingKey,
   getSalonTableRankingKey,
+  isOnlineCustomerOrder,
 } from '../orders/utils/order-channel.util';
 
 @Injectable()
@@ -83,6 +84,7 @@ export class AnalyticsService {
       tables,
       performance,
       comparison,
+      topDishes,
     ] = await Promise.all([
       this.getSales(restaurantId, period, startDate, endDate),
       this.getCategoryBreakdown(restaurantId, period, startDate, endDate),
@@ -91,6 +93,7 @@ export class AnalyticsService {
       this.getTopTables(restaurantId, period, 10, startDate, endDate),
       this.getPerformance(restaurantId, period, startDate, endDate),
       this.getComparison(restaurantId, period, startDate, endDate),
+      this.getTopDishes(restaurantId, period, 10, startDate, endDate),
     ]);
 
     return {
@@ -99,6 +102,7 @@ export class AnalyticsService {
       hourlyData: hourly.hourlyData,
       topCustomers: customers.topCustomers,
       topTables: tables.topTables,
+      topDishes: topDishes.topDishes,
       metrics: performance.metrics,
       comparison: comparison.comparison,
     };
@@ -115,61 +119,43 @@ export class AnalyticsService {
   ) {
     const { start, end } = this.getDateRange(period, startDate, endDate);
 
-    const orderItems = await this.prisma.orderItem.findMany({
-      where: {
-        order: {
-          restaurantId,
-          status: OrderStatus.DELIVERED,
-          createdAt: {
-            gte: start,
-            lte: end,
-          },
-        },
-      },
-      include: {
-        dish: {
-          include: {
-            category: true,
-          },
-        },
-      },
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        category: string;
+        sales: bigint | number;
+        orders: bigint | number;
+      }>
+    >`
+      SELECT
+        COALESCE(c."name", 'Sin categoría') AS "category",
+        COALESCE(SUM(oi."subtotal"), 0) AS "sales",
+        COALESCE(SUM(oi."quantity"), 0)::int AS "orders"
+      FROM "OrderItem" oi
+      JOIN "Order" o ON o."id" = oi."orderId"
+      LEFT JOIN "Dish" d ON d."id" = oi."dishId"
+      LEFT JOIN "Category" c ON c."id" = d."categoryId"
+      WHERE o."restaurantId" = ${restaurantId}
+        AND o."status" = 'DELIVERED'
+        AND o."createdAt" >= ${start}
+        AND o."createdAt" <= ${end}
+      GROUP BY c."name"
+      ORDER BY "sales" DESC
+    `;
+
+    const totalSales = rows.reduce((sum, row) => sum + Number(row.sales), 0);
+
+    const categoryBreakdown = rows.map((row) => {
+      const sales = Number(row.sales);
+      return {
+        category: row.category,
+        sales,
+        orders: Number(row.orders),
+        percentage:
+          totalSales > 0
+            ? parseFloat(((sales / totalSales) * 100).toFixed(1))
+            : 0,
+      };
     });
-
-    const categoryMap = new Map<
-      string,
-      { category: string; sales: number; orders: number }
-    >();
-
-    orderItems.forEach((item) => {
-      const categoryName = item.dish?.category?.name || 'Sin categoría';
-
-      if (!categoryMap.has(categoryName)) {
-        categoryMap.set(categoryName, {
-          category: categoryName,
-          sales: 0,
-          orders: 0,
-        });
-      }
-
-      const data = categoryMap.get(categoryName)!;
-      data.sales += item.subtotal;
-      data.orders += item.quantity;
-    });
-
-    const totalSales = Array.from(categoryMap.values()).reduce(
-      (sum, cat) => sum + cat.sales,
-      0,
-    );
-
-    const categoryBreakdown = Array.from(categoryMap.values()).map((cat) => ({
-      ...cat,
-      percentage:
-        totalSales > 0
-          ? parseFloat(((cat.sales / totalSales) * 100).toFixed(1))
-          : 0,
-    }));
-
-    categoryBreakdown.sort((a, b) => b.sales - a.sales);
 
     return { categoryBreakdown };
   }
@@ -238,7 +224,6 @@ export class AnalyticsService {
       where: {
         restaurantId,
         status: OrderStatus.DELIVERED,
-        orderSource: OrderSource.ONLINE,
         createdAt: {
           gte: start,
           lte: end,
@@ -268,6 +253,8 @@ export class AnalyticsService {
     >();
 
     orders.forEach((order) => {
+      if (!isOnlineCustomerOrder(order)) return;
+
       const key = getCustomerRankingKey(order);
       if (!key) return;
 

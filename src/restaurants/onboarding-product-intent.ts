@@ -6,6 +6,8 @@ export function featuresForProductIntent(intent?: OnboardingProductIntent) {
       return {
         menu: true,
         orders: true,
+        salon: true,
+        tables: false,
         onlineOrdering: false,
         takeaway: false,
         socialMedia: false,
@@ -16,6 +18,8 @@ export function featuresForProductIntent(intent?: OnboardingProductIntent) {
       return {
         menu: true,
         orders: true,
+        salon: true,
+        tables: true,
         onlineOrdering: true,
         takeaway: true,
         socialMedia: true,
@@ -27,6 +31,8 @@ export function featuresForProductIntent(intent?: OnboardingProductIntent) {
       return {
         menu: true,
         orders: true,
+        salon: true,
+        tables: true,
         onlineOrdering: true,
         takeaway: true,
         socialMedia: true,

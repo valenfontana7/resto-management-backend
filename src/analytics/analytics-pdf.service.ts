@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
+import {
+  pdfTableColumnsFromWeights,
+  renderPdfTable,
+  type PdfDoc,
+} from '../common/utils/pdf-table.util';
 
 interface ReportData {
   period: string;
@@ -103,7 +108,7 @@ export class AnalyticsPdfService {
     });
   }
 
-  private addSection(doc: PDFKit.PDFDocument, title: string) {
+  private addSection(doc: PdfDoc, title: string) {
     doc.fontSize(14).font('Helvetica-Bold').fillColor('#1a1a1a').text(title);
     doc.moveDown(0.5);
     doc
@@ -114,38 +119,17 @@ export class AnalyticsPdfService {
     doc.moveDown(0.5);
   }
 
-  private addTable(
-    doc: PDFKit.PDFDocument,
-    headers: string[],
-    rows: string[][],
-  ) {
-    const colWidth = 495 / headers.length;
+  private addTable(doc: PdfDoc, headers: string[], rows: string[][]) {
+    const weights =
+      headers.length === 2
+        ? [2, 1]
+        : headers.length === 3
+          ? [2.5, 1.5, 1.5]
+          : headers.length === 4
+            ? [3, 1.2, 1.2, 1.2]
+            : headers.map(() => 1);
 
-    // Headers
-    doc.font('Helvetica-Bold').fontSize(9).fillColor('#444');
-    headers.forEach((h, i) => {
-      doc.text(h, 50 + i * colWidth, doc.y, {
-        width: colWidth,
-        continued: i < headers.length - 1,
-      });
-    });
-    doc.moveDown(0.5);
-
-    // Rows
-    doc.font('Helvetica').fontSize(9).fillColor('#333');
-    for (const row of rows) {
-      const y = doc.y;
-      if (y > 750) {
-        doc.addPage();
-      }
-      row.forEach((cell, i) => {
-        doc.text(cell, 50 + i * colWidth, doc.y, {
-          width: colWidth,
-          continued: i < row.length - 1,
-        });
-      });
-      doc.moveDown(0.3);
-    }
+    renderPdfTable(doc, pdfTableColumnsFromWeights(headers, weights), rows);
   }
 
   private formatCurrency(value: number): string {

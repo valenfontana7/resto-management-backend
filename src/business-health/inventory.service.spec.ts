@@ -4,6 +4,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
 import { BusinessEventPublisherService } from '../business-events/business-event-publisher.service';
 
+import { InventoryPdfService } from './inventory-pdf.service';
+
 describe('InventoryService.applyStockAvailability', () => {
   let service: InventoryService;
   let prisma: {
@@ -31,6 +33,10 @@ describe('InventoryService.applyStockAvailability', () => {
             publish: jest.fn().mockResolvedValue({}),
             publishDeduped: jest.fn().mockResolvedValue(null),
           },
+        },
+        {
+          provide: InventoryPdfService,
+          useValue: { generateReport: jest.fn() },
         },
       ],
     }).compile();

@@ -6,8 +6,10 @@ import {
   Param,
   Patch,
   Post,
+  Res,
   UseGuards,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/strategies/jwt.strategy';
@@ -28,6 +30,22 @@ export class InventoryController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.inventory.list(restaurantId, user.userId);
+  }
+
+  @Get('export-pdf')
+  async exportPdf(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.inventory.exportPdf(restaurantId, user.userId);
+    const filename = `inventario-${new Date().toISOString().slice(0, 10)}.pdf`;
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Length': buffer.length,
+    });
+    res.end(buffer);
   }
 
   @Post()

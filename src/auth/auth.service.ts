@@ -57,6 +57,7 @@ export interface JwtPayload {
   tokenType?: 'user' | 'device';
   terminalId?: string;
   issuedByUserId?: string;
+  impersonatedBy?: string;
 }
 
 export interface AuthResponse {
@@ -1417,7 +1418,10 @@ export class AuthService {
       .replace(/'/g, '&#39;');
   }
 
-  async generateAuthResponse(user: User): Promise<AuthResponse> {
+  async generateAuthResponse(
+    user: User,
+    options?: { impersonatedBy?: string },
+  ): Promise<AuthResponse> {
     // Ensure role and restaurant relations are present
     let fullUser: any = user;
     if (!user || !('role' in user) || !('restaurant' in user)) {
@@ -1448,6 +1452,9 @@ export class AuthService {
       restaurantId: fullUser.restaurantId ?? null,
       roleName: fullUser.role?.name ?? null,
       restaurantSlug: fullUser.restaurant?.slug ?? null,
+      ...(options?.impersonatedBy
+        ? { impersonatedBy: options.impersonatedBy }
+        : {}),
     };
 
     const token = this.jwtService.sign(payload);
@@ -1623,7 +1630,9 @@ export class AuthService {
     }
 
     // 2. Generate Token
-    const authResponse = await this.generateAuthResponse(targetUser);
+    const authResponse = await this.generateAuthResponse(targetUser, {
+      impersonatedBy: adminId,
+    });
 
     // 3. Log Audit
     await this.prisma.adminAuditLog.create({

@@ -109,25 +109,28 @@ export class DishesService {
       restaurantId,
       { select: { planType: true } },
     );
-    const maxProducts = await this.planEntitlements.getLimit(
-      planId,
-      'products',
-    );
-    const fallbackMaxProducts =
-      PLAN_LIMITS[(subscription?.planType as PlanType) || PlanType.STARTER]
-        ?.maxProducts ?? PLAN_LIMITS[PlanType.STARTER].maxProducts;
-    const effectiveMaxProducts =
-      maxProducts === 0 ? fallbackMaxProducts : maxProducts;
 
-    if (!isUnlimitedLimit(effectiveMaxProducts)) {
-      const currentProducts = await this.prisma.dish.count({
-        where: { restaurantId, deletedAt: null },
-      });
+    if (!(await this.ownership.isFounderUser(userId))) {
+      const maxProducts = await this.planEntitlements.getLimit(
+        planId,
+        'products',
+      );
+      const fallbackMaxProducts =
+        PLAN_LIMITS[(subscription?.planType as PlanType) || PlanType.STARTER]
+          ?.maxProducts ?? PLAN_LIMITS[PlanType.STARTER].maxProducts;
+      const effectiveMaxProducts =
+        maxProducts === 0 ? fallbackMaxProducts : maxProducts;
 
-      if (currentProducts >= effectiveMaxProducts) {
-        throw new BadRequestException(
-          `Tu plan actual permite hasta ${effectiveMaxProducts} productos. Actualiza tu plan para agregar más.`,
-        );
+      if (!isUnlimitedLimit(effectiveMaxProducts)) {
+        const currentProducts = await this.prisma.dish.count({
+          where: { restaurantId, deletedAt: null },
+        });
+
+        if (currentProducts >= effectiveMaxProducts) {
+          throw new BadRequestException(
+            `Tu plan actual permite hasta ${effectiveMaxProducts} productos. Actualiza tu plan para agregar más.`,
+          );
+        }
       }
     }
 

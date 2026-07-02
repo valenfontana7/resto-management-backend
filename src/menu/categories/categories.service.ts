@@ -82,25 +82,28 @@ export class CategoriesService {
       restaurantId,
       { select: { planType: true } },
     );
-    const maxCategories = await this.planEntitlements.getLimit(
-      planId,
-      'categories',
-    );
-    const fallbackMaxCategories =
-      PLAN_LIMITS[(subscription?.planType as PlanType) || PlanType.STARTER]
-        ?.maxCategories ?? PLAN_LIMITS[PlanType.STARTER].maxCategories;
-    const effectiveMaxCategories =
-      maxCategories === 0 ? fallbackMaxCategories : maxCategories;
 
-    if (!isUnlimitedLimit(effectiveMaxCategories)) {
-      const currentCategories = await this.prisma.category.count({
-        where: { restaurantId, deletedAt: null },
-      });
+    if (!(await this.ownership.isFounderUser(userId))) {
+      const maxCategories = await this.planEntitlements.getLimit(
+        planId,
+        'categories',
+      );
+      const fallbackMaxCategories =
+        PLAN_LIMITS[(subscription?.planType as PlanType) || PlanType.STARTER]
+          ?.maxCategories ?? PLAN_LIMITS[PlanType.STARTER].maxCategories;
+      const effectiveMaxCategories =
+        maxCategories === 0 ? fallbackMaxCategories : maxCategories;
 
-      if (currentCategories >= effectiveMaxCategories) {
-        throw new ConflictException(
-          `Tu plan actual permite hasta ${effectiveMaxCategories} categorías. Actualiza tu plan para agregar más.`,
-        );
+      if (!isUnlimitedLimit(effectiveMaxCategories)) {
+        const currentCategories = await this.prisma.category.count({
+          where: { restaurantId, deletedAt: null },
+        });
+
+        if (currentCategories >= effectiveMaxCategories) {
+          throw new ConflictException(
+            `Tu plan actual permite hasta ${effectiveMaxCategories} categorías. Actualiza tu plan para agregar más.`,
+          );
+        }
       }
     }
 

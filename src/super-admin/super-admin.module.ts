@@ -5,6 +5,7 @@ import { SuperAdminRestaurantsService } from './services/super-admin-restaurants
 import { SuperAdminUsersService } from './services/super-admin-users.service';
 import { SuperAdminOrdersService } from './services/super-admin-orders.service';
 import { SuperAdminSubscriptionsService } from './services/super-admin-subscriptions.service';
+import { SuperAdminPlatformService } from './services/super-admin-platform.service';
 import { AuthModule } from '../auth/auth.module';
 import { KitchenModule } from '../kitchen/kitchen.module';
 import { AdminAlertsModule } from '../admin-alerts/admin-alerts.module';
@@ -26,6 +27,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
     SuperAdminUsersService,
     SuperAdminOrdersService,
     SuperAdminSubscriptionsService,
+    SuperAdminPlatformService,
   ],
   exports: [SuperAdminService],
 })

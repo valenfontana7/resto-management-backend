@@ -107,6 +107,8 @@ export function planHasFeature(planType: PlanType, feature: string): boolean {
 export interface RestaurantFeatures {
   menu: boolean;
   orders: boolean;
+  salon: boolean;
+  tables: boolean;
   reservations: boolean;
   delivery: boolean;
   loyalty: boolean;
@@ -126,6 +128,8 @@ function buildRestaurantFeaturesFromPlan(plan: PlanType): RestaurantFeatures {
   return {
     menu: feature('qr_menus'),
     orders: onlineOrders,
+    salon: onlineOrders,
+    tables: feature('reservations'),
     reservations: feature('reservations'),
     delivery: feature('delivery'),
     loyalty: feature('loyalty'),

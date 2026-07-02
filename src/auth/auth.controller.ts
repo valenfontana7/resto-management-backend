@@ -474,7 +474,14 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'User data retrieved' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getMe(@CurrentUser() user: RequestUser) {
-    return this.authService.getMe(user.userId);
+    const profile = await this.authService.getMe(user.userId);
+    return {
+      ...profile,
+      user: {
+        ...profile.user,
+        impersonatedBy: user.impersonatedBy ?? null,
+      },
+    };
   }
 
   @Get('restaurants')

@@ -8,6 +8,7 @@ import { BusinessHealthController } from './business-health.controller';
 import { BusinessHealthService } from './business-health.service';
 import { BusinessHealthAlertsService } from './business-health-alerts.service';
 import { BusinessHealthPdfService } from './business-health-pdf.service';
+import { InventoryPdfService } from './inventory-pdf.service';
 import { BusinessHealthSchedulerService } from './business-health-scheduler.service';
 import { DishRecipeController } from './dish-recipe.controller';
 import { DishRecipeService } from './dish-recipe.service';
@@ -32,6 +33,7 @@ import { InventoryConsumptionService } from './inventory-consumption.service';
     BusinessHealthService,
     BusinessHealthAlertsService,
     BusinessHealthPdfService,
+    InventoryPdfService,
     BusinessHealthSchedulerService,
     InventoryService,
     InventoryConsumptionService,

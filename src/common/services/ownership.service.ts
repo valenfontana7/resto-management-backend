@@ -16,6 +16,30 @@ export class OwnershipService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * Fundador / SUPER_ADMIN de la plataforma.
+   */
+  async isFounderUser(userId: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        role: { select: { name: true } },
+      },
+    });
+
+    return user?.role?.name === 'SUPER_ADMIN';
+  }
+
+  /** Fundador directo o sesión de soporte con JWT impersonatedBy */
+  async hasFounderPrivileges(
+    userId: string,
+    impersonatedBy?: string | null,
+  ): Promise<boolean> {
+    if (await this.isFounderUser(userId)) return true;
+    if (!impersonatedBy) return false;
+    return this.isFounderUser(impersonatedBy);
+  }
+
+  /**
    * Verifica que un usuario tenga acceso a un restaurante.
    * Lanza ForbiddenException si no tiene permiso.
    *
@@ -127,6 +151,10 @@ export class OwnershipService {
         role: { select: { name: true } },
       },
     });
+
+    if (user?.role?.name === 'SUPER_ADMIN') {
+      return;
+    }
 
     if (!user || user.restaurantId !== restaurantId) {
       throw new ForbiddenException('You do not have access to this restaurant');

@@ -7,6 +7,8 @@ import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
 } from './dto/inventory-item.dto';
+import { InventoryPdfService } from './inventory-pdf.service';
+import { isAutoDeductOnSaleEnabled } from './inventory-consumption.utils';
 
 @Injectable()
 export class InventoryService {
@@ -14,6 +16,7 @@ export class InventoryService {
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
     private readonly businessEvents: BusinessEventPublisherService,
+    private readonly pdf: InventoryPdfService,
   ) {}
 
   async list(restaurantId: string, userId: string) {
@@ -86,6 +89,64 @@ export class InventoryService {
     await this.prisma.inventoryItem.delete({ where: { id: itemId } });
     const availability = await this.applyStockAvailability(restaurantId);
     return { success: true, availability };
+  }
+
+  async exportPdf(restaurantId: string, userId: string): Promise<Buffer> {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    const [restaurant, items] = await Promise.all([
+      this.prisma.restaurant.findUnique({
+        where: { id: restaurantId },
+        select: { name: true, businessRules: true },
+      }),
+      this.prisma.inventoryItem.findMany({
+        where: { restaurantId },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    if (!restaurant) {
+      throw new NotFoundException('Restaurante no encontrado');
+    }
+
+    const linkedDishIds = [
+      ...new Set(items.flatMap((item) => item.linkedDishIds)),
+    ];
+    const dishes =
+      linkedDishIds.length > 0
+        ? await this.prisma.dish.findMany({
+            where: { restaurantId, id: { in: linkedDishIds }, deletedAt: null },
+            select: { id: true, name: true },
+          })
+        : [];
+    const dishNameById = new Map(dishes.map((dish) => [dish.id, dish.name]));
+
+    const lowStockItems = items.filter(
+      (item) => item.currentStock <= item.minStock,
+    );
+    const affectedDishes = lowStockItems.flatMap((item) =>
+      item.linkedDishIds.map((dishId) => ({
+        dishName: dishNameById.get(dishId) ?? 'Plato',
+        inventoryItemName: item.name,
+      })),
+    );
+
+    return this.pdf.generateReport({
+      restaurantName: restaurant.name,
+      autoDeductOnSale: isAutoDeductOnSaleEnabled(restaurant.businessRules),
+      items: items.map((item) => ({
+        name: item.name,
+        unit: item.unit,
+        currentStock: item.currentStock,
+        minStock: item.minStock,
+        unitCost: item.unitCost,
+        autoDisableDishes: item.autoDisableDishes,
+        linkedDishNames: item.linkedDishIds.map(
+          (dishId) => dishNameById.get(dishId) ?? 'Plato',
+        ),
+      })),
+      affectedDishes,
+    });
   }
 
   /**

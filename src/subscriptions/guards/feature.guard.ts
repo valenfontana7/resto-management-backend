@@ -50,8 +50,8 @@ export class FeatureGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
-    // SUPER_ADMIN tiene acceso ilimitado a todas las features
-    if (user && user.role === 'SUPER_ADMIN') {
+    // SUPER_ADMIN o sesión de soporte elevada (impersonación fundador)
+    if (user && (user.role === 'SUPER_ADMIN' || user.impersonatedBy)) {
       return true;
     }
 

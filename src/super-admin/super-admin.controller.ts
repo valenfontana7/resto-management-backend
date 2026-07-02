@@ -100,6 +100,38 @@ export class SuperAdminController {
     return this.superAdminService.getFiscalHealth();
   }
 
+  @Get('audit-logs')
+  async getAuditLogs(
+    @Query('restaurantId') restaurantId?: string,
+    @Query('action') action?: string,
+    @Query('adminId') adminId?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.superAdminService.getAuditLogs({
+      restaurantId,
+      action,
+      adminId,
+      limit: limit ? +limit : undefined,
+      offset: offset ? +offset : undefined,
+    });
+  }
+
+  @Get('billing/overview')
+  async getBillingOverview() {
+    return this.superAdminService.getBillingOverview();
+  }
+
+  @Get('alerts/inbox')
+  async getAlertInbox(@Query('limit') limit?: string) {
+    return this.superAdminService.getAlertInbox(limit ? +limit : undefined);
+  }
+
+  @Get('system/observability')
+  async getSystemObservability() {
+    return this.superAdminService.getSystemObservability();
+  }
+
   @Get('users')
   async getUsers(
     @Query('search') search?: string,

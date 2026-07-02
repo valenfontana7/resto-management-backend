@@ -4,6 +4,7 @@ import { SuperAdminRestaurantsService } from './services/super-admin-restaurants
 import { SuperAdminUsersService } from './services/super-admin-users.service';
 import { SuperAdminOrdersService } from './services/super-admin-orders.service';
 import { SuperAdminSubscriptionsService } from './services/super-admin-subscriptions.service';
+import { SuperAdminPlatformService } from './services/super-admin-platform.service';
 import { UpdateRestaurantStatusDto } from './dto/update-restaurant-status.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
@@ -26,6 +27,7 @@ export class SuperAdminService {
     private users: SuperAdminUsersService,
     private orders: SuperAdminOrdersService,
     private subscriptions: SuperAdminSubscriptionsService,
+    private platform: SuperAdminPlatformService,
   ) {
     void this.ensureSuperAdminRole();
   }
@@ -438,5 +440,27 @@ export class SuperAdminService {
       authorizedRecent,
       rejectionRate,
     };
+  }
+
+  getAuditLogs(options: {
+    restaurantId?: string;
+    action?: string;
+    adminId?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    return this.platform.getAuditLogs(options);
+  }
+
+  getBillingOverview() {
+    return this.platform.getBillingOverview();
+  }
+
+  getAlertInbox(limit?: number) {
+    return this.platform.getAlertInbox(limit);
+  }
+
+  getSystemObservability() {
+    return this.platform.getSystemObservability();
   }
 }

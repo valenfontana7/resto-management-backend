@@ -14,6 +14,7 @@ import { RestaurantSettingsService } from './services/restaurant-settings.servic
 import { RestaurantStatus, SubscriptionStatus } from '@prisma/client';
 import { adjustFeaturesForPlan } from '../subscriptions/constants';
 import { PlanType } from '../subscriptions/dto';
+import { normalizeRestaurantFeatures } from '../common/utils/restaurant-features.util';
 import { RolesCatalogService } from '../common/services/roles-catalog.service';
 import { SubscriptionResolverService } from '../subscriptions/subscription-resolver.service';
 
@@ -174,7 +175,7 @@ export class RestaurantsService {
     const mapped: any = { ...restaurant };
 
     if ('features' in mapped) {
-      mapped.features = this.normalizeFeatures(mapped.features);
+      mapped.features = normalizeRestaurantFeatures(mapped.features);
     }
 
     if ('logo' in mapped) mapped.logo = this.s3.toClientUrl(mapped.logo);
@@ -196,33 +197,7 @@ export class RestaurantsService {
   }
 
   private normalizeFeatures(raw: any) {
-    const defaults = {
-      menu: true,
-      orders: true,
-      reservations: false,
-      delivery: false,
-      loyalty: false,
-      reviews: false,
-      giftCards: false,
-      catering: false,
-      onlineOrdering: true,
-      takeaway: true,
-      socialMedia: true,
-    };
-
-    const input = raw && typeof raw === 'object' ? raw : {};
-    const normalized = {
-      ...defaults,
-      ...input,
-    };
-
-    if (normalized.orders === false) {
-      normalized.onlineOrdering = false;
-      normalized.delivery = false;
-      normalized.takeaway = false;
-    }
-
-    return normalized;
+    return normalizeRestaurantFeatures(raw);
   }
 
   private normalizePlanType(value: unknown): PlanType {

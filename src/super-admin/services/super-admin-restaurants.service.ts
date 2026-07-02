@@ -362,6 +362,7 @@ export class SuperAdminRestaurantsService {
 
     if (dto.branding !== undefined) updateData.branding = dto.branding;
     if (dto.isPublished !== undefined) updateData.isPublished = dto.isPublished;
+    if (dto.features !== undefined) updateData.features = dto.features;
 
     const updated = await this.prisma.restaurant.update({
       where: { id },

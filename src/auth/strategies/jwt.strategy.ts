@@ -12,6 +12,7 @@ export interface RequestUser {
   role?: string | null;
   tokenType?: 'user' | 'device';
   terminalId?: string | null;
+  impersonatedBy?: string | null;
 }
 
 @Injectable()
@@ -33,6 +34,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       roleId: user.roleId || null,
       restaurantId: user.restaurantId || null,
       role: user.role?.name || null,
+      impersonatedBy: payload.impersonatedBy ?? null,
     };
   }
 }

@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import PDFDocument from 'pdfkit';
-
-type PdfDoc = InstanceType<typeof PDFDocument>;
+import {
+  pdfTableColumnsFromWeights,
+  renderPdfTable,
+  type PdfDoc,
+} from '../common/utils/pdf-table.util';
 
 interface HealthPdfInput {
   restaurantName: string;
@@ -74,12 +77,13 @@ export class BusinessHealthPdfService {
       doc
         .fontSize(20)
         .font('Helvetica-Bold')
+        .fillColor('#111111')
         .text('Salud del negocio', { align: 'center' });
       doc.moveDown(0.3);
       doc
         .fontSize(11)
         .font('Helvetica')
-        .fillColor('#666')
+        .fillColor('#666666')
         .text(
           `${input.restaurantName} · últimos ${input.periodDays} días · ${new Date().toLocaleDateString('es-AR')}`,
           { align: 'center' },
@@ -87,9 +91,9 @@ export class BusinessHealthPdfService {
       doc.moveDown(1.2);
 
       this.addSection(doc, 'Scores de salud');
-      this.addTable(
+      renderPdfTable(
         doc,
-        ['Área', 'Score'],
+        pdfTableColumnsFromWeights(['Área', 'Score'], [3, 1]),
         [
           ['General', String(data.healthScore.overall)],
           ['Operación', String(data.healthScore.operational)],
@@ -100,9 +104,12 @@ export class BusinessHealthPdfService {
       doc.moveDown(0.8);
 
       this.addSection(doc, 'Canal comercial');
-      this.addTable(
+      renderPdfTable(
         doc,
-        ['Canal', 'Ingresos', 'Participación'],
+        pdfTableColumnsFromWeights(
+          ['Canal', 'Ingresos', 'Participación'],
+          [2, 2, 1.2],
+        ),
         [
           [
             'Salón',
@@ -129,7 +136,8 @@ export class BusinessHealthPdfService {
       );
       doc
         .fontSize(9)
-        .fillColor('#666')
+        .font('Helvetica')
+        .fillColor('#666666')
         .text(
           `${data.commercial.totalOrders} pedidos · ${this.formatMoney(data.commercial.totalRevenue)} total`,
         );
@@ -138,22 +146,27 @@ export class BusinessHealthPdfService {
       this.addSection(doc, 'Margen por plato');
       doc
         .fontSize(9)
-        .fillColor('#666')
+        .fillColor('#666666')
         .text(
           `${data.margin.dishesWithCostCount} con costo · ${data.margin.dishesWithoutCostCount} sin costo` +
             (data.margin.averageMarginPercent != null
-              ? ` · margen promedio ${data.margin.averageMarginPercent}%`
+              ? ` · margen promedio ${this.formatPercent(data.margin.averageMarginPercent)}`
               : ''),
         );
       doc.moveDown(0.4);
 
       if (data.margin.topProfitable.length > 0) {
-        this.addTable(
+        renderPdfTable(
           doc,
-          ['Plato', 'Margen %', 'Unidades', 'Margen $'],
+          pdfTableColumnsFromWeights(
+            ['Plato', 'Margen %', 'Unidades', 'Margen $'],
+            [4, 1.5, 1.5, 2],
+          ),
           data.margin.topProfitable.map((row) => [
             row.name,
-            row.marginPercent != null ? `${row.marginPercent}%` : '—',
+            row.marginPercent != null
+              ? `${this.formatPercent(row.marginPercent)}`
+              : '—',
             String(row.unitsSold),
             row.grossMarginTotal != null
               ? this.formatMoney(row.grossMarginTotal)
@@ -165,12 +178,17 @@ export class BusinessHealthPdfService {
 
       if (data.margin.lowMarginAlerts.length > 0) {
         this.addSection(doc, 'Alertas de margen bajo');
-        this.addTable(
+        renderPdfTable(
           doc,
-          ['Plato', 'Margen %', 'Ventas'],
+          pdfTableColumnsFromWeights(
+            ['Plato', 'Margen %', 'Ventas'],
+            [4, 1.5, 1.5],
+          ),
           data.margin.lowMarginAlerts.map((row) => [
             row.name,
-            row.marginPercent != null ? `${row.marginPercent}%` : '—',
+            row.marginPercent != null
+              ? `${this.formatPercent(row.marginPercent)}`
+              : '—',
             String(row.unitsSold),
           ]),
         );
@@ -179,9 +197,12 @@ export class BusinessHealthPdfService {
 
       if (data.inventory.lowStockItems.length > 0) {
         this.addSection(doc, 'Inventario en quiebre');
-        this.addTable(
+        renderPdfTable(
           doc,
-          ['Insumo', 'Stock', 'Mínimo'],
+          pdfTableColumnsFromWeights(
+            ['Insumo', 'Stock', 'Mínimo'],
+            [3, 1.5, 1.5],
+          ),
           data.inventory.lowStockItems.map((item) => [
             item.name,
             `${item.currentStock} ${item.unit}`,
@@ -192,9 +213,9 @@ export class BusinessHealthPdfService {
       }
 
       this.addSection(doc, 'Retención');
-      this.addTable(
+      renderPdfTable(
         doc,
-        ['Métrica', 'Valor'],
+        pdfTableColumnsFromWeights(['Métrica', 'Valor'], [3, 1]),
         [
           [
             'D7 (vuelven a la semana)',
@@ -218,12 +239,12 @@ export class BusinessHealthPdfService {
           doc
             .font('Helvetica-Bold')
             .fontSize(10)
-            .fillColor('#222')
+            .fillColor('#222222')
             .text(action.title);
           doc
             .font('Helvetica')
             .fontSize(9)
-            .fillColor('#555')
+            .fillColor('#555555')
             .text(action.detail)
             .moveDown(0.4);
         }
@@ -234,32 +255,8 @@ export class BusinessHealthPdfService {
   }
 
   private addSection(doc: PdfDoc, title: string) {
-    doc.font('Helvetica-Bold').fontSize(12).fillColor('#111').text(title);
+    doc.font('Helvetica-Bold').fontSize(12).fillColor('#111111').text(title);
     doc.moveDown(0.3);
-  }
-
-  private addTable(doc: PdfDoc, headers: string[], rows: string[][]) {
-    const colWidth = 495 / headers.length;
-    doc.font('Helvetica-Bold').fontSize(9).fillColor('#444');
-    headers.forEach((header, index) => {
-      doc.text(header, 50 + index * colWidth, doc.y, {
-        width: colWidth,
-        continued: index < headers.length - 1,
-      });
-    });
-    doc.moveDown(0.4);
-
-    doc.font('Helvetica').fontSize(9).fillColor('#333');
-    for (const row of rows) {
-      if (doc.y > 750) doc.addPage();
-      row.forEach((cell, index) => {
-        doc.text(cell, 50 + index * colWidth, doc.y, {
-          width: colWidth,
-          continued: index < row.length - 1,
-        });
-      });
-      doc.moveDown(0.3);
-    }
   }
 
   private formatMoney(value: number): string {
@@ -267,6 +264,10 @@ export class BusinessHealthPdfService {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
     })}`;
+  }
+
+  private formatPercent(value: number): string {
+    return `${Math.round(value * 10) / 10}%`;
   }
 
   private share(part: number, total: number): string {

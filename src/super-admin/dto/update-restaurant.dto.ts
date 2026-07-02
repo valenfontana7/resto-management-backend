@@ -90,4 +90,12 @@ export class UpdateRestaurantDto {
   @IsOptional()
   @IsBoolean()
   isPublished?: boolean;
+
+  @ApiProperty({
+    description: 'Feature flags for the restaurant',
+    required: false,
+  })
+  @IsOptional()
+  @IsObject()
+  features?: Record<string, boolean>;
 }
