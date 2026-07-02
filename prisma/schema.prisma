@@ -1869,6 +1869,93 @@ enum LeadAnalysisType {
   EMAIL_MESSAGE
 }
 
+enum LeadAnalysisApprovalStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  SENT
+  REJECTED
+}
+
+enum AiTaskStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  AWAITING_APPROVAL
+}
+
+enum AiProvider {
+  GEMINI
+  OPENAI
+  ANTHROPIC
+  OPENROUTER
+  GROQ
+  DEEPSEEK
+}
+
+enum AiGoalStatus {
+  DRAFT
+  PLANNING
+  PLANNED
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum ExecutionPlanStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  RUNNING
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+enum PlanStepStatus {
+  PENDING
+  SKIPPED
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  WAITING_DEPENDENCY
+  WAITING_APPROVAL
+}
+
+enum PlannerEventType {
+  GOAL_CREATED
+  PLAN_BUILT
+  PLAN_APPROVED
+  PLAN_STARTED
+  STEP_CREATED
+  STEP_SKIPPED
+  STEP_STARTED
+  MODEL_SELECTED
+  COST_RECORDED
+  STEP_COMPLETED
+  STEP_FAILED
+  DECISION_MADE
+  GOAL_PAUSED
+  GOAL_RESUMED
+  GOAL_COMPLETED
+  GOAL_CANCELLED
+  INSIGHT_GENERATED
+}
+
+enum AiInsightCategory {
+  COST
+  EFFICIENCY
+  ROI
+  BUDGET
+  PERFORMANCE
+  RECOMMENDATION
+}
+
 model Lead {
   id                    String     @id @default(cuid())
   businessName          String
@@ -1909,17 +1996,27 @@ model Lead {
 }
 
 model LeadAnalysis {
-  id          String           @id @default(cuid())
-  leadId      String
-  lead        Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  type        LeadAnalysisType
-  content     Json
-  model       String?
-  createdById String?
-  createdAt   DateTime         @default(now())
+  id             String                      @id @default(cuid())
+  leadId         String
+  lead           Lead                        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type           LeadAnalysisType
+  content        Json
+  model          String?
+  createdById    String?
+  aiTaskId       String?
+  aiExecutionId  String?
+  approvalStatus LeadAnalysisApprovalStatus  @default(DRAFT)
+  approvedById   String?
+  approvedAt     DateTime?
+  sentAt         DateTime?
+  costUsd        Decimal?                    @db.Decimal(12, 8)
+  durationMs     Int?
+  confidence     Float?
+  createdAt      DateTime                    @default(now())
 
   @@index([leadId, type])
   @@index([createdAt])
+  @@index([approvalStatus])
 }
 
 model LeadStatusChange {
@@ -1948,19 +2045,317 @@ model LeadDiscoverySession {
 }
 
 model LeadSavedSearch {
-  id          String    @id @default(cuid())
-  name        String?
-  query       String
-  filters     Json?
-  schedule    String    @default("manual")
-  enabled     Boolean   @default(false)
-  lastRunAt   DateTime?
-  nextRunAt   DateTime?
-  createdById String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  name          String?
+  campaignLabel String?
+  query         String
+  filters       Json?
+  schedule      String    @default("manual")
+  enabled       Boolean   @default(false)
+  lastRunAt     DateTime?
+  nextRunAt     DateTime?
+  totalCostUsd  Decimal?  @db.Decimal(12, 8)
+  taskCount     Int       @default(0)
+  leadCount     Int       @default(0)
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  aiTasks       AiTask[]
 
   @@index([enabled, nextRunAt])
   @@index([createdById])
   @@index([createdAt])
+}
+
+model AiModelPricing {
+  id                  String     @id @default(cuid())
+  provider            AiProvider
+  model               String
+  inputPerMillion     Decimal    @db.Decimal(12, 6)
+  outputPerMillion    Decimal    @db.Decimal(12, 6)
+  reasoningPerMillion Decimal?   @db.Decimal(12, 6)
+  currency            String     @default("USD")
+  effectiveFrom       DateTime   @default(now())
+  effectiveTo         DateTime?
+  isActive            Boolean    @default(true)
+
+  @@unique([provider, model, effectiveFrom])
+  @@index([provider, model, isActive])
+}
+
+model AiTask {
+  id              String       @id @default(cuid())
+  taskKey         String
+  status          AiTaskStatus @default(PENDING)
+  input           Json
+  output          Json?
+  error           Json?
+  leadId          String?
+  savedSearchId   String?
+  savedSearch     LeadSavedSearch? @relation(fields: [savedSearchId], references: [id], onDelete: SetNull)
+  goalId          String?
+  goal            AiGoal?      @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  planId          String?
+  plan            ExecutionPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+  planStepId      String?      @unique
+  planStep        ExecutionPlanStep? @relation(fields: [planStepId], references: [id], onDelete: SetNull)
+  dependsOnStepIds Json?
+  selectedModel   String?
+  skipReason      String?
+  createdById     String?
+  scheduledAt     DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  parentTaskId    String?
+  retryCount      Int          @default(0)
+  maxRetries      Int          @default(3)
+  executionId     String?      @unique
+  execution       AiTaskExecution? @relation(fields: [executionId], references: [id], onDelete: SetNull)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([status, scheduledAt])
+  @@index([leadId])
+  @@index([savedSearchId])
+  @@index([goalId])
+  @@index([planId])
+  @@index([taskKey, createdAt])
+}
+
+model AiTaskExecution {
+  id               String      @id @default(cuid())
+  taskKey          String
+  provider         AiProvider?
+  model            String?
+  promptTokens     Int         @default(0)
+  completionTokens Int         @default(0)
+  reasoningTokens  Int         @default(0)
+  inputCostUsd     Decimal     @db.Decimal(12, 8) @default(0)
+  outputCostUsd    Decimal     @db.Decimal(12, 8) @default(0)
+  totalCostUsd     Decimal     @db.Decimal(12, 8) @default(0)
+  durationMs       Int
+  cacheHit         Boolean     @default(false)
+  cacheSavedUsd    Decimal?    @db.Decimal(12, 8)
+  success          Boolean
+  errorMessage     String?
+  leadId           String?
+  savedSearchId    String?
+  userId           String?
+  executedAt       DateTime    @default(now())
+  task             AiTask?
+
+  @@index([leadId, executedAt])
+  @@index([savedSearchId, executedAt])
+  @@index([userId, executedAt])
+  @@index([taskKey, executedAt])
+  @@index([executedAt])
+}
+
+model AiCostBudget {
+  id              String   @id @default(cuid())
+  scope           String
+  dailyLimitUsd   Decimal? @db.Decimal(10, 4)
+  monthlyLimitUsd Decimal? @db.Decimal(10, 4)
+  hardStop        Boolean  @default(true)
+  updatedAt       DateTime @updatedAt
+
+  @@unique([scope])
+}
+
+model AiGoal {
+  id                 String       @id @default(cuid())
+  title              String
+  objective          String       @db.Text
+  goalType           String
+  status             AiGoalStatus @default(DRAFT)
+  targetCount        Int          @default(1)
+  achievedCount      Int          @default(0)
+  budgetUsd          Decimal?     @db.Decimal(10, 4)
+  spentUsd           Decimal      @db.Decimal(12, 8) @default(0)
+  estimatedCostUsd   Decimal?     @db.Decimal(10, 4)
+  estimatedDurationMs Int?
+  estimatedRoi       Float?
+  actualRoi          Float?
+  progressPercent    Float        @default(0)
+  filters            Json?
+  constraints        Json?
+  priorities         Json?
+  createdById        String?
+  pausedAt           DateTime?
+  completedAt        DateTime?
+  cancelledAt        DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  plans              ExecutionPlan[]
+  tasks              AiTask[]
+  events             AiPlannerEvent[]
+  insights           AiInsight[]
+
+  @@index([status, createdAt])
+  @@index([createdById])
+  @@index([goalType])
+}
+
+model ExecutionPlan {
+  id                  String              @id @default(cuid())
+  goalId              String
+  goal                AiGoal              @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  status              ExecutionPlanStatus @default(DRAFT)
+  version             Int                 @default(1)
+  summary             Json?
+  estimatedCostUsd    Decimal?            @db.Decimal(10, 4)
+  estimatedDurationMs Int?
+  estimatedConfidence Float?
+  actualCostUsd       Decimal             @db.Decimal(12, 8) @default(0)
+  progressPercent     Float               @default(0)
+  risks               Json?
+  approvedById        String?
+  approvedAt          DateTime?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  steps               ExecutionPlanStep[]
+  tasks               AiTask[]
+  events              AiPlannerEvent[]
+
+  @@index([goalId, status])
+  @@index([createdAt])
+}
+
+model ExecutionPlanStep {
+  id                  String         @id @default(cuid())
+  planId              String
+  plan                ExecutionPlan  @relation(fields: [planId], references: [id], onDelete: Cascade)
+  stepKey             String
+  taskKey             String
+  label               String
+  status              PlanStepStatus @default(PENDING)
+  priority            Int            @default(0)
+  dependsOnStepIds    Json           @default("[]")
+  input               Json?
+  output              Json?
+  selectedModel       String?
+  estimatedCostUsd    Decimal?       @db.Decimal(12, 8)
+  estimatedDurationMs Int?
+  actualCostUsd       Decimal?       @db.Decimal(12, 8)
+  skipReason          String?
+  reuseFromStepId     String?
+  entityRef           String?
+  sortOrder           Int            @default(0)
+  aiTask              AiTask?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  @@index([planId, sortOrder])
+  @@index([status])
+  @@index([taskKey])
+}
+
+model AiPlannerEvent {
+  id        String           @id @default(cuid())
+  goalId    String?
+  goal      AiGoal?          @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  planId    String?
+  plan      ExecutionPlan?   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  stepId    String?
+  taskId    String?
+  eventType PlannerEventType
+  title     String
+  detail    Json?
+  costUsd   Decimal?         @db.Decimal(12, 8)
+  createdAt DateTime         @default(now())
+
+  @@index([goalId, createdAt])
+  @@index([planId, createdAt])
+  @@index([eventType])
+}
+
+model AiInsight {
+  id         String            @id @default(cuid())
+  goalId     String?
+  goal       AiGoal?           @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  category   AiInsightCategory
+  title      String
+  body       String            @db.Text
+  metricKey  String?
+  metricValue Float?
+  impactUsd  Decimal?          @db.Decimal(12, 8)
+  createdAt  DateTime          @default(now())
+
+  @@index([goalId, createdAt])
+  @@index([category])
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+model DomainOutbox {
+  id            String       @id @default(cuid())
+  eventType     String
+  aggregateType String
+  aggregateId   String
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  availableAt   DateTime     @default(now())
+  processedAt   DateTime?
+  lastError     String?
+  createdAt     DateTime     @default(now())
+
+  @@index([status, availableAt])
+  @@index([eventType, createdAt])
+  @@index([aggregateType, aggregateId])
+}
+
+model DomainEventProcessed {
+  id          String   @id @default(cuid())
+  outboxId    String
+  handlerKey  String
+  processedAt DateTime @default(now())
+
+  @@unique([outboxId, handlerKey])
+  @@index([handlerKey])
+}
+
+model CommercialIntelligenceConfig {
+  id         String   @id @default(cuid())
+  version    Int      @default(1)
+  isActive   Boolean  @default(true)
+  weights    Json
+  segments   Json
+  signals    Json
+  thresholds Json
+  actions    Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isActive])
+}
+
+model CommercialDecision {
+  id                String   @id @default(cuid())
+  decisionType      String
+  actionType        String
+  targetType        String
+  targetId          String?
+  recommendedAction Json
+  chosenAction      Json?
+  expectedCostUsd   Decimal  @db.Decimal(12, 8)
+  expectedValueUsd  Decimal  @db.Decimal(12, 8)
+  expectedRoi       Float?
+  confidence        Float
+  reason            String   @db.Text
+  alternatives      Json?
+  goalId            String?
+  createdById       String?
+  createdAt         DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@index([decisionType])
 }

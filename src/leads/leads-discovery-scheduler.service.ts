@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { LeadsSavedSearchService } from './leads-saved-search.service';
-import { LeadsAiService } from './leads-ai.service';
 import { OnboardingAiQuotaService } from '../common/services/onboarding-ai-quota.service';
+import { AiTaskQueueService } from '../ai-platform/queue/ai-task-queue.service';
 import { DiscoverLeadsDto } from './dto/discover-leads.dto';
+import { LeadsSavedSearchService } from './leads-saved-search.service';
 
 @Injectable()
 export class LeadsDiscoverySchedulerService {
@@ -11,7 +11,7 @@ export class LeadsDiscoverySchedulerService {
 
   constructor(
     private readonly savedSearchService: LeadsSavedSearchService,
-    private readonly leadsAiService: LeadsAiService,
+    private readonly taskQueue: AiTaskQueueService,
     private readonly aiQuota: OnboardingAiQuotaService,
   ) {}
 
@@ -21,7 +21,7 @@ export class LeadsDiscoverySchedulerService {
     if (due.length === 0) return;
 
     this.logger.log(
-      `Running ${due.length} scheduled lead discovery search(es)`,
+      `Enqueueing ${due.length} scheduled lead discovery search(es)`,
     );
 
     for (const search of due) {
@@ -43,22 +43,20 @@ export class LeadsDiscoverySchedulerService {
           maxResults: filters.maxResults,
         };
 
-        const result = await this.leadsAiService.discoverProspects(
-          dto,
-          search.createdById ?? undefined,
-        );
+        await this.taskQueue.enqueue({
+          taskKey: 'leads.discover_restaurants',
+          input: dto as unknown as Record<string, unknown>,
+          savedSearchId: search.id,
+          createdById: search.createdById ?? undefined,
+          runImmediately: false,
+        });
 
-        if (
-          search.createdById &&
-          (result.status === 'success' || result.status === 'empty')
-        ) {
+        if (search.createdById) {
           await this.aiQuota.incrementUserQuota(search.createdById, 'discover');
         }
 
         await this.savedSearchService.markRun(search.id);
-        this.logger.log(
-          `Saved search ${search.id} completed with status ${result.status}`,
-        );
+        this.logger.log(`Saved search ${search.id} enqueued for discovery`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.warn(`Scheduled search ${search.id} failed: ${message}`);

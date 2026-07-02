@@ -30,6 +30,7 @@ import {
 import { LeadsService } from './leads.service';
 import { LeadsAiService } from './leads-ai.service';
 import { LeadsSavedSearchService } from './leads-saved-search.service';
+import { LeadApprovalService } from './approval/lead-approval.service';
 
 @ApiTags('Leads')
 @Controller('api/super-admin/leads')
@@ -42,6 +43,7 @@ export class LeadsController {
     private readonly leadsAiService: LeadsAiService,
     private readonly savedSearchService: LeadsSavedSearchService,
     private readonly aiQuota: OnboardingAiQuotaService,
+    private readonly approvalService: LeadApprovalService,
   ) {}
 
   @Get('stats/dashboard')
@@ -57,6 +59,11 @@ export class LeadsController {
   @Get('ai/recent')
   getRecentAnalyses() {
     return this.leadsAiService.getRecentAnalyses();
+  }
+
+  @Get('approvals/pending')
+  listPendingApprovals() {
+    return this.approvalService.listPending();
   }
 
   @Get('ai/discover/quota')
@@ -218,5 +225,20 @@ export class LeadsController {
   @Get(':id/ai/analyses')
   getAnalyses(@Param('id') id: string) {
     return this.leadsAiService.getLeadAnalyses(id);
+  }
+
+  @Post(':id/approvals/:analysisId/approve')
+  approveAnalysis(@Param('analysisId') analysisId: string, @Request() req) {
+    return this.approvalService.approve(analysisId, req.user?.userId);
+  }
+
+  @Post(':id/approvals/:analysisId/reject')
+  rejectAnalysis(@Param('analysisId') analysisId: string, @Request() req) {
+    return this.approvalService.reject(analysisId, req.user?.userId);
+  }
+
+  @Post(':id/approvals/:analysisId/mark-sent')
+  markSent(@Param('analysisId') analysisId: string, @Request() req) {
+    return this.approvalService.markSent(analysisId, req.user?.userId);
   }
 }

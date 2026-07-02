@@ -48,6 +48,8 @@ import { OnboardingAiModule } from './onboarding-ai/onboarding-ai.module';
 import { OnboardingAnalyticsModule } from './onboarding-analytics/onboarding-analytics.module';
 import { DemoExamplesModule } from './demo-examples/demo-examples.module';
 import { LeadsModule } from './leads/leads.module';
+import { AiPlatformModule } from './ai-platform/ai-platform.module';
+import { CommercialIntelligenceModule } from './commercial-intelligence/commercial-intelligence.module';
 import { FloorModule } from './floor/floor.module';
 import { BusinessHealthModule } from './business-health/business-health.module';
 import { BusinessMemoryModule } from './business-memory/business-memory.module';
@@ -157,6 +159,8 @@ import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage';
     OnboardingAiModule,
     OnboardingAnalyticsModule,
     DemoExamplesModule,
+    AiPlatformModule,
+    CommercialIntelligenceModule,
     LeadsModule,
     FloorModule,
     BusinessHealthModule,

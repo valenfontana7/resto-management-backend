@@ -1,16 +1,44 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
-import { PrismaModule } from '../prisma/prisma.module';
+import { AiPlatformModule } from '../ai-platform/ai-platform.module';
 import { CommonModule } from '../common/common.module';
-import { LeadsController } from './leads.controller';
-import { LeadsService } from './leads.service';
-import { LeadsAiService } from './leads-ai.service';
+import { PrismaModule } from '../prisma/prisma.module';
+import { LeadApprovalService } from './approval/lead-approval.service';
 import { LeadScoringService } from './lead-scoring.service';
-import { LeadsSavedSearchService } from './leads-saved-search.service';
+import { PlanLeadBindingService } from './plan-lead-binding.service';
+import { LeadsAiService } from './leads-ai.service';
+import { LeadsController } from './leads.controller';
 import { LeadsDiscoverySchedulerService } from './leads-discovery-scheduler.service';
+import { LeadsSavedSearchService } from './leads-saved-search.service';
+import { LeadsService } from './leads.service';
+import { LeadsTaskOrchestratorService } from './leads-task-orchestrator.service';
+import { LeadsTasksRegistrar } from './leads-tasks-registrar.service';
+import {
+  AnalyzeClientReplyTask,
+  AnalyzeDigitalPresenceTask,
+  BusinessDiagnosisTask,
+  DetectProblemsTask,
+  DraftFollowupTask,
+  DraftMessageEmailTask,
+  DraftMessageInstagramTask,
+  DraftMessageWhatsappTask,
+  GenerateDemoTask,
+  GenerateProposalTask,
+  SuggestNextActionTask,
+} from './tasks/leads-analysis.tasks';
+import {
+  CalculateScoreTask,
+  DiscoverRestaurantsTask,
+  EnrichCandidateTask,
+} from './tasks/leads-discovery.tasks';
 
 @Module({
-  imports: [PrismaModule, CommonModule, ScheduleModule.forRoot()],
+  imports: [
+    PrismaModule,
+    CommonModule,
+    AiPlatformModule,
+    ScheduleModule.forRoot(),
+  ],
   controllers: [LeadsController],
   providers: [
     LeadsService,
@@ -18,7 +46,25 @@ import { LeadsDiscoverySchedulerService } from './leads-discovery-scheduler.serv
     LeadScoringService,
     LeadsSavedSearchService,
     LeadsDiscoverySchedulerService,
+    LeadsTaskOrchestratorService,
+    LeadApprovalService,
+    PlanLeadBindingService,
+    LeadsTasksRegistrar,
+    DiscoverRestaurantsTask,
+    EnrichCandidateTask,
+    CalculateScoreTask,
+    AnalyzeDigitalPresenceTask,
+    DetectProblemsTask,
+    BusinessDiagnosisTask,
+    SuggestNextActionTask,
+    DraftMessageInstagramTask,
+    DraftMessageWhatsappTask,
+    DraftMessageEmailTask,
+    DraftFollowupTask,
+    AnalyzeClientReplyTask,
+    GenerateProposalTask,
+    GenerateDemoTask,
   ],
-  exports: [LeadsService],
+  exports: [LeadsService, LeadsTaskOrchestratorService],
 })
 export class LeadsModule {}
