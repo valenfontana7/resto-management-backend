@@ -1984,6 +1984,7 @@ model Lead {
   demoFirstViewedAt     DateTime?
   demoLastViewedAt      DateTime?
   demoViewCount         Int        @default(0)
+  demoExampleSlug       String?
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
 
@@ -1997,6 +1998,7 @@ model Lead {
   @@index([createdAt])
   @@index([discoveredWithAi])
   @@index([demoLastViewedAt])
+  @@index([demoExampleSlug])
 }
 
 model LeadAnalysis {

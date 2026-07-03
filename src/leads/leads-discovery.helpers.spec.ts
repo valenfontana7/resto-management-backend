@@ -1,5 +1,6 @@
 import {
   buildLeadDedupKey,
+  mergeDiscoveryCandidatePatch,
   normalizeConfidence,
   normalizeInstagramHandle,
   parseDiscoveryResponse,
@@ -86,5 +87,26 @@ describe('leads-discovery.helpers', () => {
     expect(nameSimilarity('Cafe Martinez', 'Café Martínez')).toBeGreaterThan(
       0.9,
     );
+  });
+
+  it('mergeDiscoveryCandidatePatch recalcula score y marca corrección', () => {
+    const updated = mergeDiscoveryCandidatePatch(
+      {
+        id: 'c-1',
+        businessName: 'Bar X',
+        hasWebsite: false,
+        hasOnlineMenu: false,
+        hasReservations: true,
+        hasWhatsapp: false,
+        whyFit: 'Sin web',
+        confidence: 'medium',
+        score: 80,
+      },
+      { hasWebsite: true, website: 'https://barx.com' },
+    );
+
+    expect(updated.hasWebsite).toBe(true);
+    expect(updated.manuallyCorrected).toBe(true);
+    expect(updated.score).toBeLessThan(80);
   });
 });

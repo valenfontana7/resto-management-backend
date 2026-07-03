@@ -4,12 +4,15 @@ import {
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { DiscoverLeadsDto } from './dto/discover-leads.dto';
 import { ImportLeadsDto } from './dto/import-leads.dto';
+import { PatchDiscoveryCandidateDto } from './dto/patch-discovery-candidate.dto';
 import { LeadsAiExecutionService } from './leads-ai-execution.service';
 import { LeadsService } from './leads.service';
+import { mergeDiscoveryCandidatePatch } from './leads-discovery.helpers';
 import type { LeadDiscoveryResult } from './types/lead-discovery.types';
 
 /**
@@ -89,6 +92,36 @@ export class LeadsAiService implements OnModuleInit {
       throw new NotFoundException('Sesión de búsqueda no encontrada');
     }
     return session;
+  }
+
+  async patchDiscoveryCandidate(
+    sessionId: string,
+    candidateId: string,
+    patch: PatchDiscoveryCandidateDto,
+  ) {
+    const session = await this.getDiscoverySession(sessionId);
+    const results = session.results as unknown as LeadDiscoveryResult;
+    const candidates = results.candidates ?? [];
+    const index = candidates.findIndex((c) => c.id === candidateId);
+    if (index < 0) {
+      throw new NotFoundException('Candidato no encontrado en la sesión');
+    }
+
+    const updated = mergeDiscoveryCandidatePatch(candidates[index], patch);
+    const nextCandidates = [...candidates];
+    nextCandidates[index] = updated;
+
+    const nextResults = {
+      ...results,
+      candidates: nextCandidates,
+    };
+
+    await this.prisma.leadDiscoverySession.update({
+      where: { id: sessionId },
+      data: { results: nextResults as unknown as Prisma.InputJsonValue },
+    });
+
+    return updated;
   }
 
   async getRecentAnalyses(limit = 30) {

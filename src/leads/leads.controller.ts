@@ -32,6 +32,9 @@ import { LeadsAiService } from './leads-ai.service';
 import { LeadsSavedSearchService } from './leads-saved-search.service';
 import { LeadApprovalService } from './approval/lead-approval.service';
 import { UpdateLeadApprovalDto } from './dto/update-lead-approval.dto';
+import { PatchDiscoveryCandidateDto } from './dto/patch-discovery-candidate.dto';
+import { UpdateLeadDemoDto } from './dto/update-lead-demo.dto';
+import { LeadDemoProvisionService } from './lead-demo-provision.service';
 
 @ApiTags('Leads')
 @Controller('api/super-admin/leads')
@@ -45,6 +48,7 @@ export class LeadsController {
     private readonly savedSearchService: LeadsSavedSearchService,
     private readonly aiQuota: OnboardingAiQuotaService,
     private readonly approvalService: LeadApprovalService,
+    private readonly leadDemoProvision: LeadDemoProvisionService,
   ) {}
 
   @Get('stats/dashboard')
@@ -80,6 +84,19 @@ export class LeadsController {
   @Get('ai/discovery/:sessionId')
   getDiscoverySession(@Param('sessionId') sessionId: string) {
     return this.leadsAiService.getDiscoverySession(sessionId);
+  }
+
+  @Patch('ai/discovery/:sessionId/candidates/:candidateId')
+  patchDiscoveryCandidate(
+    @Param('sessionId') sessionId: string,
+    @Param('candidateId') candidateId: string,
+    @Body() dto: PatchDiscoveryCandidateDto,
+  ) {
+    return this.leadsAiService.patchDiscoveryCandidate(
+      sessionId,
+      candidateId,
+      dto,
+    );
   }
 
   @Post('ai/discover')
@@ -164,6 +181,31 @@ export class LeadsController {
   @Get()
   findAll(@Query() filters: LeadFiltersDto) {
     return this.leadsService.findAll(filters);
+  }
+
+  @Get(':id/demo')
+  getLeadDemo(@Param('id') id: string) {
+    return this.leadDemoProvision.getDemoForLead(id);
+  }
+
+  @Patch(':id/demo')
+  updateLeadDemo(@Param('id') id: string, @Body() dto: UpdateLeadDemoDto) {
+    return this.leadDemoProvision.updateDemoForLead(id, dto);
+  }
+
+  @Post(':id/demo/generate')
+  generateLeadDemo(@Param('id') id: string) {
+    return this.leadsService.generateDemoForLead(id);
+  }
+
+  @Post(':id/demo/regenerate')
+  regenerateLeadDemo(@Param('id') id: string) {
+    return this.leadDemoProvision.regenerateDemoForLead(id);
+  }
+
+  @Post(':id/demo/sync-from-lead')
+  syncLeadDemoFromLead(@Param('id') id: string) {
+    return this.leadDemoProvision.syncDemoFromLead(id);
   }
 
   @Post()

@@ -482,6 +482,8 @@ export function toCreateLeadFromCandidate(
   website?: string;
   instagram?: string;
   whatsapp?: string;
+  email?: string;
+  phone?: string;
   hasWebsite: boolean;
   hasOnlineMenu: boolean;
   hasReservations: boolean;
@@ -495,6 +497,8 @@ export function toCreateLeadFromCandidate(
     website: candidate.website?.trim() || undefined,
     instagram: normalizeInstagramHandle(candidate.instagram),
     whatsapp: candidate.whatsapp?.trim() || undefined,
+    email: candidate.email?.trim() || undefined,
+    phone: candidate.phone?.trim() || undefined,
     hasWebsite: candidate.hasWebsite ?? false,
     hasOnlineMenu: candidate.hasOnlineMenu ?? false,
     hasReservations: candidate.hasReservations ?? false,
@@ -503,4 +507,28 @@ export function toCreateLeadFromCandidate(
       ? `Descubierto con IA: ${candidate.whyFit}`
       : undefined,
   };
+}
+
+export function mergeDiscoveryCandidatePatch(
+  existing: LeadDiscoveryCandidate,
+  patch: Partial<LeadDiscoveryCandidateRaw>,
+): LeadDiscoveryCandidate {
+  const merged: LeadDiscoveryCandidate = {
+    ...existing,
+    ...patch,
+    id: existing.id,
+    hasWhatsapp:
+      patch.hasWhatsapp ??
+      existing.hasWhatsapp ??
+      Boolean((patch.whatsapp ?? existing.whatsapp)?.trim()),
+    hasWebsite:
+      patch.hasWebsite ??
+      existing.hasWebsite ??
+      Boolean((patch.website ?? existing.website)?.trim()),
+    manuallyCorrected: true,
+    correctedAt: new Date().toISOString(),
+  };
+
+  const [enriched] = enrichDiscoveryCandidates([merged]);
+  return { ...enriched, id: existing.id };
 }

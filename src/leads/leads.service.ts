@@ -6,6 +6,7 @@ import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
 import { LeadFiltersDto } from './dto/lead-filters.dto';
 import { LeadScoringService } from './lead-scoring.service';
+import { LeadDemoProvisionService } from './lead-demo-provision.service';
 import { getLeadPriority } from './lead-scoring.rules';
 import {
   findLeadDuplicateMatch,
@@ -34,6 +35,7 @@ export class LeadsService {
     private readonly prisma: PrismaService,
     private readonly scoring: LeadScoringService,
     private readonly reactiveSensing: CommercialReactiveSensingHandler,
+    private readonly leadDemoProvision: LeadDemoProvisionService,
   ) {}
 
   async findAll(filters: LeadFiltersDto) {
@@ -129,7 +131,7 @@ export class LeadsService {
 
     const score = this.scoring.computeScore(merged);
 
-    return this.prisma.lead.update({
+    const updated = await this.prisma.lead.update({
       where: { id },
       data: {
         ...(dto.businessName !== undefined && {
@@ -169,6 +171,17 @@ export class LeadsService {
         score,
       },
     });
+
+    if (updated.demoExampleSlug) {
+      await this.leadDemoProvision.syncDemoFromLead(id).catch(() => undefined);
+    }
+
+    return updated;
+  }
+
+  async generateDemoForLead(id: string) {
+    const lead = await this.findOne(id);
+    return this.leadDemoProvision.ensureDemoForLead(lead);
   }
 
   async remove(id: string) {

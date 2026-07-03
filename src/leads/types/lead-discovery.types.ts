@@ -7,6 +7,8 @@ export interface LeadDiscoveryCandidateRaw {
   website?: string;
   instagram?: string;
   whatsapp?: string;
+  email?: string;
+  phone?: string;
   hasWebsite: boolean;
   hasOnlineMenu: boolean;
   hasReservations: boolean;
@@ -19,6 +21,8 @@ export interface LeadDiscoveryCandidateRaw {
 export interface LeadDiscoveryCandidate extends LeadDiscoveryCandidateRaw {
   score: number;
   id: string;
+  manuallyCorrected?: boolean;
+  correctedAt?: string;
 }
 
 export type LeadDiscoveryStatus = 'success' | 'empty' | 'unavailable' | 'error';
