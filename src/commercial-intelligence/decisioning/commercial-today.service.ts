@@ -6,6 +6,7 @@ import { ExpectedValueEngineService } from './expected-value-engine.service';
 import { CommercialConfigService } from '../config/commercial-config.service';
 import type {
   ActionIntelligenceResult,
+  CommercialAutonomyLevel,
   TodayDashboardDto,
 } from '../types/commercial-intelligence.types';
 
@@ -220,6 +221,8 @@ export class CommercialDecisionService {
     result: ActionIntelligenceResult,
     userId?: string,
     goalId?: string,
+    autonomyLevel?: CommercialAutonomyLevel,
+    executedPlanId?: string,
   ) {
     return this.prisma.commercialDecision.create({
       data: {
@@ -235,15 +238,65 @@ export class CommercialDecisionService {
         confidence: result.confidence,
         reason: result.reason,
         goalId,
+        executedPlanId,
+        autonomyLevel: autonomyLevel ?? 'SUGGEST_GOAL',
+        outcomeStatus: 'pending',
         createdById: userId,
       },
     });
+  }
+
+  async updateOutcome(
+    decisionId: string,
+    data: {
+      actualCostUsd?: number;
+      outcomeStatus: string;
+    },
+  ) {
+    return this.prisma.commercialDecision.update({
+      where: { id: decisionId },
+      data: {
+        actualCostUsd: data.actualCostUsd,
+        outcomeStatus: data.outcomeStatus,
+        outcomeAt: new Date(),
+      },
+    });
+  }
+
+  async syncOutcomeForGoal(goalId: string, outcomeStatus: string) {
+    const decision = await this.prisma.commercialDecision.findFirst({
+      where: { goalId },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!decision) return null;
+
+    const actualCostUsd = await this.aggregateGoalCost(goalId);
+    return this.updateOutcome(decision.id, { actualCostUsd, outcomeStatus });
+  }
+
+  private async aggregateGoalCost(goalId: string): Promise<number | undefined> {
+    const spent = await this.prisma.aiTaskExecution.aggregate({
+      where: {
+        success: true,
+        task: { goalId },
+      },
+      _sum: { totalCostUsd: true },
+    });
+    const total = Number(spent._sum?.totalCostUsd ?? 0);
+    return total > 0 ? total : undefined;
   }
 
   listRecent(limit = 20) {
     return this.prisma.commercialDecision.findMany({
       orderBy: { createdAt: 'desc' },
       take: limit,
+    });
+  }
+
+  findLatestForLead(leadId: string) {
+    return this.prisma.commercialDecision.findFirst({
+      where: { targetType: 'lead', targetId: leadId },
+      orderBy: { createdAt: 'desc' },
     });
   }
 }

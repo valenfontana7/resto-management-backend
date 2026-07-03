@@ -21,6 +21,7 @@ import { UpdateBuilderConfigDto } from './dto/builder-config.dto';
 import { normalizeRestaurantDraftPayload } from './utils/restaurant-draft.util';
 import { normalizeAssetReference } from './utils/asset-reference.util';
 import { MarketingBusinessEventsService } from '../business-events/publishers/marketing-business-events.service';
+import { GoLiveEnforcementService } from '../restaurants/services/go-live-enforcement.service';
 
 @Injectable()
 export class BuilderService {
@@ -29,6 +30,7 @@ export class BuilderService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly marketingEvents: MarketingBusinessEventsService,
+    private readonly goLiveEnforcement: GoLiveEnforcementService,
   ) {}
 
   private readonly restaurantDraftFields: (keyof RestaurantDraft)[] = [
@@ -429,6 +431,10 @@ export class BuilderService {
    */
   async publishConfig(restaurantId: string): Promise<void> {
     const restaurant = await this.getRestaurantInfoOrThrow(restaurantId);
+
+    if (!restaurant.isPublished) {
+      await this.goLiveEnforcement.assertCanPublish(restaurantId);
+    }
 
     // Get or create builder config
     let builderConfig = await this.prisma.builderConfig.findUnique({

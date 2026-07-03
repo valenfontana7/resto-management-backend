@@ -149,7 +149,15 @@ export class GoalEngineService {
     const pendingCost = await this.prisma.executionPlanStep.aggregate({
       where: {
         plan: { goalId: id },
-        status: { in: ['PENDING', 'QUEUED', 'WAITING_DEPENDENCY'] },
+        status: {
+          in: [
+            'PENDING',
+            'QUEUED',
+            'WAITING_DEPENDENCY',
+            'RUNNING',
+            'WAITING_APPROVAL',
+          ],
+        },
       },
       _sum: { estimatedCostUsd: true },
     });
@@ -157,15 +165,31 @@ export class GoalEngineService {
     const pendingDuration = await this.prisma.executionPlanStep.aggregate({
       where: {
         plan: { goalId: id },
-        status: { in: ['PENDING', 'QUEUED', 'WAITING_DEPENDENCY'] },
+        status: {
+          in: [
+            'PENDING',
+            'QUEUED',
+            'WAITING_DEPENDENCY',
+            'RUNNING',
+            'WAITING_APPROVAL',
+          ],
+        },
       },
       _sum: { estimatedDurationMs: true },
     });
 
+    const latestPlan = await this.prisma.executionPlan.findFirst({
+      where: { goalId: id },
+      orderBy: { createdAt: 'desc' },
+      select: { progressPercent: true },
+    });
+
+    const stepProgress = latestPlan?.progressPercent ?? goal.progressPercent;
+
     return {
       targetCount: goal.targetCount,
       achievedCount: goal.achievedCount,
-      progressPercent: goal.progressPercent,
+      progressPercent: stepProgress,
       spentUsd: Number(goal.spentUsd),
       estimatedRemainingUsd: Number(pendingCost._sum.estimatedCostUsd ?? 0),
       estimatedRemainingMs: pendingDuration._sum.estimatedDurationMs ?? 0,

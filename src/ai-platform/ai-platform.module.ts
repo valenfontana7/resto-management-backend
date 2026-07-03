@@ -24,6 +24,7 @@ import { GoalEngineService } from './goal-engine/goal-engine.service';
 import { AiPlannerService } from './planner/ai-planner.service';
 import { PlanComposerService } from './planner/plan-composer.service';
 import { PlanExecutorService } from './planner/plan-executor.service';
+import { PlanApprovalBridgeService } from './planner/plan-approval-bridge.service';
 import { CostOptimizerService } from './planner/cost-optimizer.service';
 import { ModelSelectorService } from './planner/model-selector.service';
 import { PlannerMemoryService } from './planner/planner-memory.service';
@@ -43,6 +44,7 @@ import { OutboxPublisherService } from './events/outbox-publisher.service';
 import { OutboxDispatcherService } from './events/outbox-dispatcher.service';
 import { DomainEventHandlerRegistry } from './events/domain-event-handler.registry';
 import { TaskCompletedPlanHandler } from './events/handlers/task-completed-plan.handler';
+import { TaskApprovalArtifactHandler } from './events/handlers/task-approval-artifact.handler';
 
 const redisAvailable = !!process.env.REDIS_URL;
 
@@ -71,6 +73,7 @@ const redisAvailable = !!process.env.REDIS_URL;
     AiPlannerService,
     PlanComposerService,
     PlanExecutorService,
+    PlanApprovalBridgeService,
     CostOptimizerService,
     ModelSelectorService,
     ModelSelectionPolicyService,
@@ -86,6 +89,7 @@ const redisAvailable = !!process.env.REDIS_URL;
     OutboxDispatcherService,
     DomainEventHandlerRegistry,
     TaskCompletedPlanHandler,
+    TaskApprovalArtifactHandler,
     ...(redisAvailable ? [AiTaskProcessor] : [AiTaskDbPollerService]),
   ],
   exports: [
@@ -101,6 +105,7 @@ const redisAvailable = !!process.env.REDIS_URL;
     GoalEngineService,
     AiPlannerService,
     PlanExecutorService,
+    PlanApprovalBridgeService,
     PlannerTimelineService,
     DomainEventHandlerRegistry,
     OutboxPublisherService,

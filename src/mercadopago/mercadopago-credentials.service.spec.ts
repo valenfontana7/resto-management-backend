@@ -21,6 +21,10 @@ describe('MercadoPagoCredentialsService', () => {
     encrypt: jest.Mock;
     decrypt: jest.Mock;
   };
+  let goLiveEnforcement: {
+    assertCanEnableDigitalWallet: jest.Mock;
+    canEnableDigitalWallet: jest.Mock;
+  };
   let service: MercadoPagoCredentialsService;
 
   beforeEach(() => {
@@ -44,9 +48,15 @@ describe('MercadoPagoCredentialsService', () => {
       decrypt: jest.fn((value: string) => value.replace('enc:', '')),
     };
 
+    goLiveEnforcement = {
+      assertCanEnableDigitalWallet: jest.fn().mockResolvedValue(undefined),
+      canEnableDigitalWallet: jest.fn().mockResolvedValue(true),
+    };
+
     service = new MercadoPagoCredentialsService(
       prisma as any,
       encryptionService as any,
+      goLiveEnforcement as any,
     );
   });
 
@@ -67,6 +77,10 @@ describe('MercadoPagoCredentialsService', () => {
       ' TOKEN_1234 ',
       true,
       'pk_test',
+    );
+
+    expect(goLiveEnforcement.assertCanEnableDigitalWallet).toHaveBeenCalledWith(
+      'r1',
     );
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);

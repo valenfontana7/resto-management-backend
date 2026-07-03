@@ -17,6 +17,7 @@ import { PlanType } from '../subscriptions/dto';
 import { normalizeRestaurantFeatures } from '../common/utils/restaurant-features.util';
 import { RolesCatalogService } from '../common/services/roles-catalog.service';
 import { SubscriptionResolverService } from '../subscriptions/subscription-resolver.service';
+import { GoLiveEnforcementService } from './services/go-live-enforcement.service';
 
 @Injectable()
 export class RestaurantsService {
@@ -29,6 +30,7 @@ export class RestaurantsService {
     private readonly subscriptionResolver: SubscriptionResolverService,
     @Inject(forwardRef(() => RestaurantSettingsService))
     private readonly settingsService: RestaurantSettingsService,
+    private readonly goLiveEnforcement: GoLiveEnforcementService,
   ) {}
 
   async findBySlug(slug: string) {
@@ -920,6 +922,16 @@ export class RestaurantsService {
         };
       }
 
+      const currentMethods = this.readPaymentMethods(currentBusinessRules);
+      const nextMethods = this.readPaymentMethods(mergedBusinessRules);
+      const addingDigitalWallet =
+        !this.includesDigitalWallet(currentMethods) &&
+        this.includesDigitalWallet(nextMethods);
+
+      if (addingDigitalWallet) {
+        await this.goLiveEnforcement.assertCanEnableDigitalWallet(id);
+      }
+
       updateData.businessRules = mergedBusinessRules;
     }
 
@@ -1550,5 +1562,27 @@ export class RestaurantsService {
     });
 
     return restaurant;
+  }
+
+  private readPaymentMethods(
+    businessRules: Record<string, any> | undefined,
+  ): string[] {
+    const methods = businessRules?.payment?.methods;
+    if (!Array.isArray(methods)) return [];
+    return methods.map((method) =>
+      this.normalizePaymentMethodAlias(String(method)),
+    );
+  }
+
+  private includesDigitalWallet(methods: string[]): boolean {
+    return methods.some((method) => method === 'digital-wallet');
+  }
+
+  private normalizePaymentMethodAlias(method: string): string {
+    const normalized = method.trim().toLowerCase();
+    if (normalized === 'mercadopago' || normalized === 'mercado-pago') {
+      return 'digital-wallet';
+    }
+    return normalized;
   }
 }

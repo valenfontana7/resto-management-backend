@@ -42,6 +42,37 @@ describe('leads-discovery.helpers', () => {
     expect(result.candidates).toEqual([]);
   });
 
+  it('repairs trailing commas and smart quotes', () => {
+    const result = parseDiscoveryResponse(
+      '{"searchSummary":"Búsqueda ok", "candidates":[{"businessName":"Bar X","hasWebsite":false,"hasOnlineMenu":false,"hasReservations":false,"hasWhatsapp":true,"whyFit":"sin web","confidence":"high",},],}',
+    );
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].businessName).toBe('Bar X');
+  });
+
+  it('repairs unescaped quotes inside whyFit strings', () => {
+    const result = parseDiscoveryResponse(
+      '{"searchSummary":"ok","candidates":[{"businessName":"Bar X","hasWebsite":false,"hasOnlineMenu":false,"hasReservations":false,"hasWhatsapp":true,"whyFit":"Tiene presencia "oficial" en Instagram","confidence":"high"}]}',
+    );
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].whyFit).toContain('oficial');
+  });
+
+  it('repairs truncated JSON when output was cut by MAX_TOKENS', () => {
+    const result = parseDiscoveryResponse(
+      '{"searchSummary":"ok","candidates":[{"businessName":"Bar X","hasWebsite":false,"hasOnlineMenu":false,"hasReservations":false,"hasWhatsapp":true,"whyFit":"sin web","confidence":"high"},{"businessName":"Bar Y","hasWebsite":false,"hasOnlineMenu":false,"hasReservations":false,"hasWhatsapp":false,"whyFit":"solo ig","confidence":"medium"',
+    );
+    expect(result.candidates.length).toBeGreaterThanOrEqual(1);
+    expect(result.candidates[0].businessName).toBe('Bar X');
+  });
+
+  it('repairs unescaped newlines inside string values', () => {
+    const result = parseDiscoveryResponse(
+      '{"searchSummary":"line1\nline2","candidates":[]}',
+    );
+    expect(result.searchSummary).toContain('line1');
+  });
+
   it('detects fuzzy duplicate names in same city', () => {
     const match = findLeadDuplicateMatch('Pizzeria La Nonna', 'Palermo', [
       { id: '1', businessName: 'Pizzería La Nonna', city: 'Palermo' },

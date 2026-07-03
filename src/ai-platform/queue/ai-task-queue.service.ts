@@ -122,4 +122,30 @@ export class AiTaskQueueService {
     if (!task) throw new NotFoundException('Tarea no encontrada');
     return task;
   }
+
+  async waitForCompletion(taskId: string, timeoutMs = 120_000) {
+    const started = Date.now();
+    while (Date.now() - started < timeoutMs) {
+      const task = await this.prisma.aiTask.findUnique({
+        where: { id: taskId },
+      });
+      if (!task) throw new NotFoundException('Tarea no encontrada');
+      if (
+        task.status === AiTaskStatus.COMPLETED ||
+        task.status === AiTaskStatus.AWAITING_APPROVAL
+      ) {
+        return task;
+      }
+      if (
+        task.status === AiTaskStatus.FAILED ||
+        task.status === AiTaskStatus.CANCELLED
+      ) {
+        throw new Error(
+          (task.error as { message?: string })?.message ?? 'Task failed',
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    throw new Error('Task timed out');
+  }
 }

@@ -2,9 +2,14 @@
  * Promote a user to SUPER_ADMIN by email (E2E / dev bootstrap).
  * Usage: npx tsx prisma/scripts/e2e-promote-super-admin.ts user@example.com
  */
+import 'dotenv/config'
 import { PrismaClient } from '@prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
+import { Pool } from 'pg'
 
-const prisma = new PrismaClient()
+const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+const adapter = new PrismaPg(pool)
+const prisma = new PrismaClient({ adapter })
 
 async function main() {
   const email = process.argv[2]?.trim().toLowerCase()
@@ -49,4 +54,5 @@ main()
   })
   .finally(async () => {
     await prisma.$disconnect()
+    await pool.end()
   })

@@ -280,6 +280,7 @@ export class AiTaskRunnerService {
     },
   ): Promise<{
     output: TOutput;
+    taskId: string;
     executionId: string;
     totalCostUsd: number;
     durationMs: number;
@@ -314,6 +315,7 @@ export class AiTaskRunnerService {
 
     return {
       output: (result.output ?? result.result?.output) as TOutput,
+      taskId: task.id,
       executionId: result.execution?.id ?? '',
       totalCostUsd: Number(result.execution?.totalCostUsd ?? 0),
       durationMs: result.execution?.durationMs ?? 0,

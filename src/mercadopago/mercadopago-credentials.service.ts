@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EncryptionService } from './encryption.service';
+import { GoLiveEnforcementService } from '../restaurants/services/go-live-enforcement.service';
 
 export interface TokenValidationResult {
   ok: boolean;
@@ -23,6 +24,7 @@ export class MercadoPagoCredentialsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly encryptionService: EncryptionService,
+    private readonly goLiveEnforcement: GoLiveEnforcementService,
   ) {}
 
   /**
@@ -243,6 +245,10 @@ export class MercadoPagoCredentialsService {
     const last4 =
       normalizedToken.length >= 4 ? normalizedToken.slice(-4) : null;
 
+    await this.goLiveEnforcement.assertCanEnableDigitalWallet(
+      normalizedRestaurantId,
+    );
+
     await this.prisma.$transaction(async (tx) => {
       const restaurant = await tx.restaurant.findUnique({
         where: { id: normalizedRestaurantId },
@@ -331,6 +337,9 @@ export class MercadoPagoCredentialsService {
         ? null
         : String(params.mpUserId);
 
+    const canEnableDigitalWallet =
+      await this.goLiveEnforcement.canEnableDigitalWallet(restaurantId);
+
     await this.prisma.$transaction(async (tx) => {
       const restaurant = await tx.restaurant.findUnique({
         where: { id: restaurantId },
@@ -342,7 +351,7 @@ export class MercadoPagoCredentialsService {
 
       const mergedBusinessRules = this.mergeDigitalWalletIntoBusinessRules(
         restaurant.businessRules,
-        true,
+        canEnableDigitalWallet,
       );
 
       await tx.mercadoPagoCredential.upsert({

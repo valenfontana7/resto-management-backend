@@ -11,6 +11,9 @@ import { AiTaskRunnerService } from '../ai-platform/tasks/ai-task-runner.service
 import { PrismaService } from '../prisma/prisma.service';
 import { DiscoverLeadsDto } from './dto/discover-leads.dto';
 import { ImportLeadsDto } from './dto/import-leads.dto';
+import { LeadAnalysisPersistenceService } from './lead-analysis-persistence.service';
+import { LeadImportOrchestratorService } from './lead-import-orchestrator.service';
+import type { ImportLeadsExtendedResult } from './lead-import-orchestrator.service';
 import { LeadsService } from './leads.service';
 import type {
   LeadBusinessDiagnosis,
@@ -30,15 +33,21 @@ const MESSAGE_TYPES = {
   email: LeadAnalysisType.EMAIL_MESSAGE,
 } as const;
 
+/**
+ * Punto de entrada ad-hoc para AI Tasks de leads (fuera del Planner).
+ * Usa Execution Platform: AiTaskQueue + AiTaskRunner + persistencia LeadAnalysis.
+ */
 @Injectable()
-export class LeadsTaskOrchestratorService {
-  private readonly logger = new Logger(LeadsTaskOrchestratorService.name);
+export class LeadsAiExecutionService {
+  private readonly logger = new Logger(LeadsAiExecutionService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly leadsService: LeadsService,
     private readonly queue: AiTaskQueueService,
     private readonly runner: AiTaskRunnerService,
+    private readonly analysisPersistence: LeadAnalysisPersistenceService,
+    private readonly importOrchestrator: LeadImportOrchestratorService,
   ) {}
 
   async discoverProspects(
@@ -57,10 +66,10 @@ export class LeadsTaskOrchestratorService {
       const taskId =
         typeof task === 'object' && task && 'id' in task ? task.id : null;
       if (!taskId) {
-        return this.discoverProspectsLegacy(dto, userId);
+        return this.discoverProspectsInline(dto, userId);
       }
 
-      const completed = await this.waitForTask(taskId, 120_000);
+      const completed = await this.queue.waitForCompletion(taskId, 120_000);
       const output = completed.output as LeadDiscoveryResult | null;
 
       if (!output) {
@@ -84,7 +93,7 @@ export class LeadsTaskOrchestratorService {
       return { ...output, sessionId: session.id };
     }
 
-    return this.discoverProspectsLegacy(dto, userId);
+    return this.discoverProspectsInline(dto, userId);
   }
 
   async analyzeBusiness(leadId: string, userId?: string) {
@@ -93,19 +102,18 @@ export class LeadsTaskOrchestratorService {
       LeadBusinessDiagnosis
     >('leads.business_diagnosis', { leadId }, { userId, leadId });
 
-    const analysis = await this.prisma.leadAnalysis.create({
-      data: {
-        leadId,
-        type: LeadAnalysisType.BUSINESS_DIAGNOSIS,
-        content: inline.output as object,
-        model: 'gemini',
-        createdById: userId,
-        aiExecutionId: inline.executionId || undefined,
-        costUsd: inline.totalCostUsd,
-        durationMs: inline.durationMs,
-        confidence: inline.confidence,
-        approvalStatus: LeadAnalysisApprovalStatus.DRAFT,
-      },
+    const analysis = await this.analysisPersistence.createFromTaskRun({
+      leadId,
+      type: LeadAnalysisType.BUSINESS_DIAGNOSIS,
+      content: inline.output as object,
+      taskId: inline.taskId,
+      executionId: inline.executionId || undefined,
+      taskKey: 'leads.business_diagnosis',
+      createdById: userId,
+      costUsd: inline.totalCostUsd,
+      durationMs: inline.durationMs,
+      confidence: inline.confidence,
+      approvalStatus: LeadAnalysisApprovalStatus.DRAFT,
     });
 
     const lead = await this.leadsService.findOne(leadId);
@@ -127,31 +135,30 @@ export class LeadsTaskOrchestratorService {
       LeadMessageContent
     >(taskKey, { leadId }, { userId, leadId });
 
-    return this.prisma.leadAnalysis.create({
-      data: {
-        leadId,
-        type: MESSAGE_TYPES[channel],
-        content: inline.output as object,
-        model: 'gemini',
-        createdById: userId,
-        aiExecutionId: inline.executionId || undefined,
-        costUsd: inline.totalCostUsd,
-        durationMs: inline.durationMs,
-        confidence: inline.confidence,
-        approvalStatus: LeadAnalysisApprovalStatus.PENDING_REVIEW,
-      },
+    return this.analysisPersistence.createFromTaskRun({
+      leadId,
+      type: MESSAGE_TYPES[channel],
+      content: inline.output as object,
+      taskId: inline.taskId,
+      executionId: inline.executionId || undefined,
+      taskKey,
+      createdById: userId,
+      costUsd: inline.totalCostUsd,
+      durationMs: inline.durationMs,
+      confidence: inline.confidence,
+      approvalStatus: LeadAnalysisApprovalStatus.PENDING_REVIEW,
     });
   }
 
-  async importWithAutoAnalyze(dto: ImportLeadsDto, userId?: string) {
-    const result = await this.leadsService.importCandidates(
-      dto.candidates.map((c) => ({
-        ...c,
-        discoveredWithAi: c.discoveredWithAi ?? true,
-        discoverySessionId:
-          c.discoverySessionId ?? dto.discoverySessionId ?? undefined,
-      })),
+  async importWithAutoAnalyze(
+    dto: ImportLeadsDto,
+    userId?: string,
+    postProcessMode: 'off' | 'suggest' | 'auto' = 'suggest',
+  ): Promise<ImportLeadsExtendedResult> {
+    const result = await this.importOrchestrator.importWithIntelligence(
+      dto,
       userId,
+      postProcessMode,
     );
 
     if (dto.autoAnalyze && result.created.length > 0) {
@@ -175,7 +182,7 @@ export class LeadsTaskOrchestratorService {
     return result;
   }
 
-  private async discoverProspectsLegacy(
+  private async discoverProspectsInline(
     dto: DiscoverLeadsDto,
     userId?: string,
   ): Promise<LeadDiscoveryResult> {
@@ -184,26 +191,5 @@ export class LeadsTaskOrchestratorService {
       LeadDiscoveryResult
     >('leads.discover_restaurants', dto, { userId });
     return inline.output;
-  }
-
-  private async waitForTask(taskId: string, timeoutMs: number) {
-    const started = Date.now();
-    while (Date.now() - started < timeoutMs) {
-      const task = await this.prisma.aiTask.findUnique({
-        where: { id: taskId },
-      });
-      if (!task) throw new Error('Task not found');
-      if (task.status === 'COMPLETED' || task.status === 'AWAITING_APPROVAL') {
-        return task;
-      }
-      if (task.status === 'FAILED' || task.status === 'CANCELLED') {
-        throw new Error(
-          (task.error as { message?: string })?.message ??
-            'Discovery task failed',
-        );
-      }
-      await new Promise((r) => setTimeout(r, 500));
-    }
-    throw new Error('Discovery task timed out');
   }
 }

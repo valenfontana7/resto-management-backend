@@ -21,6 +21,10 @@ export const FUNNEL_STEPS = [
   'trial_banner_viewed',
   'trial_banner_cta_clicked',
   'trial_help_whatsapp_clicked',
+  'trial_payment_prompt_viewed',
+  'trial_payment_prompt_dismissed',
+  'trial_payment_modal_opened',
+  'trial_payment_method_saved',
   'customer_whatsapp_notified',
   'go_live_completed',
 ] as const;
@@ -88,7 +92,7 @@ export class OnboardingAnalyticsService {
         COUNT(DISTINCT "sessionId")::bigint AS sessions
       FROM "OnboardingEvent"
       WHERE "createdAt" >= ${since}
-        AND "event" IN ('landing_cta_clicked', 'landing_demo_clicked', 'landing_whatsapp_clicked', 'trial_banner_cta_clicked', 'trial_help_whatsapp_clicked')
+        AND "event" IN ('landing_cta_clicked', 'landing_demo_clicked', 'landing_whatsapp_clicked', 'trial_banner_cta_clicked', 'trial_help_whatsapp_clicked', 'trial_payment_modal_opened')
       GROUP BY "event", COALESCE("props"->>'source', 'unknown')
       ORDER BY "event", sessions DESC
     `;
@@ -169,9 +173,19 @@ export class OnboardingAnalyticsService {
           'trial_banner_viewed',
           'trial_banner_cta_clicked',
         ),
+        trialIntentToPaymentSavedConversion: conversion(
+          'trial_banner_cta_clicked',
+          'trial_payment_method_saved',
+        ),
+        goLiveToPaymentSavedConversion: conversion(
+          'go_live_completed',
+          'trial_payment_method_saved',
+        ),
         trialBannerSessions: sessions.get('trial_banner_viewed') ?? 0,
         trialPaymentIntentSessions:
           sessions.get('trial_banner_cta_clicked') ?? 0,
+        trialPaymentMethodSavedSessions:
+          sessions.get('trial_payment_method_saved') ?? 0,
         trialHelpSessions: sessions.get('trial_help_whatsapp_clicked') ?? 0,
         customerWhatsappNotifiedSessions:
           sessions.get('customer_whatsapp_notified') ?? 0,
@@ -183,6 +197,7 @@ export class OnboardingAnalyticsService {
         landingDemo: topSources('landing_demo_clicked'),
         landingWhatsapp: topSources('landing_whatsapp_clicked'),
         trialPaymentIntent: topSources('trial_banner_cta_clicked'),
+        trialPaymentSaved: topSources('trial_payment_method_saved'),
         trialHelp: topSources('trial_help_whatsapp_clicked'),
       },
     };

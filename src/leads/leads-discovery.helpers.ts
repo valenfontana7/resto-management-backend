@@ -161,16 +161,246 @@ export function buildDiscoveryPrompt(dto: DiscoverLeadsDto): string {
   parts.push(
     `Devuelve hasta ${maxResults} negocios REALES encontrados en la web.`,
     `Para cada uno indica si tiene sitio web propio, menú online, reservas online y WhatsApp comercial.`,
-    `Incluye whyFit explicando por qué serían buenos clientes para Bentoo (SaaS de restaurantes: web, menú digital, pedidos, reservas, MercadoPago).`,
+    `Incluye whyFit breve (máximo 80 caracteres, sin saltos de línea) explicando por qué serían buenos clientes para Bentoo (SaaS de restaurantes: web, menú digital, pedidos, reservas, MercadoPago).`,
     `confidence: high si hay datos claros de la web, medium si parcial, low si inferido.`,
     `sourceUrl: URL de referencia si está disponible.`,
     `instagram: solo el usuario/handle (ej: tres.cafe o @tres.cafe), sin URL completa de instagram.com.`,
     `No inventes negocios. Si no encontrás suficientes, devuelve menos candidatos.`,
     '',
-    'Respondé ÚNICAMENTE con JSON válido (sin markdown ni texto extra) con esta forma:',
+    'Respondé ÚNICAMENTE con JSON válido (sin markdown, sin texto extra, sin null — usá "" para campos vacíos) con esta forma:',
     '{"searchSummary":"...","candidates":[{"businessName":"...","category":"...","city":"...","website":"...","instagram":"...","whatsapp":"...","hasWebsite":false,"hasOnlineMenu":false,"hasReservations":false,"hasWhatsapp":false,"whyFit":"...","confidence":"high|medium|low","sourceUrl":"..."}]}',
   );
   return parts.join('\n');
+}
+
+export class LeadDiscoveryParseError extends Error {
+  constructor(
+    message: string,
+    readonly rawPreview?: string,
+  ) {
+    super(message);
+    this.name = 'LeadDiscoveryParseError';
+  }
+}
+
+function extractJsonObject(raw: string): string {
+  const trimmed = raw.trim();
+  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) {
+    return fenceMatch[1].trim();
+  }
+
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    return trimmed.slice(start, end + 1);
+  }
+
+  return trimmed;
+}
+
+function sanitizeJsonLikeString(jsonStr: string): string {
+  return jsonStr
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/,\s*([}\]])/g, '$1')
+    .replace(/\r\n/g, '\n')
+    .replace(/\bnull\b/g, '""');
+}
+
+/** Reemplaza saltos de línea / tabs sin escapar dentro de strings JSON. */
+function escapeControlCharsInJsonStrings(input: string): string {
+  const result: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+
+    if (!inString) {
+      result.push(ch);
+      if (ch === '"') inString = true;
+      continue;
+    }
+
+    if (escaped) {
+      result.push(ch);
+      escaped = false;
+      continue;
+    }
+
+    if (ch === '\\') {
+      result.push(ch);
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      result.push(ch);
+      inString = false;
+      continue;
+    }
+
+    if (ch === '\n' || ch === '\r' || ch === '\t') {
+      result.push(' ');
+      continue;
+    }
+
+    if (ch.charCodeAt(0) < 0x20) {
+      continue;
+    }
+
+    result.push(ch);
+  }
+
+  return result.join('');
+}
+
+/** Cierra arrays/objetos abiertos cuando Gemini trunca por MAX_TOKENS. */
+function closeTruncatedJson(jsonStr: string): string {
+  let inString = false;
+  let escaped = false;
+  let openBraces = 0;
+  let openBrackets = 0;
+
+  for (let i = 0; i < jsonStr.length; i++) {
+    const ch = jsonStr[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') inString = false;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === '{') openBraces++;
+    if (ch === '}') openBraces--;
+    if (ch === '[') openBrackets++;
+    if (ch === ']') openBrackets--;
+  }
+
+  let closed = jsonStr.trimEnd();
+  if (inString) closed += '"';
+  while (openBrackets > 0) {
+    closed += ']';
+    openBrackets--;
+  }
+  while (openBraces > 0) {
+    closed += '}';
+    openBraces--;
+  }
+  return closed;
+}
+
+export function buildStructureDiscoveryPrompt(
+  rawResearch: string,
+  maxResults: number,
+): string {
+  return [
+    `Convertí la siguiente investigación comercial en JSON estricto.`,
+    `Máximo ${maxResults} candidatos. Campos vacíos como "" (no null). whyFit máximo 80 caracteres.`,
+    'Formato: {"searchSummary":"...","candidates":[{"businessName":"...","category":"...","city":"...","website":"...","instagram":"...","whatsapp":"...","hasWebsite":false,"hasOnlineMenu":false,"hasReservations":false,"hasWhatsapp":false,"whyFit":"...","confidence":"high|medium|low","sourceUrl":"..."}]}',
+    '',
+    'Investigación:',
+    rawResearch.slice(0, 14_000),
+  ].join('\n');
+}
+
+/**
+ * Escapa comillas internas sin escapar que Gemini suele insertar en whyFit/searchSummary.
+ */
+function repairUnescapedQuotesInJsonStrings(input: string): string {
+  const result: string[] = [];
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+
+    if (!inString) {
+      result.push(ch);
+      if (ch === '"') inString = true;
+      continue;
+    }
+
+    if (escaped) {
+      result.push(ch);
+      escaped = false;
+      continue;
+    }
+
+    if (ch === '\\') {
+      result.push(ch);
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < input.length && /\s/.test(input[j])) j++;
+      const next = input[j];
+      if (
+        next === ',' ||
+        next === '}' ||
+        next === ']' ||
+        next === ':' ||
+        next === undefined
+      ) {
+        result.push(ch);
+        inString = false;
+      } else {
+        result.push('\\', '"');
+      }
+      continue;
+    }
+
+    result.push(ch);
+  }
+
+  return result.join('');
+}
+
+function tryParseDiscoveryJson(jsonStr: string): {
+  searchSummary?: string;
+  candidates?: LeadDiscoveryCandidateRaw[];
+} | null {
+  const sanitized = sanitizeJsonLikeString(jsonStr);
+  const attempts = [
+    jsonStr,
+    sanitized,
+    repairUnescapedQuotesInJsonStrings(sanitized),
+    escapeControlCharsInJsonStrings(
+      repairUnescapedQuotesInJsonStrings(sanitized),
+    ),
+    closeTruncatedJson(
+      escapeControlCharsInJsonStrings(
+        repairUnescapedQuotesInJsonStrings(sanitized),
+      ),
+    ),
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      return JSON.parse(attempt) as {
+        searchSummary?: string;
+        candidates?: LeadDiscoveryCandidateRaw[];
+      };
+    } catch {
+      /* try next repair pass */
+    }
+  }
+
+  return null;
 }
 
 export function parseDiscoveryResponse(raw: string): {
@@ -179,25 +409,18 @@ export function parseDiscoveryResponse(raw: string): {
 } {
   const trimmed = raw.trim();
   if (!trimmed) {
-    throw new Error('Empty Gemini discovery response');
+    throw new LeadDiscoveryParseError('Empty Gemini discovery response');
   }
 
-  let jsonStr = trimmed;
-  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) {
-    jsonStr = fenceMatch[1].trim();
-  } else {
-    const start = trimmed.indexOf('{');
-    const end = trimmed.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      jsonStr = trimmed.slice(start, end + 1);
-    }
-  }
+  const jsonStr = extractJsonObject(trimmed);
+  const parsed = tryParseDiscoveryJson(jsonStr);
 
-  const parsed = JSON.parse(jsonStr) as {
-    searchSummary?: string;
-    candidates?: LeadDiscoveryCandidateRaw[];
-  };
+  if (!parsed) {
+    throw new LeadDiscoveryParseError(
+      'Invalid JSON in Gemini discovery response',
+      jsonStr.slice(0, 400),
+    );
+  }
 
   return {
     searchSummary: parsed.searchSummary?.trim() || 'Búsqueda completada',

@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Lead, LeadStatus, Prisma } from '@prisma/client';
+import { CommercialReactiveSensingHandler } from '../commercial-intelligence/events/commercial-reactive-sensing.handler';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateLeadDto } from './dto/create-lead.dto';
 import { UpdateLeadDto } from './dto/update-lead.dto';
@@ -32,6 +33,7 @@ export class LeadsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly scoring: LeadScoringService,
+    private readonly reactiveSensing: CommercialReactiveSensingHandler,
   ) {}
 
   async findAll(filters: LeadFiltersDto) {
@@ -182,7 +184,7 @@ export class LeadsService {
       return existing;
     }
 
-    return this.prisma.lead.update({
+    const updated = await this.prisma.lead.update({
       where: { id },
       data: {
         status,
@@ -195,6 +197,10 @@ export class LeadsService {
         },
       },
     });
+
+    void this.reactiveSensing.onLeadStatusChanged(id, status);
+
+    return updated;
   }
 
   async getDashboardStats() {

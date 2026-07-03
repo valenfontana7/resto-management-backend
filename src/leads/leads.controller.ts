@@ -31,6 +31,7 @@ import { LeadsService } from './leads.service';
 import { LeadsAiService } from './leads-ai.service';
 import { LeadsSavedSearchService } from './leads-saved-search.service';
 import { LeadApprovalService } from './approval/lead-approval.service';
+import { UpdateLeadApprovalDto } from './dto/update-lead-approval.dto';
 
 @ApiTags('Leads')
 @Controller('api/super-admin/leads')
@@ -100,7 +101,11 @@ export class LeadsController {
 
   @Post('import')
   importLeads(@Body() dto: ImportLeadsDto, @Request() req) {
-    return this.leadsAiService.importCandidates(dto, req.user?.userId);
+    return this.leadsAiService.importCandidates(
+      dto,
+      req.user?.userId,
+      dto.postProcessMode ?? 'suggest',
+    );
   }
 
   @Get('ai/saved-searches')
@@ -225,6 +230,25 @@ export class LeadsController {
   @Get(':id/ai/analyses')
   getAnalyses(@Param('id') id: string) {
     return this.leadsAiService.getLeadAnalyses(id);
+  }
+
+  @Patch(':id/approvals/:analysisId')
+  updateApproval(
+    @Param('analysisId') analysisId: string,
+    @Body() dto: UpdateLeadApprovalDto,
+    @Request() req,
+  ) {
+    return this.approvalService.updateContent(
+      analysisId,
+      req.user?.userId,
+      dto.content,
+    );
+  }
+
+  @Post(':id/approvals/:analysisId/regenerate')
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  regenerateApproval(@Param('analysisId') analysisId: string, @Request() req) {
+    return this.approvalService.regenerate(analysisId, req.user?.userId);
   }
 
   @Post(':id/approvals/:analysisId/approve')

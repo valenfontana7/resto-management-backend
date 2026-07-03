@@ -9,6 +9,8 @@ Decisiones formales previas a implementar la capa de inteligencia comercial de B
 | [003](./003-commercial-intelligence-naming.md) | Bounded context: Commercial Intelligence | Aceptado |
 | [004](./004-domain-events-outbox.md) | Event bus vía outbox PostgreSQL | **Implementado** (Fase 0) |
 | [005](./005-model-selection-ownership.md) | Ownership de selección de modelo IA | Aceptado |
+| [006](./006-unified-commercial-feed.md) | Bandeja comercial unificada (Work Queue) | Aceptado |
+| [008](./008-deprecate-leads-task-orchestrator.md) | Deprecación de `LeadsTaskOrchestratorService` | **Implementado** |
 
 ## Convención
 
@@ -26,6 +28,4 @@ Decisiones formales previas a implementar la capa de inteligencia comercial de B
 
 ## Próximos ADRs sugeridos (no incluidos)
 
-- ADR-006: Unified Commercial Feed vs múltiples bandejas
 - ADR-007: `workspaceId` en AI platform (multi-tenant)
-- ADR-008: Deprecación de `LeadsTaskOrchestratorService`

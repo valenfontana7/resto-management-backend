@@ -18,6 +18,9 @@ const STEP_LABELS: Record<string, string> = {
   go_live_completed: 'Go-live completado',
   trial_banner_viewed: 'Banner trial visto',
   trial_banner_cta_clicked: 'Intención de pago trial',
+  trial_payment_prompt_viewed: 'Prompt post go-live visto',
+  trial_payment_modal_opened: 'Modal de pago abierto',
+  trial_payment_method_saved: 'Tarjeta guardada en trial',
 };
 
 @Injectable()
@@ -52,6 +55,7 @@ export class ActivationDashboardService {
       onlinePaymentWeek1,
       retention,
       criticalIncidents,
+      trialPaymentIntent,
     ] = await Promise.all([
       this.countRestaurantsRegistered(since),
       this.countRestaurantsRegistered(previousSince, since),
@@ -68,6 +72,7 @@ export class ActivationDashboardService {
       this.getOnlinePaymentActiveWeek1Rate(since),
       this.onboardingAnalytics.getRetentionCohorts(Math.min(safeDays, 60)),
       this.countCriticalIncidents(since),
+      this.getTrialPaymentIntentRate(since),
     ]);
 
     const funnelDrops = funnel.steps
@@ -128,6 +133,8 @@ export class ActivationDashboardService {
         averageD30Rate: retention.averageD30Rate,
         sampleUsersD30: retention.sampleUsersD30,
         criticalIncidents: criticalIncidents.value,
+        trialPaymentMethodRate: trialPaymentIntent.rate,
+        trialPaymentMethodSample: trialPaymentIntent.sampleSize,
       },
       conversion: {
         registeredToPublished,
@@ -136,6 +143,10 @@ export class ActivationDashboardService {
           funnel.highlights?.landingToRegisterConversion ?? null,
         registerToPublish:
           funnel.highlights?.registerToPublishConversion ?? null,
+        trialToPaymentSaved:
+          funnel.highlights?.trialIntentToPaymentSavedConversion ?? null,
+        goLiveToPaymentSaved:
+          funnel.highlights?.goLiveToPaymentSavedConversion ?? null,
       },
       topFrictions,
       stuckRestaurants,
@@ -475,6 +486,36 @@ export class ActivationDashboardService {
     const active = Number(rows[0]?.active ?? 0);
     return {
       rate: total > 0 ? Math.round((active / total) * 1000) / 10 : null,
+      sampleSize: total,
+    };
+  }
+
+  private async getTrialPaymentIntentRate(since: Date): Promise<{
+    rate: number | null;
+    sampleSize: number;
+  }> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{ total: bigint; with_payment: bigint }>
+    >`
+      SELECT
+        COUNT(*)::bigint AS total,
+        COUNT(*) FILTER (
+          WHERE EXISTS (
+            SELECT 1
+            FROM "UserPaymentMethod" pm
+            WHERE pm."subscriptionId" = s.id
+          )
+        )::bigint AS with_payment
+      FROM "Subscription" s
+      INNER JOIN "Restaurant" r ON r.id = s."restaurantId"
+      WHERE r."createdAt" >= ${since}
+        AND s.status = 'TRIALING'
+    `;
+
+    const total = Number(rows[0]?.total ?? 0);
+    const withPayment = Number(rows[0]?.with_payment ?? 0);
+    return {
+      rate: total > 0 ? Math.round((withPayment / total) * 1000) / 10 : null,
       sampleSize: total,
     };
   }

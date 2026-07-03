@@ -11,6 +11,7 @@ import { EncryptionService } from './encryption.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from '../auth/auth.module';
 import { BusinessEventsModule } from '../business-events/business-events.module';
+import { GoLiveEnforcementModule } from '../restaurants/go-live-enforcement.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { BusinessEventsModule } from '../business-events/business-events.module'
     ScheduleModule.forRoot(),
     AuthModule,
     BusinessEventsModule,
+    GoLiveEnforcementModule,
   ],
   controllers: [MercadoPagoController],
   providers: [

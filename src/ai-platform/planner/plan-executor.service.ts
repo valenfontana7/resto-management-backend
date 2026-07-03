@@ -66,22 +66,37 @@ export class PlanExecutorService {
         .filter(
           (s) =>
             s.status === PlanStepStatus.COMPLETED ||
-            s.status === PlanStepStatus.SKIPPED,
+            s.status === PlanStepStatus.SKIPPED ||
+            s.status === PlanStepStatus.FAILED,
         )
         .map((s) => s.id),
     );
 
     for (const step of steps) {
-      if (step.status !== PlanStepStatus.PENDING) continue;
+      if (
+        step.status !== PlanStepStatus.PENDING &&
+        step.status !== PlanStepStatus.WAITING_DEPENDENCY
+      ) {
+        continue;
+      }
 
       const deps = (step.dependsOnStepIds as string[]) ?? [];
       const depsMet = deps.every((depId) => completedIds.has(depId));
       if (!depsMet) {
+        if (step.status === PlanStepStatus.PENDING) {
+          await this.prisma.executionPlanStep.update({
+            where: { id: step.id },
+            data: { status: PlanStepStatus.WAITING_DEPENDENCY },
+          });
+        }
+        continue;
+      }
+
+      if (step.status === PlanStepStatus.WAITING_DEPENDENCY) {
         await this.prisma.executionPlanStep.update({
           where: { id: step.id },
-          data: { status: PlanStepStatus.WAITING_DEPENDENCY },
+          data: { status: PlanStepStatus.PENDING },
         });
-        continue;
       }
 
       if (step.skipReason) {
@@ -168,6 +183,7 @@ export class PlanExecutorService {
     }
 
     if (awaitingApproval) {
+      await this.syncPlanProgress(task.planId);
       return;
     }
 
@@ -197,10 +213,100 @@ export class PlanExecutorService {
     });
     for (const plan of running) {
       try {
+        await this.reconcileStuckSteps(plan.id);
+        await this.retryFixableFailedSteps(plan.id);
         await this.syncPlanProgress(plan.id);
+        await this.advancePlan(plan.id);
       } catch (error) {
         this.logger.warn(`Plan sync failed ${plan.id}: ${error}`);
       }
+    }
+  }
+
+  /** Repara pasos que quedaron RUNNING con tarea ya finalizada (regresión enqueueStep). */
+  private async reconcileStuckSteps(planId: string) {
+    const stuckSteps = await this.prisma.executionPlanStep.findMany({
+      where: {
+        planId,
+        status: {
+          in: [PlanStepStatus.RUNNING, PlanStepStatus.QUEUED],
+        },
+      },
+      select: { id: true },
+    });
+    if (stuckSteps.length === 0) return;
+
+    const tasks = await this.prisma.aiTask.findMany({
+      where: {
+        planId,
+        planStepId: { in: stuckSteps.map((s) => s.id) },
+        status: {
+          in: [
+            AiTaskStatus.COMPLETED,
+            AiTaskStatus.FAILED,
+            AiTaskStatus.AWAITING_APPROVAL,
+          ],
+        },
+      },
+      include: { execution: true },
+    });
+
+    for (const task of tasks) {
+      if (!task.planStepId) continue;
+      const cost = Number(task.execution?.totalCostUsd ?? 0);
+      const stepStatus =
+        task.status === AiTaskStatus.FAILED
+          ? PlanStepStatus.FAILED
+          : task.status === AiTaskStatus.AWAITING_APPROVAL
+            ? PlanStepStatus.WAITING_APPROVAL
+            : PlanStepStatus.COMPLETED;
+
+      await this.prisma.executionPlanStep.update({
+        where: { id: task.planStepId },
+        data: {
+          status: stepStatus,
+          actualCostUsd: cost,
+          output: task.output as Prisma.InputJsonValue,
+        },
+      });
+    }
+  }
+
+  /** Reintenta pasos de código que fallaron por bugs de input (ej. calculate_score sin leadId). */
+  private async retryFixableFailedSteps(planId: string) {
+    const retryableTaskKeys = ['leads.calculate_score', 'leads.generate_demo'];
+    const failedSteps = await this.prisma.executionPlanStep.findMany({
+      where: {
+        planId,
+        status: PlanStepStatus.FAILED,
+        taskKey: { in: retryableTaskKeys },
+      },
+    });
+
+    for (const step of failedSteps) {
+      const latestTask = await this.prisma.aiTask.findUnique({
+        where: { planStepId: step.id },
+      });
+      if (
+        latestTask?.status === AiTaskStatus.COMPLETED ||
+        latestTask?.status === AiTaskStatus.AWAITING_APPROVAL ||
+        latestTask?.status === AiTaskStatus.RUNNING ||
+        latestTask?.status === AiTaskStatus.PENDING
+      ) {
+        continue;
+      }
+
+      await this.prisma.executionPlanStep.update({
+        where: { id: step.id },
+        data: {
+          status: PlanStepStatus.PENDING,
+          output: Prisma.JsonNull,
+          actualCostUsd: 0,
+        },
+      });
+      this.logger.log(
+        `Retrying fixable failed step ${step.taskKey} (${step.id})`,
+      );
     }
   }
 
@@ -252,43 +358,103 @@ export class PlanExecutorService {
       data: { status: PlanStepStatus.QUEUED },
     });
 
-    const task = await this.prisma.aiTask.create({
-      data: {
-        taskKey: step.taskKey,
-        input: (step.input ?? {}) as Prisma.InputJsonValue,
-        leadId: resolvedLeadId,
-        goalId: plan.goalId,
-        planId,
-        planStepId: step.id,
-        dependsOnStepIds: step.dependsOnStepIds as Prisma.InputJsonValue,
-        selectedModel: step.selectedModel ?? undefined,
-        createdById: plan.goal.createdById,
-        status: 'PENDING',
-      },
+    const currentStep = await this.prisma.executionPlanStep.findUnique({
+      where: { id: step.id },
+      select: { status: true },
+    });
+    if (
+      currentStep?.status === PlanStepStatus.COMPLETED ||
+      currentStep?.status === PlanStepStatus.WAITING_APPROVAL ||
+      currentStep?.status === PlanStepStatus.SKIPPED
+    ) {
+      return;
+    }
+
+    const existingTask = await this.prisma.aiTask.findUnique({
+      where: { planStepId: step.id },
     });
 
-    await this.timeline.record({
-      goalId: plan.goalId,
-      planId,
-      stepId: step.id,
-      taskId: task.id,
-      eventType: PlannerEventType.STEP_CREATED,
-      title: `Tarea encolada: ${cap.label}`,
-    });
+    if (
+      existingTask &&
+      (existingTask.status === AiTaskStatus.PENDING ||
+        existingTask.status === AiTaskStatus.RUNNING)
+    ) {
+      return;
+    }
 
-    if (step.selectedModel) {
+    if (
+      existingTask?.status === AiTaskStatus.AWAITING_APPROVAL ||
+      existingTask?.status === AiTaskStatus.COMPLETED
+    ) {
+      await this.prisma.executionPlanStep.update({
+        where: { id: step.id },
+        data: {
+          status:
+            existingTask.status === AiTaskStatus.AWAITING_APPROVAL
+              ? PlanStepStatus.WAITING_APPROVAL
+              : PlanStepStatus.COMPLETED,
+          output: existingTask.output as Prisma.InputJsonValue,
+        },
+      });
+      return;
+    }
+
+    let taskId: string;
+
+    if (existingTask) {
+      taskId = existingTask.id;
+      await this.prisma.aiTask.update({
+        where: { id: existingTask.id },
+        data: {
+          status: AiTaskStatus.PENDING,
+          error: Prisma.JsonNull,
+          output: Prisma.JsonNull,
+          startedAt: null,
+          completedAt: null,
+          executionId: null,
+          retryCount: { increment: 1 },
+          input: (step.input ?? {}) as Prisma.InputJsonValue,
+          selectedModel: step.selectedModel ?? undefined,
+        },
+      });
+    } else {
+      const created = await this.prisma.aiTask.create({
+        data: {
+          taskKey: step.taskKey,
+          input: (step.input ?? {}) as Prisma.InputJsonValue,
+          leadId: resolvedLeadId,
+          goalId: plan.goalId,
+          planId,
+          planStepId: step.id,
+          dependsOnStepIds: step.dependsOnStepIds as Prisma.InputJsonValue,
+          selectedModel: step.selectedModel ?? undefined,
+          createdById: plan.goal.createdById,
+          status: 'PENDING',
+        },
+      });
+      taskId = created.id;
+
       await this.timeline.record({
         goalId: plan.goalId,
         planId,
         stepId: step.id,
-        taskId: task.id,
-        eventType: PlannerEventType.MODEL_SELECTED,
-        title: `Modelo seleccionado: ${step.selectedModel}`,
-        detail: { model: step.selectedModel },
+        taskId,
+        eventType: PlannerEventType.STEP_CREATED,
+        title: `Tarea encolada: ${cap.label}`,
       });
-    }
 
-    await this.runner.runTask(task.id);
+      if (step.selectedModel) {
+        await this.timeline.record({
+          goalId: plan.goalId,
+          planId,
+          stepId: step.id,
+          taskId,
+          eventType: PlannerEventType.MODEL_SELECTED,
+          title: `Modelo seleccionado: ${step.selectedModel}`,
+          detail: { model: step.selectedModel },
+        });
+      }
+    }
 
     await this.prisma.executionPlanStep.update({
       where: { id: step.id },
@@ -299,10 +465,29 @@ export class PlanExecutorService {
       goalId: plan.goalId,
       planId,
       stepId: step.id,
-      taskId: task.id,
+      taskId,
       eventType: PlannerEventType.STEP_STARTED,
-      title: `Ejecutando: ${cap.label}`,
+      title: existingTask
+        ? `Reintentando: ${cap.label}`
+        : `Ejecutando: ${cap.label}`,
     });
+
+    await this.runner.runTask(taskId);
+  }
+
+  async syncPlanProgressPublic(planId: string) {
+    return this.syncPlanProgress(planId);
+  }
+
+  private static readonly TERMINAL_STEP_STATUSES: PlanStepStatus[] = [
+    PlanStepStatus.COMPLETED,
+    PlanStepStatus.SKIPPED,
+    PlanStepStatus.FAILED,
+    PlanStepStatus.WAITING_APPROVAL,
+  ];
+
+  private isStepProgressDone(status: PlanStepStatus) {
+    return PlanExecutorService.TERMINAL_STEP_STATUSES.includes(status);
   }
 
   private async syncPlanProgress(planId: string) {
@@ -312,9 +497,7 @@ export class PlanExecutorService {
     ]);
     if (!plan) return;
 
-    const done = steps.filter((s) =>
-      ['COMPLETED', 'SKIPPED', 'FAILED'].includes(s.status),
-    ).length;
+    const done = steps.filter((s) => this.isStepProgressDone(s.status)).length;
     const progress = steps.length > 0 ? (done / steps.length) * 100 : 0;
 
     const actualCost = steps.reduce(
@@ -322,7 +505,12 @@ export class PlanExecutorService {
       0,
     );
 
-    const allDone = done === steps.length;
+    const allDone = steps.every(
+      (s) =>
+        s.status === PlanStepStatus.COMPLETED ||
+        s.status === PlanStepStatus.SKIPPED ||
+        s.status === PlanStepStatus.FAILED,
+    );
     await this.prisma.executionPlan.update({
       where: { id: planId },
       data: {

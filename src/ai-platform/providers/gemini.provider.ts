@@ -44,6 +44,9 @@ export class GeminiProvider {
             }
           : {}),
         ...(request.tools ? { tools: request.tools } : {}),
+        ...(request.thinkingBudget !== undefined
+          ? { thinkingConfig: { thinkingBudget: request.thinkingBudget } }
+          : {}),
       },
     });
 

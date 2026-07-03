@@ -6,15 +6,15 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { LeadsService } from './leads.service';
-import { LeadsTaskOrchestratorService } from './leads-task-orchestrator.service';
 import { DiscoverLeadsDto } from './dto/discover-leads.dto';
 import { ImportLeadsDto } from './dto/import-leads.dto';
+import { LeadsAiExecutionService } from './leads-ai-execution.service';
+import { LeadsService } from './leads.service';
 import type { LeadDiscoveryResult } from './types/lead-discovery.types';
 
 /**
- * Facade de compatibilidad sobre LeadsTaskOrchestrator + persistencia legacy.
- * @deprecated Preferir LeadsTaskOrchestratorService y AiTaskQueueService directamente.
+ * Fachada HTTP para operaciones IA de leads (prospección, análisis, mensajes).
+ * Delega en LeadsAiExecutionService (Execution Platform).
  */
 @Injectable()
 export class LeadsAiService implements OnModuleInit {
@@ -24,7 +24,7 @@ export class LeadsAiService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly leadsService: LeadsService,
-    private readonly orchestrator: LeadsTaskOrchestratorService,
+    private readonly execution: LeadsAiExecutionService,
   ) {}
 
   onModuleInit(): void {
@@ -35,12 +35,12 @@ export class LeadsAiService implements OnModuleInit {
       this.configService.get<string>('LEADS_DISCOVERY_MODEL')?.trim() ||
       'gemini-2.5-flash';
     this.logger.log(
-      `Leads AI facade — diagnosis/messages: ${diagnosisModel}, discovery: ${discoveryModel}`,
+      `Leads AI — diagnosis/messages: ${diagnosisModel}, discovery: ${discoveryModel}`,
     );
   }
 
   analyzeBusiness(leadId: string, userId?: string) {
-    return this.orchestrator.analyzeBusiness(leadId, userId);
+    return this.execution.analyzeBusiness(leadId, userId);
   }
 
   generateMessage(
@@ -48,18 +48,22 @@ export class LeadsAiService implements OnModuleInit {
     channel: 'instagram' | 'whatsapp' | 'email',
     userId?: string,
   ) {
-    return this.orchestrator.generateMessage(leadId, channel, userId);
+    return this.execution.generateMessage(leadId, channel, userId);
   }
 
   discoverProspects(
     dto: DiscoverLeadsDto,
     userId?: string,
   ): Promise<LeadDiscoveryResult> {
-    return this.orchestrator.discoverProspects(dto, userId);
+    return this.execution.discoverProspects(dto, userId);
   }
 
-  importCandidates(dto: ImportLeadsDto, userId?: string) {
-    return this.orchestrator.importWithAutoAnalyze(dto, userId);
+  importCandidates(
+    dto: ImportLeadsDto,
+    userId?: string,
+    postProcessMode: 'off' | 'suggest' | 'auto' = 'suggest',
+  ) {
+    return this.execution.importWithAutoAnalyze(dto, userId, postProcessMode);
   }
 
   async getLeadAnalyses(leadId: string) {

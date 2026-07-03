@@ -31,7 +31,7 @@ export class RoiCalculatorService {
 
     const achieved = goal?.achievedCount ?? 0;
     const actualRoi =
-      achieved > 0 && totalSpent > 0 ? achieved / totalSpent : null;
+      achieved > 0 && totalSpent >= 0.01 ? achieved / totalSpent : null;
 
     return {
       costPerLead: this.avgCost(executions.filter((e) => e.leadId != null)),

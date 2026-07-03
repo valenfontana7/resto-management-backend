@@ -30,6 +30,11 @@ export interface CiConfigThresholds {
   minConfidence: number;
   riskWeight: number;
   baseDealValueUsd: number;
+  minAutoEvUsd?: number;
+  minAutoConfidence?: number;
+  maxAutoCostUsd?: number;
+  minBudgetRemainingPct?: number;
+  importAutoMinScore?: number;
   probabilityWeights: {
     status: number;
     fit: number;
@@ -37,6 +42,57 @@ export interface CiConfigThresholds {
     recency: number;
   };
   statusScores: Record<string, number>;
+}
+
+export type CommercialAutonomyLevel =
+  | 'RECOMMEND'
+  | 'SUGGEST_GOAL'
+  | 'EXPRESS'
+  | 'AUTO_EXECUTE';
+
+export type CommercialActionMode = 'record' | 'l1' | 'express' | 'auto';
+
+export type WorkQueueItemKind =
+  | 'recommendation'
+  | 'signal'
+  | 'approval'
+  | 'plan_review';
+
+export type WorkQueueItemSource = 'ev' | 'signal' | 'approval' | 'plan';
+
+export interface WorkQueueItemAction {
+  key: string;
+  label: string;
+  mode?: CommercialActionMode;
+  href?: string;
+}
+
+export interface CommercialWorkQueueItem {
+  id: string;
+  kind: WorkQueueItemKind;
+  sources: WorkQueueItemSource[];
+  priority: number;
+  leadId?: string;
+  leadName?: string;
+  title: string;
+  subtitle: string;
+  recommendation?: ActionIntelligenceResult;
+  signal?: OpportunitySignal;
+  goalId?: string;
+  planId?: string;
+  analysisId?: string;
+  actions: WorkQueueItemAction[];
+}
+
+export interface CommercialWorkQueueDto {
+  items: CommercialWorkQueueItem[];
+  summary: {
+    total: number;
+    byKind: Partial<Record<WorkQueueItemKind, number>>;
+    actionableCount: number;
+    budgetRemainingUsd: number | null;
+  };
+  generatedAt: string;
 }
 
 export interface CommercialIntelligenceConfigData {
@@ -86,6 +142,86 @@ export interface TodayDashboardDto {
   configVersion: number;
 }
 
+export type OpportunitySignalType =
+  | 'STALE_FOLLOWUP'
+  | 'HIGH_INTENT_COOLING'
+  | 'HOT_NEW_LEAD'
+  | 'PENDING_APPROVAL'
+  | 'PLAN_AWAITING_APPROVAL'
+  | 'DEMO_CANDIDATE'
+  | 'DEMO_VIEWED'
+  | 'BUDGET_LOW';
+
+export type OpportunitySignalSeverity = 'critical' | 'high' | 'medium' | 'low';
+
+export interface OpportunitySignal {
+  id: string;
+  type: OpportunitySignalType;
+  severity: OpportunitySignalSeverity;
+  title: string;
+  description: string;
+  leadId?: string;
+  leadName?: string;
+  detectedAt: string;
+  priority: number;
+  suggestedTaskKey?: string;
+  actionHref?: string;
+}
+
+export interface OpportunityFeedDto {
+  signals: OpportunitySignal[];
+  summary: {
+    total: number;
+    critical: number;
+    high: number;
+    byType: Partial<Record<OpportunitySignalType, number>>;
+  };
+  generatedAt: string;
+}
+
+export type DecisionOutcomeStatus =
+  | 'converted'
+  | 'progressed'
+  | 'stalled'
+  | 'lost'
+  | 'pending'
+  | 'unknown';
+
+export interface DecisionOutcomeComparison {
+  decisionId: string;
+  actionType: string;
+  targetId: string | null;
+  leadName: string | null;
+  goalId: string | null;
+  decidedAt: string;
+  expectedCostUsd: number;
+  expectedValueUsd: number;
+  expectedRoi: number | null;
+  actualCostUsd: number | null;
+  costDeviationUsd: number | null;
+  valueRealizedUsd: number | null;
+  actualRoi: number | null;
+  outcomeStatus: DecisionOutcomeStatus;
+  outcomeLabel: string;
+  predictionAccuracy: number | null;
+}
+
+export interface CommercialLearningSummaryDto {
+  summary: {
+    decisionsAnalyzed: number;
+    converted: number;
+    progressed: number;
+    stalled: number;
+    lost: number;
+    pending: number;
+    avgCostDeviationUsd: number | null;
+    avgExpectedRoi: number | null;
+    avgActualRoi: number | null;
+    predictionAccuracyAvg: number | null;
+  };
+  items: DecisionOutcomeComparison[];
+}
+
 export const DEFAULT_CI_CONFIG: CommercialIntelligenceConfigData = {
   weights: {
     ev: 0.35,
@@ -113,6 +249,11 @@ export const DEFAULT_CI_CONFIG: CommercialIntelligenceConfigData = {
     minConfidence: 0.4,
     riskWeight: 0.1,
     baseDealValueUsd: 348,
+    minAutoEvUsd: 0.5,
+    minAutoConfidence: 0.85,
+    maxAutoCostUsd: 0.25,
+    minBudgetRemainingPct: 0.2,
+    importAutoMinScore: 60,
     probabilityWeights: {
       status: 0.4,
       fit: 0.35,

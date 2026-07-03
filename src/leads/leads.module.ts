@@ -1,17 +1,23 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AiPlatformModule } from '../ai-platform/ai-platform.module';
+import { CommercialIntelligenceModule } from '../commercial-intelligence/commercial-intelligence.module';
 import { CommonModule } from '../common/common.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { LeadDemoProvisionService } from './lead-demo-provision.service';
+import { LeadDemoViewService } from './lead-demo-view.service';
 import { LeadApprovalService } from './approval/lead-approval.service';
 import { LeadScoringService } from './lead-scoring.service';
 import { PlanLeadBindingService } from './plan-lead-binding.service';
 import { LeadsAiService } from './leads-ai.service';
 import { LeadsController } from './leads.controller';
+import { PublicLeadsController } from './public-leads.controller';
 import { LeadsDiscoverySchedulerService } from './leads-discovery-scheduler.service';
 import { LeadsSavedSearchService } from './leads-saved-search.service';
 import { LeadsService } from './leads.service';
-import { LeadsTaskOrchestratorService } from './leads-task-orchestrator.service';
+import { LeadsAiExecutionService } from './leads-ai-execution.service';
+import { LeadAnalysisPersistenceService } from './lead-analysis-persistence.service';
+import { LeadImportOrchestratorService } from './lead-import-orchestrator.service';
 import { LeadsTasksRegistrar } from './leads-tasks-registrar.service';
 import {
   AnalyzeClientReplyTask,
@@ -37,17 +43,22 @@ import {
     PrismaModule,
     CommonModule,
     AiPlatformModule,
+    CommercialIntelligenceModule,
     ScheduleModule.forRoot(),
   ],
-  controllers: [LeadsController],
+  controllers: [LeadsController, PublicLeadsController],
   providers: [
     LeadsService,
     LeadsAiService,
     LeadScoringService,
     LeadsSavedSearchService,
     LeadsDiscoverySchedulerService,
-    LeadsTaskOrchestratorService,
+    LeadsAiExecutionService,
+    LeadAnalysisPersistenceService,
+    LeadImportOrchestratorService,
     LeadApprovalService,
+    LeadDemoProvisionService,
+    LeadDemoViewService,
     PlanLeadBindingService,
     LeadsTasksRegistrar,
     DiscoverRestaurantsTask,
@@ -65,6 +76,6 @@ import {
     GenerateProposalTask,
     GenerateDemoTask,
   ],
-  exports: [LeadsService, LeadsTaskOrchestratorService],
+  exports: [LeadsService, LeadsAiExecutionService, LeadDemoViewService],
 })
 export class LeadsModule {}

@@ -64,6 +64,8 @@ export interface AiCompletionRequest {
   maxOutputTokens?: number;
   responseJsonSchema?: Record<string, unknown>;
   tools?: Array<{ googleSearch?: Record<string, never> }>;
+  /** Gemini 2.5+: desactivar thinking (0) evita que consuma el presupuesto de salida. */
+  thinkingBudget?: number;
 }
 
 export interface AiCompletionResponse {

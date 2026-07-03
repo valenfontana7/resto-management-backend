@@ -8,17 +8,34 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
+
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+
 import { Roles } from '../auth/decorators/roles.decorator';
+
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { GoalEngineService } from '../ai-platform/goal-engine/goal-engine.service';
-import { AiPlannerService } from '../ai-platform/planner/ai-planner.service';
+
+import { CommercialActionOrchestratorService } from './decisioning/commercial-action-orchestrator.service';
+
+import { CommercialAutonomyService } from './decisioning/commercial-autonomy.service';
+
 import {
   CommercialDecisionService,
   CommercialTodayService,
 } from './decisioning/commercial-today.service';
-import type { ActionIntelligenceResult } from './types/commercial-intelligence.types';
+
+import { CommercialWorkQueueService } from './read-models/commercial-work-queue.service';
+
+import { OpportunityFeedService } from './read-models/opportunity-feed.service';
+
+import { CommercialLearningService } from './read-models/commercial-learning.service';
+
+import type {
+  ActionIntelligenceResult,
+  CommercialActionMode,
+} from './types/commercial-intelligence.types';
 
 @ApiTags('Commercial Intelligence')
 @Controller('api/super-admin/commercial-intelligence')
@@ -28,10 +45,55 @@ import type { ActionIntelligenceResult } from './types/commercial-intelligence.t
 export class CommercialIntelligenceController {
   constructor(
     private readonly today: CommercialTodayService,
+
     private readonly decisions: CommercialDecisionService,
-    private readonly goalEngine: GoalEngineService,
-    private readonly planner: AiPlannerService,
+
+    private readonly opportunityFeed: OpportunityFeedService,
+
+    private readonly learning: CommercialLearningService,
+
+    private readonly workQueue: CommercialWorkQueueService,
+
+    private readonly orchestrator: CommercialActionOrchestratorService,
+
+    private readonly autonomy: CommercialAutonomyService,
   ) {}
+
+  @Get('nav-counts')
+  getNavCounts() {
+    return this.workQueue.getNavCounts();
+  }
+
+  @Get('work-queue')
+  getWorkQueue(@Query('limit') limit?: string) {
+    return this.workQueue.getQueue(limit ? Number(limit) : 30);
+  }
+
+  @Post('work-queue/dismiss')
+  dismissWorkQueueItem(@Body() body: { itemId: string }) {
+    this.workQueue.dismiss(body.itemId);
+
+    return { success: true };
+  }
+
+  @Get('autonomy/status')
+  getAutonomyStatus() {
+    return {
+      autoExecuteEnabled: this.autonomy.isAutoExecuteEnabled(),
+
+      envFlag: 'COMMERCIAL_AUTO_EXECUTE',
+    };
+  }
+
+  @Get('opportunities/feed')
+  getOpportunityFeed(@Query('limit') limit?: string) {
+    return this.opportunityFeed.getFeed(limit ? Number(limit) : 20);
+  }
+
+  @Get('learning/summary')
+  getLearningSummary(@Query('limit') limit?: string) {
+    return this.learning.getSummary(limit ? Number(limit) : 25);
+  }
 
   @Get('today')
   getToday() {
@@ -58,34 +120,47 @@ export class CommercialIntelligenceController {
     @Body()
     body: {
       recommendation: ActionIntelligenceResult;
+
+      mode?: CommercialActionMode;
+
       createGoal?: boolean;
     },
+
     @Request() req,
   ) {
     const userId = req.user?.userId as string | undefined;
+
     const rec = body.recommendation;
 
-    const decision = await this.decisions.recordAccepted(rec, userId);
+    const mode: CommercialActionMode =
+      body.mode ?? (body.createGoal === false ? 'record' : 'l1');
 
-    if (body.createGoal && rec.targetId) {
-      const goal = await this.goalEngine.create(
-        {
-          title: rec.label.slice(0, 80),
-          objective: `Acción comercial: ${rec.label}. ${rec.reason}`,
-          targetCount: 1,
-          budgetUsd: Math.max(rec.estimatedCostUsd * 3, 1),
-        },
-        userId,
-      );
-      const plan = await this.planner.buildPlan(goal.id, userId);
-      return {
-        decision,
-        goal,
-        plan,
-        message: 'Objetivo y plan creados (L1 — revisar y aprobar)',
-      };
-    }
+    return this.orchestrator.act(rec, mode, userId);
+  }
 
-    return { decision, message: 'Decisión registrada' };
+  @Post('recommendations/act-batch')
+  async actOnRecommendationBatch(
+    @Body()
+    body: {
+      recommendations: ActionIntelligenceResult[];
+
+      mode: 'express' | 'auto';
+
+      maxItems?: number;
+    },
+
+    @Request() req,
+  ) {
+    const userId = req.user?.userId as string | undefined;
+
+    return this.orchestrator.actBatch(
+      body.recommendations,
+
+      body.mode,
+
+      userId,
+
+      body.maxItems ?? 5,
+    );
   }
 }

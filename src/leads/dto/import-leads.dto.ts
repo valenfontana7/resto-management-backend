@@ -27,4 +27,9 @@ export class ImportLeadsDto {
   @IsOptional()
   @IsString()
   discoverySessionId?: string;
+
+  @ApiPropertyOptional({ enum: ['off', 'suggest', 'auto'], default: 'suggest' })
+  @IsOptional()
+  @IsString()
+  postProcessMode?: 'off' | 'suggest' | 'auto';
 }

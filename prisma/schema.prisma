@@ -1981,6 +1981,9 @@ model Lead {
   discoverySourceUrl    String?    @db.Text
   createdById           String?
   convertedRestaurantId String?
+  demoFirstViewedAt     DateTime?
+  demoLastViewedAt      DateTime?
+  demoViewCount         Int        @default(0)
   createdAt             DateTime   @default(now())
   updatedAt             DateTime   @updatedAt
 
@@ -1993,6 +1996,7 @@ model Lead {
   @@index([score])
   @@index([createdAt])
   @@index([discoveredWithAi])
+  @@index([demoLastViewedAt])
 }
 
 model LeadAnalysis {
@@ -2352,10 +2356,16 @@ model CommercialDecision {
   reason            String   @db.Text
   alternatives      Json?
   goalId            String?
+  executedPlanId    String?
+  autonomyLevel     String?
+  actualCostUsd     Decimal? @db.Decimal(12, 8)
+  outcomeStatus     String?
+  outcomeAt         DateTime?
   createdById       String?
   createdAt         DateTime @default(now())
 
   @@index([targetType, targetId])
   @@index([createdAt])
   @@index([decisionType])
+  @@index([goalId])
 }

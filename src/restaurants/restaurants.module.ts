@@ -16,6 +16,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { MercadoPagoModule } from '../mercadopago/mercadopago.module';
 import { EdgeSyncModule } from '../edge-sync/edge-sync.module';
 import { GoLiveReadinessService } from './services/go-live-readiness.service';
+import { GoLiveEnforcementModule } from './go-live-enforcement.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { GoLiveReadinessService } from './services/go-live-readiness.service';
     SubscriptionsModule,
     MercadoPagoModule,
     EdgeSyncModule,
+    GoLiveEnforcementModule,
   ],
   controllers: [
     RestaurantsController,
@@ -47,6 +49,7 @@ import { GoLiveReadinessService } from './services/go-live-readiness.service';
     RestaurantBrandingV2Service,
     RestaurantSettingsService,
     BranchesService,
+    GoLiveEnforcementModule,
   ],
 })
 export class RestaurantsModule {}

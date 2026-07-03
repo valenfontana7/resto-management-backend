@@ -48,6 +48,8 @@ export interface ImportLeadsSkipped {
 export interface ImportLeadsResult {
   created: unknown[];
   skipped: ImportLeadsSkipped[];
+  suggestedActions?: unknown[];
+  autoStartedGoals?: string[];
 }
 
 export interface CheckImportDuplicateResultItem {

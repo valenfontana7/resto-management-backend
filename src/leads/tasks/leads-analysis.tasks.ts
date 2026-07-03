@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AiProvider } from '@prisma/client';
 import { AiProviderRouterService } from '../../ai-platform/providers/ai-provider-router.service';
@@ -10,10 +10,21 @@ import type {
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   LEAD_DIAGNOSIS_JSON_SCHEMA,
+  LEAD_DEMO_OUTREACH_JSON_SCHEMA,
+  LEAD_DEMO_SUMMARY_JSON_SCHEMA,
   LEAD_MESSAGE_JSON_SCHEMA,
   type LeadBusinessDiagnosis,
+  type LeadDemoOutreachOutput,
   type LeadMessageContent,
 } from '../types/lead-ai.types';
+import {
+  buildDemoOutreachPrompt,
+  buildHeuristicDemoOutreach,
+  normalizeDemoOutreachOutput,
+  pickLeadOutreachChannel,
+} from '../lead-demo-outreach';
+import { parseAiJsonResponse } from '../leads-ai.helpers';
+import { LeadDemoProvisionService } from '../lead-demo-provision.service';
 import {
   buildDiagnosisPrompt,
   buildHeuristicDiagnosis,
@@ -553,17 +564,19 @@ export class GenerateProposalTask
 
 @Injectable()
 export class GenerateDemoTask
-  implements
-    AiTaskHandler<{ leadId: string }, { demoUrl: string; summary: string }>
+  implements AiTaskHandler<{ leadId: string }, LeadDemoOutreachOutput>
 {
   readonly key = 'leads.generate_demo';
   readonly category = 'ai' as const;
   readonly requiresApproval = true;
 
+  private readonly logger = new Logger(GenerateDemoTask.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly providerRouter: AiProviderRouterService,
+    private readonly leadDemoProvision: LeadDemoProvisionService,
   ) {}
 
   get defaultModel(): string {
@@ -576,39 +589,123 @@ export class GenerateDemoTask
   async execute(
     _ctx: AiTaskContext,
     input: { leadId: string },
-  ): Promise<AiTaskResult<{ demoUrl: string; summary: string }>> {
+  ): Promise<AiTaskResult<LeadDemoOutreachOutput>> {
     const lead = await this.prisma.lead.findUniqueOrThrow({
       where: { id: input.leadId },
     });
 
+    const { demoUrl, adminDemoUrl } =
+      await this.leadDemoProvision.ensureDemoForLead(lead);
+    const channel = pickLeadOutreachChannel(lead);
+    const fallbackSummary = `Demo Bentoo para ${lead.businessName}: menú digital, pedidos online y reservas en una sola plataforma.`;
+
     if (!this.providerRouter.isAvailable(AiProvider.GEMINI)) {
       return {
-        output: {
-          demoUrl: 'https://bentoo.com.ar/demo',
-          summary: `Demo personalizada para ${lead.businessName} mostrando menú digital, pedidos y reservas.`,
-        },
+        output: buildHeuristicDemoOutreach(
+          lead,
+          demoUrl,
+          adminDemoUrl,
+          fallbackSummary,
+          channel,
+        ),
         confidence: 0.5,
         model: 'heuristic',
       };
     }
 
-    const response = await this.providerRouter.complete({
-      provider: AiProvider.GEMINI,
-      model: this.defaultModel,
-      prompt: `Sugiere cómo presentar demo de Bentoo a ${lead.businessName}. JSON: {"demoUrl":"https://bentoo.com.ar/demo","summary":"..."}`,
-      systemInstruction: 'Solo JSON. demoUrl puede ser bentoo.com.ar/demo.',
-      maxOutputTokens: 512,
-    });
+    try {
+      const response = await this.providerRouter.complete({
+        provider: AiProvider.GEMINI,
+        model: this.defaultModel,
+        prompt: buildDemoOutreachPrompt(lead, demoUrl, adminDemoUrl, channel),
+        systemInstruction:
+          'Respondé solo JSON según el schema. Español rioplatense, tono comercial cercano. El body debe ser copy-paste listo para el cliente e incluir la URL de la demo.',
+        maxOutputTokens: 1024,
+        thinkingBudget: 0,
+        responseJsonSchema: LEAD_DEMO_OUTREACH_JSON_SCHEMA as Record<
+          string,
+          unknown
+        >,
+      });
 
-    return {
-      output: JSON.parse(response.text ?? '{}') as {
-        demoUrl: string;
-        summary: string;
-      },
-      confidence: 0.75,
-      usage: response.usage,
-      provider: AiProvider.GEMINI,
-      model: this.defaultModel,
-    };
+      const parsed = parseAiJsonResponse<{
+        summary?: string;
+        body?: string;
+        subject?: string;
+        callToAction?: string;
+      }>(response.text ?? '{}');
+
+      return {
+        output: normalizeDemoOutreachOutput(lead, demoUrl, adminDemoUrl, {
+          ...parsed,
+          channel,
+        }),
+        confidence: 0.8,
+        usage: response.usage,
+        provider: AiProvider.GEMINI,
+        model: this.defaultModel,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Demo outreach generation failed for ${lead.id}: ${error instanceof Error ? error.message : error}`,
+      );
+
+      try {
+        const response = await this.providerRouter.complete({
+          provider: AiProvider.GEMINI,
+          model: this.defaultModel,
+          prompt: [
+            `Redactá un resumen breve (máximo 200 caracteres) para presentar la demo de Bentoo a "${lead.businessName}".`,
+            lead.category ? `Rubro: ${lead.category}.` : '',
+            lead.city ? `Ciudad: ${lead.city}.` : '',
+            'Enfocate en digitalización, menú online y pedidos/reservas.',
+          ]
+            .filter(Boolean)
+            .join(' '),
+          systemInstruction:
+            'Respondé solo JSON según el schema. Español rioplatense, tono comercial.',
+          maxOutputTokens: 512,
+          thinkingBudget: 0,
+          responseJsonSchema: LEAD_DEMO_SUMMARY_JSON_SCHEMA as Record<
+            string,
+            unknown
+          >,
+        });
+
+        const parsed = parseAiJsonResponse<{ summary?: string }>(
+          response.text ?? '{}',
+        );
+        const summary = parsed.summary?.trim() || fallbackSummary;
+
+        return {
+          output: buildHeuristicDemoOutreach(
+            lead,
+            demoUrl,
+            adminDemoUrl,
+            summary,
+            channel,
+          ),
+          confidence: 0.65,
+          usage: response.usage,
+          provider: AiProvider.GEMINI,
+          model: this.defaultModel,
+        };
+      } catch (fallbackError) {
+        this.logger.warn(
+          `Demo summary fallback failed for ${lead.id}: ${fallbackError instanceof Error ? fallbackError.message : fallbackError}`,
+        );
+        return {
+          output: buildHeuristicDemoOutreach(
+            lead,
+            demoUrl,
+            adminDemoUrl,
+            fallbackSummary,
+            channel,
+          ),
+          confidence: 0.6,
+          model: 'heuristic-fallback',
+        };
+      }
+    }
   }
 }
