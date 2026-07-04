@@ -502,9 +502,10 @@ export class ActivationDashboardService {
         COUNT(*) FILTER (
           WHERE EXISTS (
             SELECT 1
-            FROM "UserPaymentMethod" pm
+            FROM "SubscriptionPaymentMethod" pm
             WHERE pm."subscriptionId" = s.id
           )
+          OR s."paymentMethodId" IS NOT NULL
         )::bigint AS with_payment
       FROM "Subscription" s
       INNER JOIN "Restaurant" r ON r.id = s."restaurantId"
