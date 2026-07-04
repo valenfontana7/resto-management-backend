@@ -351,53 +351,6 @@ export class MercadoPagoController {
     );
   }
 
-  // D) Webhook handler alternativo — redirigir al endpoint canónico
-  @Post('webhooks/mercadopago')
-  @Public()
-  @HttpCode(200)
-  async webhookAlt(
-    @Req() req: any,
-    @Body() body: any,
-    @Query() query: { type?: string; 'data.id'?: string },
-    @Headers('x-signature') xSignature?: string,
-    @Headers('x-request-id') xRequestId?: string,
-  ) {
-    const rawBody: Buffer | undefined = req?.rawBody;
-    const webhookInfo = this.webhookService.extractWebhookInfo(query, body);
-    const isLegacyIpn = this.webhookService.isLegacyIpnNotification(
-      query,
-      body,
-    );
-    const paymentId = webhookInfo.dataId;
-
-    if (!isLegacyIpn && process.env.NODE_ENV === 'production') {
-      const signatureValidation = this.webhookService.validateWebhookSignature(
-        xSignature,
-        xRequestId,
-        paymentId,
-        rawBody,
-      );
-
-      if (!signatureValidation.valid) {
-        throw new ForbiddenException({
-          message: 'Invalid MercadoPago webhook signature',
-          reason: signatureValidation.reason,
-        });
-      }
-    }
-
-    const { isNew } = await this.webhookService.recordWebhookEvent(
-      rawBody,
-      body,
-    );
-
-    if (!isNew) {
-      return { received: true, duplicate: true };
-    }
-
-    return this.webhookService.handleWebhook(query, body);
-  }
-
   private getOrigin(req: any): string {
     const baseUrl = (process.env.BASE_URL ?? '').trim();
     if (baseUrl) {

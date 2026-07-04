@@ -15,6 +15,7 @@ export type PreferenceItem = {
   title: string;
   quantity: number;
   unit_price: number;
+  description?: string;
 };
 
 export type PreferenceRequestBody = {
@@ -37,6 +38,33 @@ interface ResolvedPreferenceSource {
   orderId: string;
   items: PreferenceItem[];
   isSandboxHint?: boolean;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  restaurantName?: string | null;
+}
+
+/** statement_descriptor en MP: máx. 22 caracteres, sin caracteres especiales problemáticos. */
+function buildStatementDescriptor(restaurantName?: string | null): string {
+  const raw = (restaurantName ?? 'Bentoo').trim() || 'Bentoo';
+  const sanitized = raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9 ]/g, '')
+    .trim();
+  return (sanitized || 'Bentoo').slice(0, 22);
+}
+
+function splitPayerName(fullName?: string | null): {
+  firstName?: string;
+  lastName?: string;
+} {
+  const parts = (fullName ?? '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return {};
+  if (parts.length === 1) return { firstName: parts[0] };
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' '),
+  };
 }
 
 @Injectable()
@@ -398,6 +426,7 @@ export class MercadoPagoService {
       const title = (item?.title ?? '').trim();
       const quantity = Number(item?.quantity);
       const unit_price = Number(item?.unit_price);
+      const description = (item?.description ?? title).trim().slice(0, 256);
 
       const isValid =
         !!title &&
@@ -410,6 +439,7 @@ export class MercadoPagoService {
         isValid,
         item: {
           title,
+          description,
           quantity,
           unit_price,
           currency_id: 'ARS',
@@ -484,9 +514,10 @@ export class MercadoPagoService {
       });
     }
 
+    // Prefer explicit env; otherwise public Next proxy (forwards to Nest /api/webhooks/mercadopago).
     const notificationUrl =
-      this.configService.get<string>('MERCADOPAGO_NOTIFICATION_URL') ||
-      `${origin}/api/webhooks/mercadopago`;
+      this.configService.get<string>('MERCADOPAGO_NOTIFICATION_URL')?.trim() ||
+      `${frontendBase.replace(/\/$/, '')}/api/mercadopago/webhook`;
 
     // If frontendBase is not HTTPS (e.g., http://localhost), MercadoPago may reject
     // auto_return='approved' because back_urls must be publicly reachable via HTTPS.
@@ -494,6 +525,13 @@ export class MercadoPagoService {
     const autoReturn = /^https:\/\//i.test(frontendBase)
       ? 'approved'
       : undefined;
+
+    const { firstName, lastName } = splitPayerName(source.customerName);
+    const payerEmail = (source.customerEmail ?? '').trim();
+    const payer: Record<string, string> = {};
+    if (payerEmail) payer.email = payerEmail;
+    if (firstName) payer.name = firstName;
+    if (lastName) payer.surname = lastName;
 
     const payload: any = {
       items: mappedItems.map((x) => x.item),
@@ -505,6 +543,8 @@ export class MercadoPagoService {
       ...(autoReturn ? { auto_return: autoReturn } : {}),
       notification_url: notificationUrl,
       external_reference: source.orderId,
+      statement_descriptor: buildStatementDescriptor(source.restaurantName),
+      ...(Object.keys(payer).length > 0 ? { payer } : {}),
       metadata: {
         slug: slug || null,
         restaurantId: effectiveRestaurantId || null,
@@ -562,7 +602,9 @@ export class MercadoPagoService {
     const checkout = await this.prisma.checkoutSession.findUnique({
       where: { id: orderId },
       include: {
-        restaurant: { select: { id: true, slug: true } },
+        restaurant: {
+          select: { id: true, slug: true, name: true },
+        },
       },
     });
 
@@ -583,15 +625,21 @@ export class MercadoPagoService {
             name?: string;
             quantity?: number;
             unitPrice?: number;
+            notes?: string;
           }>)
         : [];
 
       const items = rawItems
-        .map((item) => ({
-          title: String(item.name ?? '').trim(),
-          quantity: Number(item.quantity ?? 0),
-          unit_price: Number(item.unitPrice ?? 0),
-        }))
+        .map((item) => {
+          const title = String(item.name ?? '').trim();
+          const notes = String(item.notes ?? '').trim();
+          return {
+            title,
+            description: notes || title,
+            quantity: Number(item.quantity ?? 0),
+            unit_price: Number(item.unitPrice ?? 0),
+          };
+        })
         .filter((item) => item.title && item.quantity > 0);
 
       if (items.length === 0) {
@@ -604,16 +652,21 @@ export class MercadoPagoService {
         orderId: checkout.id,
         items,
         isSandboxHint: checkout.isSandbox,
+        customerName: checkout.customerName,
+        customerEmail: checkout.customerEmail,
+        restaurantName: checkout.restaurant.name || checkout.restaurant.slug,
       };
     }
 
     const order = await this.prisma.order.findUnique({
       where: { id: orderId },
       include: {
-        restaurant: { select: { id: true, slug: true } },
+        restaurant: {
+          select: { id: true, slug: true, name: true },
+        },
         items: {
           include: {
-            dish: { select: { name: true } },
+            dish: { select: { name: true, description: true } },
           },
         },
       },
@@ -632,11 +685,16 @@ export class MercadoPagoService {
       );
 
       const items = order.items
-        .map((item) => ({
-          title: (item.dish?.name ?? 'Ítem').trim(),
-          quantity: item.quantity,
-          unit_price: item.unitPrice,
-        }))
+        .map((item) => {
+          const title = (item.dish?.name ?? 'Ítem').trim();
+          const dishDescription = (item.dish?.description ?? '').trim();
+          return {
+            title,
+            description: dishDescription || title,
+            quantity: item.quantity,
+            unit_price: item.unitPrice,
+          };
+        })
         .filter((item) => item.title && item.quantity > 0);
 
       if (items.length === 0) {
@@ -648,6 +706,9 @@ export class MercadoPagoService {
         slug: order.restaurant.slug,
         orderId: order.id,
         items,
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        restaurantName: order.restaurant.name || order.restaurant.slug,
       };
     }
 
@@ -734,52 +795,66 @@ export class MercadoPagoService {
     return `mercadopago:sha256:${hash}`;
   }
 
+  /**
+   * Token de tenant cuando `restaurantId` no está vacío (sin fallback a plataforma).
+   * Token de plataforma solo cuando `restaurantId` es '' (suscripciones Bentoo / useGlobal).
+   */
   private async resolveAccessToken(
     restaurantId: string,
     sandbox = false,
   ): Promise<string> {
-    // If a restaurantId is provided, try to resolve its credential first
-    if (restaurantId) {
+    const tenantId = (restaurantId ?? '').trim();
+
+    if (tenantId) {
       const credentialRow = await this.prisma.mercadoPagoCredential.findUnique({
-        where: { restaurantId },
+        where: { restaurantId: tenantId },
         select: { isSandbox: true },
       });
 
-      if (credentialRow) {
-        const credentialIsSandbox = !!credentialRow.isSandbox;
-        if (
-          (sandbox && credentialIsSandbox) ||
-          (!sandbox && !credentialIsSandbox)
-        ) {
-          const token =
-            await this.credentialsService.getDecryptedToken(restaurantId);
-          if (token) return token;
-        }
+      if (!credentialRow) {
+        throw new BadRequestException({
+          error:
+            'MercadoPago no conectado para este restaurante. Conectá la cuenta en Ajustes → Pagos.',
+        });
       }
+
+      const credentialIsSandbox = !!credentialRow.isSandbox;
+      if (sandbox !== credentialIsSandbox) {
+        throw new BadRequestException({
+          error: sandbox
+            ? 'Este restaurante tiene credenciales de producción, no de sandbox.'
+            : 'Este restaurante tiene credenciales de sandbox; no se puede cobrar en vivo.',
+        });
+      }
+
+      const token = await this.credentialsService.getDecryptedToken(tenantId);
+      if (!token) {
+        throw new BadRequestException({
+          error:
+            'MercadoPago no conectado para este restaurante (token inválido o corrupto).',
+        });
+      }
+      return token;
     }
 
-    // Fallbacks
+    // Plataforma (suscripciones): solo token global.
     if (sandbox) {
       const globalSandbox = (
         this.configService.get<string>('MERCADOPAGO_SANDBOX_ACCESS_TOKEN') ?? ''
       ).trim();
       if (globalSandbox) return globalSandbox;
       throw new BadRequestException({
-        error:
-          'MercadoPago sandbox no conectado para este restaurante y no hay MERCADOPAGO_SANDBOX_ACCESS_TOKEN global',
+        error: 'MERCADOPAGO_SANDBOX_ACCESS_TOKEN no configurado',
       });
     }
 
     const globalToken = (
       this.configService.get<string>('MERCADOPAGO_ACCESS_TOKEN') ?? ''
     ).trim();
-    if (globalToken) {
-      return globalToken;
-    }
+    if (globalToken) return globalToken;
 
     throw new BadRequestException({
-      error:
-        'MercadoPago no conectado para este restaurante (falta token) y no hay MERCADOPAGO_ACCESS_TOKEN global',
+      error: 'MERCADOPAGO_ACCESS_TOKEN no configurado',
     });
   }
 }

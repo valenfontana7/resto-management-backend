@@ -243,121 +243,151 @@ export class MercadoPagoWebhookService {
     return response.json();
   }
 
+  /**
+   * Hidrata un pago con el token de plataforma (suscripciones Bentoo).
+   * No usar para pedidos de restaurante.
+   */
+  async getPaymentDetailsWithPlatformToken(paymentId: string): Promise<any> {
+    const globalToken = (
+      this.configService.get<string>('MERCADOPAGO_ACCESS_TOKEN') ?? ''
+    ).trim();
+    if (!globalToken) {
+      this.logger.warn(
+        'MERCADOPAGO_ACCESS_TOKEN no configurado — no se puede hidratar pago de suscripción',
+      );
+      return null;
+    }
+    return this.getPaymentDetails(paymentId, globalToken);
+  }
+
+  /**
+   * Resuelve pago + checkout usando solo tokens de tenant (modelo no-custodial).
+   * No cae al token global de plataforma.
+   */
   private async findPaymentAndCheckoutSession(paymentId: string): Promise<{
     payment: any;
     checkoutSession: any;
     accessToken: string;
   } | null> {
-    // Buscar checkout sessions pendientes recientes y probar con cada token
-    const pendingSessions = await this.prisma.checkoutSession.findMany({
-      where: {
-        paymentStatus: 'PENDING',
-        preferenceId: { not: null },
-        createdAt: {
-          gte: new Date(Date.now() - 24 * 60 * 60 * 1000), // Últimas 24h
-        },
-      },
-      include: {
-        restaurant: {
-          include: {
-            mercadoPagoCredential: true,
-          },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 100,
+    const credentials = await this.prisma.mercadoPagoCredential.findMany({
+      select: { restaurantId: true, mpUserId: true },
+      orderBy: { updatedAt: 'desc' },
     });
 
-    // Agrupar por restaurante para no repetir llamadas con el mismo token
-    const restaurantSessions = new Map<string, typeof pendingSessions>();
+    type Candidate = {
+      payment: any;
+      accessToken: string;
+      restaurantId: string;
+      collectorMatches: boolean;
+    };
 
-    for (const session of pendingSessions) {
-      const restaurantId = session.restaurantId;
-      if (!restaurantSessions.has(restaurantId)) {
-        restaurantSessions.set(restaurantId, []);
-      }
-      restaurantSessions.get(restaurantId)!.push(session);
-    }
+    const candidates: Candidate[] = [];
 
-    // Probar cada restaurante
-    for (const [restaurantId, sessions] of restaurantSessions) {
-      const accessToken =
-        await this.credentialsService.getDecryptedToken(restaurantId);
-
-      if (!accessToken) {
-        // Intentar con token global
-        const globalToken = this.configService.get<string>(
-          'MERCADOPAGO_ACCESS_TOKEN',
-        );
-        if (!globalToken) continue;
-
-        const payment = await this.getPaymentDetails(paymentId, globalToken);
-        if (payment) {
-          // Buscar checkout session que coincida
-          for (const session of sessions) {
-            if (payment.external_reference === session.id) {
-              return {
-                payment,
-                checkoutSession: session,
-                accessToken: globalToken,
-              };
-            }
-          }
-        }
-        continue;
-      }
+    for (const credential of credentials) {
+      const accessToken = await this.credentialsService.getDecryptedToken(
+        credential.restaurantId,
+      );
+      if (!accessToken) continue;
 
       try {
         const payment = await this.getPaymentDetails(paymentId, accessToken);
+        if (!payment) continue;
 
-        if (payment) {
-          // Buscar checkout session que coincida con external_reference
-          for (const session of sessions) {
-            if (payment.external_reference === session.id) {
-              return { payment, checkoutSession: session, accessToken };
-            }
-          }
+        const collectorId = this.paymentCollectorId(payment);
+        const collectorMatches =
+          !!credential.mpUserId &&
+          !!collectorId &&
+          String(credential.mpUserId) === collectorId;
 
-          // Si no encontramos por external_reference, buscar por metadata.orderId (compat)
-          if (payment.metadata?.orderId) {
-            const session = sessions.find(
-              (s) => s.id === payment.metadata.orderId,
-            );
-            if (session) {
-              return { payment, checkoutSession: session, accessToken };
-            }
-          }
-        }
+        candidates.push({
+          payment,
+          accessToken,
+          restaurantId: credential.restaurantId,
+          collectorMatches,
+        });
+
+        // Match fuerte por collector: no hace falta seguir probando tokens.
+        if (collectorMatches) break;
       } catch (e) {
         this.logger.warn(
-          `Failed to get payment details for restaurant ${restaurantId}: ${e}`,
+          `Failed to get payment ${paymentId} for restaurant ${credential.restaurantId}: ${e}`,
         );
-        continue;
       }
     }
 
-    // Último intento: token global sin filtro de restaurante
-    const globalToken = this.configService.get<string>(
-      'MERCADOPAGO_ACCESS_TOKEN',
-    );
-    if (globalToken) {
-      const payment = await this.getPaymentDetails(paymentId, globalToken);
-      if (payment?.external_reference) {
-        const checkoutSession = await this.prisma.checkoutSession.findUnique({
-          where: { id: payment.external_reference },
-          include: {
-            restaurant: {
-              include: {
-                mercadoPagoCredential: true,
-              },
-            },
-          },
-        });
+    if (candidates.length === 0) {
+      return null;
+    }
 
-        if (checkoutSession) {
-          return { payment, checkoutSession, accessToken: globalToken };
-        }
-      }
+    candidates.sort(
+      (a, b) => Number(b.collectorMatches) - Number(a.collectorMatches),
+    );
+    const best = candidates[0];
+
+    const checkoutSession = await this.resolveCheckoutSession(best.payment);
+    if (!checkoutSession) {
+      this.logger.warn(
+        `Payment ${paymentId} found but no checkout for external_reference=${best.payment?.external_reference}`,
+      );
+      return null;
+    }
+
+    if (
+      checkoutSession.restaurantId &&
+      checkoutSession.restaurantId !== best.restaurantId &&
+      best.collectorMatches
+    ) {
+      this.logger.warn(
+        `Checkout ${checkoutSession.id} restaurant mismatch with credential ${best.restaurantId}`,
+      );
+    }
+
+    return {
+      payment: best.payment,
+      checkoutSession,
+      accessToken: best.accessToken,
+    };
+  }
+
+  private paymentCollectorId(payment: any): string | undefined {
+    const collector =
+      payment?.collector_id ?? payment?.collector?.id ?? payment?.user_id;
+    if (collector == null) return undefined;
+    return String(collector);
+  }
+
+  private async resolveCheckoutSession(payment: any) {
+    const include = {
+      restaurant: {
+        include: {
+          mercadoPagoCredential: true,
+        },
+      },
+    } as const;
+
+    const externalReference =
+      typeof payment?.external_reference === 'string'
+        ? payment.external_reference.trim()
+        : '';
+
+    if (externalReference) {
+      const byRef = await this.prisma.checkoutSession.findUnique({
+        where: { id: externalReference },
+        include,
+      });
+      if (byRef) return byRef;
+    }
+
+    const metadataOrderId =
+      typeof payment?.metadata?.orderId === 'string'
+        ? payment.metadata.orderId.trim()
+        : '';
+
+    if (metadataOrderId) {
+      return this.prisma.checkoutSession.findUnique({
+        where: { id: metadataOrderId },
+        include,
+      });
     }
 
     return null;

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   Logger,
+  OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -34,7 +35,7 @@ const MP_OAUTH_AUTHORIZE_URL = 'https://auth.mercadopago.com.ar/authorization';
 const MP_OAUTH_TOKEN_URL = 'https://api.mercadopago.com/oauth/token';
 
 @Injectable()
-export class MercadoPagoOAuthService {
+export class MercadoPagoOAuthService implements OnModuleInit {
   private readonly logger = new Logger(MercadoPagoOAuthService.name);
 
   constructor(
@@ -42,6 +43,45 @@ export class MercadoPagoOAuthService {
     private readonly credentialsService: MercadoPagoCredentialsService,
     private readonly businessEvents: BusinessEventPublisherService,
   ) {}
+
+  onModuleInit(): void {
+    this.assertPlatformAppAlignment();
+  }
+
+  /**
+   * Si `MERCADOPAGO_EXPECTED_APP_ID` está definido, verifica que el client_id OAuth coincida.
+   * No bloquea el arranque: solo alerta (útil en prod para no apuntar a otra app por error).
+   */
+  assertPlatformAppAlignment(): {
+    configured: boolean;
+    matchesExpectedApp: boolean | null;
+  } {
+    const clientId =
+      this.config.get<string>('MERCADOPAGO_OAUTH_CLIENT_ID')?.trim() || null;
+    const expectedAppId =
+      this.config.get<string>('MERCADOPAGO_EXPECTED_APP_ID')?.trim() || null;
+
+    if (!clientId) {
+      this.logger.warn(
+        'MERCADOPAGO_OAUTH_CLIENT_ID no configurado — OAuth de tenants deshabilitado',
+      );
+      return { configured: false, matchesExpectedApp: null };
+    }
+
+    if (!expectedAppId) {
+      return { configured: true, matchesExpectedApp: null };
+    }
+
+    const matchesExpectedApp = clientId === expectedAppId;
+    if (!matchesExpectedApp) {
+      this.logger.warn(
+        'MERCADOPAGO_OAUTH_CLIENT_ID no coincide con MERCADOPAGO_EXPECTED_APP_ID. ' +
+          'Revisá la app de plataforma en el panel de Developers.',
+      );
+    }
+
+    return { configured: true, matchesExpectedApp };
+  }
 
   private getClientId(): string {
     const v = this.config.get<string>('MERCADOPAGO_OAUTH_CLIENT_ID')?.trim();

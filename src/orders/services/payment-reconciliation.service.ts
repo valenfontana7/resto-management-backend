@@ -6,6 +6,7 @@ import { PaymentProviderName } from '../../payment-providers/interfaces';
 import { OrdersService } from '../orders.service';
 import { PaymentStatus } from '../dto/order.dto';
 import { PaymentBusinessEventsService } from '../../business-events/publishers/payment-business-events.service';
+import { MercadoPagoCredentialsService } from '../../mercadopago/mercadopago-credentials.service';
 
 /**
  * Cron de conciliación de pagos online.
@@ -31,6 +32,7 @@ export class PaymentReconciliationService {
     private readonly paymentProviderFactory: PaymentProviderFactory,
     private readonly ordersService: OrdersService,
     private readonly paymentEvents: PaymentBusinessEventsService,
+    private readonly mpCredentials: MercadoPagoCredentialsService,
   ) {}
 
   @Cron('*/5 * * * *')
@@ -85,7 +87,11 @@ export class PaymentReconciliationService {
     const providerName = this.normalizeProviderName(session.paymentProvider);
     if (!providerName) return;
 
-    // Solo Payway hoy: MP tiene su propio polling/webhook flow distinto.
+    if (providerName === 'mercadopago') {
+      await this.reconcileMercadoPago(session);
+      return;
+    }
+
     if (providerName !== 'payway') return;
 
     let provider;
@@ -97,7 +103,6 @@ export class PaymentReconciliationService {
         );
       provider = resolved.provider;
     } catch {
-      // Sin credenciales activas → no podemos consultar
       return;
     }
 
@@ -114,21 +119,97 @@ export class PaymentReconciliationService {
         `Checkout ${session.id} reconciliado como APPROVED (provider=${providerName})`,
       );
     } else if (status.status === 'rejected' || status.status === 'cancelled') {
-      await this.prisma.checkoutSession.update({
-        where: { id: session.id },
-        data: { paymentStatus: PaymentStatus.FAILED },
-      });
-      this.paymentEvents.publishPaymentFailed({
-        restaurantId: session.restaurantId,
-        checkoutSessionId: session.id,
-        amount: session.total,
-        reason: status.status,
-        source: 'payment-reconciliation',
-      });
-      this.logger.log(
-        `Checkout ${session.id} reconciliado como ${status.status}`,
-      );
+      await this.markCheckoutFailed(session, status.status);
     }
+  }
+
+  private async reconcileMercadoPago(session: {
+    id: string;
+    restaurantId: string;
+    preferenceId: string | null;
+    total: number;
+  }): Promise<void> {
+    const accessToken = await this.mpCredentials.getDecryptedToken(
+      session.restaurantId,
+    );
+    if (!accessToken) {
+      this.logger.warn(
+        `Checkout ${session.id}: sin credencial MP del tenant — no se reconcilia`,
+      );
+      return;
+    }
+
+    const payment = await this.findLatestPaymentForCheckout(
+      session.id,
+      accessToken,
+    );
+    if (!payment?.id) return;
+
+    const status = String(payment.status ?? '').toLowerCase();
+    if (status === 'approved') {
+      await this.ordersService.processCheckoutPaymentApproved(
+        session.id,
+        String(payment.id),
+      );
+      this.logger.log(
+        `Checkout ${session.id} reconciliado como APPROVED (provider=mercadopago, paymentId=${payment.id})`,
+      );
+      return;
+    }
+
+    if (status === 'rejected' || status === 'cancelled') {
+      await this.markCheckoutFailed(session, status);
+    }
+  }
+
+  /**
+   * Busca el pago más reciente de MP ligado al checkout (external_reference).
+   */
+  private async findLatestPaymentForCheckout(
+    checkoutSessionId: string,
+    accessToken: string,
+  ): Promise<any> {
+    const url = new URL('https://api.mercadopago.com/v1/payments/search');
+    url.searchParams.set('external_reference', checkoutSessionId);
+    url.searchParams.set('sort', 'date_created');
+    url.searchParams.set('criteria', 'desc');
+    url.searchParams.set('limit', '5');
+
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) {
+      const details = await response.text().catch(() => '');
+      this.logger.warn(
+        `MP payments/search failed for ${checkoutSessionId}: ${response.status} ${details.slice(0, 200)}`,
+      );
+      return null;
+    }
+
+    const json = (await response.json().catch(() => null)) as {
+      results?: any[];
+    } | null;
+    const results = Array.isArray(json?.results) ? json.results : [];
+    return results[0] ?? null;
+  }
+
+  private async markCheckoutFailed(
+    session: { id: string; restaurantId: string; total: number },
+    reason: string,
+  ): Promise<void> {
+    await this.prisma.checkoutSession.update({
+      where: { id: session.id },
+      data: { paymentStatus: PaymentStatus.FAILED },
+    });
+    this.paymentEvents.publishPaymentFailed({
+      restaurantId: session.restaurantId,
+      checkoutSessionId: session.id,
+      amount: session.total,
+      reason,
+      source: 'payment-reconciliation',
+    });
+    this.logger.log(`Checkout ${session.id} reconciliado como ${reason}`);
   }
 
   private normalizeProviderName(value: string): PaymentProviderName | null {

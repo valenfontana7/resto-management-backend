@@ -839,8 +839,8 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
   {
     id: 'ENTERPRISE',
     update: {
-      displayName: 'Full',
-      description: 'Para locales con necesidades puntuales.',
+      displayName: 'Escala',
+      description: 'Para crecer sin multiplicar el caos: varias sucursales o cadenas.',
       price: 5000000,
       interval: 'monthly',
       trialDays: 14,
@@ -852,8 +852,8 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
       isPopular: false,
     },
     create: {
-      displayName: 'Full',
-      description: 'Para locales con necesidades puntuales.',
+      displayName: 'Escala',
+      description: 'Para crecer sin multiplicar el caos: varias sucursales o cadenas.',
       price: 5000000,
       interval: 'monthly',
       trialDays: 14,

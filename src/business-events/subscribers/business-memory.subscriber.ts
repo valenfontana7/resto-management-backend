@@ -235,14 +235,19 @@ export class BusinessMemoryEventSubscriber implements OnModuleInit {
     event: BentooBusinessEvent<BentooBusinessEventType.OrderDelayed>,
   ): Promise<void> {
     const payload = event.payload;
+    // Keep in sync with frontend insight id / stale-memory prefix: event:order-delayed:{orderId}
     await this.businessMemory.recordFromBusinessEvent(event.restaurantId, {
-      memoryKey: `event:order:delayed:${payload.orderId}`,
+      memoryKey: `event:order-delayed:${payload.orderId}`,
       category: BusinessMemoryCategory.OPERATIONAL,
       title: `Pedido demorado #${payload.orderNumber}`,
       summary: `${formatDurationMinutes(payload.delayMinutes)} en ${payload.status}`,
       sourceProvider: 'business-events',
-      sourceInsightId: event.id,
-      metadata: { eventId: event.id, payload },
+      sourceInsightId: `event:order-delayed:${payload.orderId}`,
+      metadata: {
+        eventId: event.id,
+        orderId: payload.orderId,
+        payload,
+      },
     });
   }
 

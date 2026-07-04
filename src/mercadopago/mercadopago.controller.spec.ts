@@ -54,6 +54,9 @@ class InMemoryPrisma {
     items: Array<{ name: string; quantity: number; unitPrice: number }>;
     isSandbox?: boolean;
     restaurantSlug?: string;
+    restaurantName?: string;
+    customerName?: string;
+    customerEmail?: string;
   }) {
     this.checkouts.set(checkout.id, checkout);
   }
@@ -72,9 +75,12 @@ class InMemoryPrisma {
       if (include?.restaurant) {
         return {
           ...row,
+          customerName: row.customerName ?? 'Ana Perez',
+          customerEmail: row.customerEmail ?? 'ana@test.com',
           restaurant: {
             id: row.restaurantId,
             slug: row.restaurantSlug ?? 'mi-resto',
+            name: row.restaurantName ?? 'Mi Resto',
           },
         };
       }
@@ -88,6 +94,29 @@ class InMemoryPrisma {
   };
 
   mercadoPagoCredential = {
+    findMany: ({
+      select,
+      orderBy,
+    }: {
+      select?: { [K in keyof CredentialRow]?: boolean };
+      orderBy?: { updatedAt?: 'asc' | 'desc' };
+    } = {}) => {
+      let rows = Array.from(this.credentials.values());
+      if (orderBy?.updatedAt === 'desc') {
+        rows = [...rows].sort(
+          (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime(),
+        );
+      }
+      if (!select) return rows;
+      return rows.map((row) => {
+        const selected: any = {};
+        for (const key of Object.keys(select) as (keyof CredentialRow)[]) {
+          if (select[key]) selected[key] = row[key];
+        }
+        return selected;
+      });
+    },
+
     findUnique: ({
       where,
       select,
@@ -400,8 +429,17 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
   });
 
   it('preference success uses fetch (mocked)', async () => {
-    process.env.MERCADOPAGO_ACCESS_TOKEN = 'GLOBAL_TOKEN';
+    delete process.env.MERCADOPAGO_ACCESS_TOKEN;
     process.env.FRONTEND_URL = 'http://localhost:3000';
+
+    const tokenRes = await request(app.getHttpServer())
+      .post('/api/mercadopago/tenant-token')
+      .send({
+        restaurantId: 'r1',
+        accessToken: 'APP_USR-TENANT-TOKEN-1234567890',
+        isSandbox: false,
+      });
+    expect(tokenRes.status).toBe(200);
 
     const res = await request(app.getHttpServer())
       .post('/api/mercadopago/preference')
@@ -445,6 +483,13 @@ describe('MercadoPagoController (tenant-token + preference)', () => {
 
     expect(sent.external_reference).toBe('o1');
     expect(sent.items[0].currency_id).toBe('ARS');
+    expect(sent.items[0].description).toBe('X');
+    expect(sent.statement_descriptor).toBe('Mi Resto');
+    expect(sent.payer).toEqual({
+      email: 'ana@test.com',
+      name: 'Ana',
+      surname: 'Perez',
+    });
     expect(sent.metadata).toEqual({
       slug: 'mi-resto',
       restaurantId: 'r1',

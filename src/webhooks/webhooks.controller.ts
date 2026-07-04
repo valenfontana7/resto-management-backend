@@ -62,10 +62,12 @@ export class WebhooksController {
     );
   }
 
-  @Post('api/webhooks/mercadopago')
+  @Post(['api/webhooks/mercadopago', 'api/mercadopago/webhooks/mercadopago'])
   @Public()
   @HttpCode(200)
-  @ApiOperation({ summary: 'Handle MercadoPago payment webhooks' })
+  @ApiOperation({
+    summary: 'Handle MercadoPago payment webhooks (canonical + legacy alias)',
+  })
   async handleMercadoPagoWebhook(
     @Req() req: any,
     @Body() body: any,
@@ -277,9 +279,27 @@ export class WebhooksController {
     }
 
     try {
-      // Manejar eventos de pago de suscripción
-      if (type === 'payment') {
-        const externalReference = body?.data?.external_reference || '';
+      // MP solo envía { type, data: { id } }; hay que hidratar el pago con token de plataforma.
+      if (type === 'payment' && paymentId) {
+        const payment =
+          await this.webhookService.getPaymentDetailsWithPlatformToken(
+            String(paymentId),
+          );
+
+        if (!payment) {
+          this.logger.warn(
+            `Subscription webhook: no se pudo hidratar payment ${paymentId}`,
+          );
+          await this.webhookService.markWebhookEventProcessed(
+            eventKey,
+            'payment_not_found',
+          );
+          return { received: true, type, processed: false };
+        }
+
+        const externalReference = String(payment.external_reference ?? '');
+        const status = String(payment.status ?? '').toLowerCase();
+        const amount = Number(payment.transaction_amount ?? 0);
 
         // external_reference: "sub_restaurantId_PROFESSIONAL"
         if (externalReference.startsWith('sub_')) {
@@ -287,21 +307,18 @@ export class WebhooksController {
           if (parts.length >= 3) {
             const restaurantId = parts[1];
             const planType = parts[2] as PlanType;
-            const status = body?.data?.status;
-            const amount = body?.data?.transaction_amount;
 
             if (status === 'approved') {
               await this.subscriptionsService.processPaymentApproved(
                 restaurantId,
                 planType,
                 String(paymentId),
-                Math.round((amount || 0) * 100), // Convertir a centavos
+                Math.round(amount * 100),
               );
               this.logger.log(
                 `Subscription payment approved for restaurant ${restaurantId}`,
               );
             } else if (status === 'rejected') {
-              // Marcar como pago vencido
               const subscription =
                 await this.subscriptionsService.getSubscription(restaurantId);
               if (subscription.subscription) {
