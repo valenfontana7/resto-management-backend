@@ -132,11 +132,7 @@ export class EligibilityEngine {
 
     const blockedTypes =
       campaign.suppressionRules.blockIfActiveCampaignTypes ?? [];
-    if (
-      blockedTypes.some((t) =>
-        context.activeCampaignTypes.includes(t as LifecycleCampaignType),
-      )
-    ) {
+    if (blockedTypes.some((t) => context.activeCampaignTypes.includes(t))) {
       return {
         eligible: false,
         intelligenceBacked: true,

@@ -1,4 +1,4 @@
-FROM node:20-bullseye AS base
+FROM node:22-bookworm AS base
 WORKDIR /app
 
 # Allow passing a DATABASE_URL at build time to satisfy prisma when generating the client.
@@ -22,7 +22,7 @@ FROM base AS prod-deps
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-FROM node:20-bullseye-slim AS runner
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
