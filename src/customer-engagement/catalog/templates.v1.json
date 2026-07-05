@@ -1,0 +1,172 @@
+{
+  "version": "1.0.0",
+  "templates": {
+    "TPL-ACT-PUB-01": {
+      "id": "TPL-ACT-PUB-01",
+      "trigger": "activation.publish_site",
+      "strategy": "assist",
+      "tone": "practical",
+      "goal": "Publicar canal propio",
+      "variables": [
+        "restaurantName",
+        "ownerName",
+        "firstName",
+        "primaryJob",
+        "expectedOutcome",
+        "ctaUrl",
+        "adminUrl"
+      ],
+      "subject": "{{restaurantName}} — tu canal está a un paso de estar online",
+      "body": "Hola {{firstName}},\n\nTu carta en Bentoo ya está lista. Falta un paso para que {{restaurantName}} reciba pedidos directamente, sin que todo pase por WhatsApp.\n\n{{topRecommendation}}\n\nResultado que buscamos: {{expectedOutcome}}\n\nCuando quieras, entrá y publicamos juntos en unos minutos.",
+      "cta": "Publicar mi canal",
+      "expectedOutcome": "Canal propio visible y listo para recibir pedidos",
+      "version": "1.0.0",
+      "locale": "es-AR",
+      "linkedRecommendationCodes": ["REC-PUB-01"],
+      "supportedChannels": ["email", "in_app"]
+    },
+    "TPL-ACT-PAY-01": {
+      "id": "TPL-ACT-PAY-01",
+      "trigger": "activation.connect_payments",
+      "strategy": "assist",
+      "tone": "practical",
+      "goal": "Conectar cobro online",
+      "variables": [
+        "restaurantName",
+        "firstName",
+        "expectedOutcome",
+        "ctaUrl"
+      ],
+      "subject": "Prepará {{restaurantName}} para cobrar online en tu cuenta",
+      "body": "Hola {{firstName}},\n\nVimos que tu canal ya está publicado, pero todavía no conectaste medios de pago. Sin eso, los pedidos online no pueden cerrarse solos.\n\nConectar Mercado Pago lleva unos minutos y el dinero va directo a tu cuenta — Bentoo no custodia fondos.\n\n{{topRecommendation}}",
+      "cta": "Conectar cobro online",
+      "expectedOutcome": "Cobro online operativo en el canal propio",
+      "version": "1.0.0",
+      "locale": "es-AR",
+      "linkedRecommendationCodes": ["REC-PAY-01"],
+      "supportedChannels": ["email", "in_app"]
+    },
+    "TPL-ACT-GOL-01": {
+      "id": "TPL-ACT-GOL-01",
+      "trigger": "activation.stalled",
+      "strategy": "assist",
+      "tone": "supportive",
+      "goal": "Destrabar go-live",
+      "variables": [
+        "restaurantName",
+        "firstName",
+        "primaryJob",
+        "expectedOutcome",
+        "ctaUrl"
+      ],
+      "subject": "Queda un paso para que {{restaurantName}} esté listo",
+      "body": "Hola {{firstName}},\n\nQueda un paso para que tu local esté listo — te lleva unos minutos y lo vemos juntos si querés.\n\nEnfoque: {{primaryJob}}\n\nPróximo paso sugerido: {{topRecommendation}}\n\nSi hubo algún inconveniente o cambió tu forma de trabajar, contanos — queremos ayudarte.",
+      "cta": "Ver siguiente paso",
+      "expectedOutcome": "Go-live completado",
+      "version": "1.0.0",
+      "locale": "es-AR",
+      "linkedRecommendationCodes": ["REC-GOL-01", "REC-MNU-01"],
+      "supportedChannels": ["email", "in_app"]
+    },
+    "TPL-ACT-ORD-01": {
+      "id": "TPL-ACT-ORD-01",
+      "trigger": "activation.first_order",
+      "strategy": "validate",
+      "tone": "practical",
+      "goal": "Primer pedido de valor",
+      "variables": ["restaurantName", "firstName", "ctaUrl"],
+      "subject": "Probemos el primer pedido en {{restaurantName}}",
+      "body": "Hola {{firstName}},\n\nLa configuración avanzó bien. Ahora conviene hacer un pedido de prueba para confirmar que cocina, caja y canal hablan entre sí.\n\nSon 5 minutos y te ahorrás sorpresas en el turno real.",
+      "cta": "Hacer pedido de prueba",
+      "expectedOutcome": "Primer pedido pagado que confirma el flujo",
+      "version": "1.0.0",
+      "locale": "es-AR",
+      "linkedRecommendationCodes": ["REC-TST-01"],
+      "supportedChannels": ["email", "in_app"]
+    },
+    "TPL-REC-MISS-01": {
+      "id": "TPL-REC-MISS-01",
+      "trigger": "recovery.missed_you",
+      "strategy": "recover",
+      "tone": "empathetic",
+      "goal": "Reactivación suave",
+      "variables": [
+        "restaurantName",
+        "firstName",
+        "daysInactive",
+        "topRecommendation",
+        "expectedOutcome",
+        "ctaUrl"
+      ],
+      "subject": "¿Todo bien en {{restaurantName}}?",
+      "body": "Hola {{firstName}},\n\nHace unos días no vemos movimiento en {{restaurantName}}. Si hubo algún inconveniente o cambió tu forma de trabajar, queremos ayudarte.\n\nUn paso concreto que puede destrabar: {{topRecommendation}}\n\nCuando quieras retomar, acá estamos — un login y seguimos desde donde quedó.",
+      "cta": "Retomar desde acá",
+      "expectedOutcome": "Reactivación medible en configuración u operación",
+      "version": "1.0.0",
+      "locale": "es-AR",
+      "linkedRecommendationCodes": ["REC-REA-01"],
+      "supportedChannels": ["email"]
+    },
+    "TPL-RSK-RSS-01": {
+      "id": "TPL-RSK-RSS-01",
+      "trigger": "risk.rss_drop",
+      "strategy": "recover",
+      "tone": "direct_empathetic",
+      "goal": "Recuperar momentum",
+      "variables": [
+        "restaurantName",
+        "firstName",
+        "rss",
+        "rssBand",
+        "topRecommendation",
+        "ctaUrl"
+      ],
+      "subject": "Te ayudamos a retomar el ritmo en {{restaurantName}}",
+      "body": "Hola {{firstName}},\n\nNotamos que el local perdió algo de momentum recientemente. No es una alerta — es una señal para actuar antes de que se enfríe el canal.\n\nSugerencia concreta: {{topRecommendation}}\n\nSi preferís, respondé este mail y lo vemos juntos.",
+      "cta": "Ver plan de recuperación",
+      "expectedOutcome": "Recuperación de valor operativo",
+      "version": "1.0.0",
+      "locale": "es-AR",
+      "linkedRecommendationCodes": ["REC-CHK-01", "REC-FIX-01"],
+      "supportedChannels": ["email", "in_app"]
+    },
+    "TPL-CEL-01": {
+      "id": "TPL-CEL-01",
+      "trigger": "milestone.celebrate",
+      "strategy": "celebrate",
+      "tone": "warm_sober",
+      "goal": "Celebrar milestone",
+      "variables": ["restaurantName", "firstName", "expectedOutcome"],
+      "subject": "Un hito para {{restaurantName}} 🎉",
+      "body": "Hola {{firstName}},\n\n{{restaurantName}} acaba de dar un paso importante: {{expectedOutcome}}.\n\nEso significa que el local ya opera con más orden y menos fricción. Felicitaciones al equipo.\n\n¿Qué sigue? Seguir el ritmo con un paso pequeño por semana.",
+      "cta": null,
+      "expectedOutcome": "Refuerzo de hábito y confianza",
+      "version": "1.0.0",
+      "locale": "es-AR",
+      "linkedRecommendationCodes": ["REC-CEL-01"],
+      "supportedChannels": ["email", "in_app"]
+    },
+    "TPL-CS-TASK-01": {
+      "id": "TPL-CS-TASK-01",
+      "trigger": "recovery.human_followup",
+      "strategy": "recover",
+      "tone": "internal",
+      "goal": "Task CS — seguimiento humano",
+      "variables": [
+        "restaurantName",
+        "ownerName",
+        "rss",
+        "rssBand",
+        "topRecommendation"
+      ],
+      "subject": null,
+      "body": "Seguimiento CS para {{restaurantName}} ({{ownerName}}).\n\nRSS: {{rss}} ({{rssBand}}).\n\nRecomendación activa: {{topRecommendation}}.\n\nAcción: contacto humano en 24h — diagnosticar bloqueo y acordar un solo next step.",
+      "cta": null,
+      "expectedOutcome": "Diagnóstico claro y plan acordado",
+      "version": "1.0.0",
+      "locale": "es-AR",
+      "linkedRecommendationCodes": ["REC-CHK-01", "REC-REA-01", "REC-SAV-01"],
+      "supportedChannels": ["cs_task"]
+    }
+  }
+}

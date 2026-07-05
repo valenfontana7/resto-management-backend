@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AiPlatformModule } from '../ai-platform/ai-platform.module';
 import { CommercialIntelligenceModule } from '../commercial-intelligence/commercial-intelligence.module';
+import { RevenueModule } from '../revenue/revenue.module';
 import { CommonModule } from '../common/common.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { LeadDemoProvisionService } from './lead-demo-provision.service';
@@ -44,6 +45,7 @@ import {
     CommonModule,
     AiPlatformModule,
     CommercialIntelligenceModule,
+    RevenueModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [LeadsController, PublicLeadsController],

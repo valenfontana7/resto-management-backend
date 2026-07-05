@@ -1,0 +1,92 @@
+{
+  "algorithmVersion": "rss.v1",
+  "version": "1.0.0",
+  "importancePoints": {
+    "P0": 20,
+    "P1": 12,
+    "P2": 6
+  },
+  "negativePenaltyMultiplier": 0.9,
+  "missingRequiredMultiplier": 0.15,
+  "dimensions": {
+    "configuration": {
+      "rssWeight": 0.25,
+      "label": "Configuración",
+      "rfcAlias": "Configuración de valor"
+    },
+    "operation": {
+      "rssWeight": 0.30,
+      "label": "Operación",
+      "rfcAlias": "Operación sostenida"
+    },
+    "business": {
+      "rssWeight": 0.25,
+      "label": "Negocio",
+      "rfcAlias": "Resultado de negocio"
+    },
+    "engagement": {
+      "rssWeight": 0.10,
+      "label": "Adopción",
+      "rfcAlias": "Compromiso y equipo",
+      "neutralScoreWhenNoApplicableSignals": 55
+    },
+    "relationship": {
+      "rssWeight": 0.10,
+      "label": "Riesgo",
+      "rfcAlias": "Relación y riesgo",
+      "scoringMode": "risk_inverted"
+    }
+  },
+  "intentRequiredSignals": {
+    "digital": {
+      "configuration": ["SIG-CFG-01", "SIG-CFG-03", "SIG-CFG-05", "SIG-CFG-08"],
+      "operation": ["SIG-OPS-02", "SIG-OPS-07"],
+      "business": ["SIG-BIZ-01"]
+    },
+    "operations": {
+      "configuration": ["SIG-CFG-03", "SIG-CFG-08", "SIG-CFG-10"],
+      "operation": ["SIG-OPS-02", "SIG-OPS-07"],
+      "business": ["SIG-BIZ-01"]
+    },
+    "both": {
+      "configuration": ["SIG-CFG-01", "SIG-CFG-03", "SIG-CFG-05", "SIG-CFG-08", "SIG-CFG-10"],
+      "operation": ["SIG-OPS-02", "SIG-OPS-07"],
+      "business": ["SIG-BIZ-01"]
+    }
+  },
+  "intentIgnoredSignals": {
+    "digital": ["SIG-CFG-10"],
+    "operations": ["SIG-CFG-01", "SIG-CFG-05"]
+  },
+  "overlays": [
+    {
+      "id": "OVERLAY-CRITICAL-CANCEL",
+      "signalCode": "SIG-RSK-03",
+      "maxRss": 39,
+      "forceBand": "critical"
+    },
+    {
+      "id": "OVERLAY-AT-RISK-INACTIVITY",
+      "signalCodes": ["SIG-OPS-09"],
+      "minTenureDays": 14,
+      "maxBandScore": 59
+    }
+  ],
+  "earlyAccountGraceDays": 72,
+  "topFactorsLimit": 5,
+  "signalBoosts": [
+    {
+      "id": "BOOST-PARTIAL-CONFIG",
+      "requiredActiveSignals": ["SIG-CFG-03", "SIG-CFG-05"],
+      "dimension": "configuration",
+      "minimumScore": 55
+    },
+    {
+      "id": "BOOST-EARLY-NO-OPS",
+      "requiredActiveSignals": ["SIG-CFG-03"],
+      "whenMaxTenureDays": 45,
+      "whenSignalActive": "SIG-OPS-09",
+      "dimensionBoosts": { "operation": 38, "business": 25 }
+    }
+  ]
+}

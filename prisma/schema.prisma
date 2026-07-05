@@ -85,6 +85,10 @@ model Restaurant {
   winBackEmailLogs        WinBackEmailLog[]
   orderInventoryDeductions OrderInventoryDeduction[]
   edgeLocalServer       EdgeLocalServer?
+  engagementDecisions   EngagementDecisionRecord[]
+  engagementDeliveries  EngagementDelivery[]
+  engagementOutcomes    EngagementOutcome[]
+  engagementActiveJourneys EngagementActiveJourney[]
 
   @@index([slug])
   @@index([status])
@@ -1990,6 +1994,7 @@ model Lead {
 
   analyses      LeadAnalysis[]
   statusHistory LeadStatusChange[]
+  commercialRelation CommercialRelation?
 
   @@index([status])
   @@index([category])
@@ -1999,6 +2004,68 @@ model Lead {
   @@index([discoveredWithAi])
   @@index([demoLastViewedAt])
   @@index([demoExampleSlug])
+}
+
+enum CommercialRelationStage {
+  DISCOVERED
+  LEAD
+  LEAD_ENRICHED
+  LEAD_QUALIFIED
+  FIRST_CONTACT
+  INTERESTED
+  DEMO_REQUESTED
+  DEMO_DONE
+  FOLLOW_UP
+  TRIAL
+  CLIENT
+  ACTIVE_CLIENT
+  ADVANCED_CLIENT
+  PROMOTER
+  RECOVERY
+}
+
+model CommercialRelation {
+  id                    String                  @id @default(cuid())
+  leadId                String?                 @unique
+  lead                  Lead?                   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  convertedRestaurantId String?
+  name                  String
+  stage                 CommercialRelationStage @default(LEAD)
+  primaryJob            String?
+  signalSummary         String?                 @db.Text
+  nextAction            String?
+  nextActionDue         DateTime?
+  intentScore           Int                     @default(0)
+  opportunityScore      Int                     @default(0)
+  priorityScore         Int                     @default(0)
+  ownerId               String?
+  neighborhood          String?
+  localType             String?
+  branches              Int                     @default(1)
+  presence              Json?
+  tags                  Json?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  logs CommercialRelationLog[]
+
+  @@index([stage])
+  @@index([ownerId])
+  @@index([nextActionDue])
+  @@index([priorityScore])
+  @@index([convertedRestaurantId])
+}
+
+model CommercialRelationLog {
+  id         String             @id @default(cuid())
+  relationId String
+  relation   CommercialRelation @relation(fields: [relationId], references: [id], onDelete: Cascade)
+  result     String
+  note       String?            @db.Text
+  loggedById String?
+  createdAt  DateTime           @default(now())
+
+  @@index([relationId, createdAt])
 }
 
 model LeadAnalysis {
@@ -2370,4 +2437,124 @@ model CommercialDecision {
   @@index([createdAt])
   @@index([decisionType])
   @@index([goalId])
+}
+
+// --- Customer Engagement Engine (CS post-venta, consume Recommendations) ---
+
+enum EngagementDeliveryStatus {
+  SCHEDULED
+  QUEUED
+  SENT
+  SIMULATED
+  FAILED
+  CANCELLED
+}
+
+enum EngagementOutcomeType {
+  OPENED
+  CLICKED
+  REPLIED
+  GOAL_COMPLETED
+  IGNORED
+  UNSUBSCRIBED
+  RSS_CONTRIBUTION
+}
+
+enum EngagementActiveJourneyStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  SUPERSEDED
+}
+
+model EngagementDecisionRecord {
+  id                   String               @id @default(cuid())
+  restaurantId         String
+  recommendationId     String
+  recommendationCode   String
+  policyId             String
+  shouldCommunicate    Boolean
+  policyReason         String               @db.Text
+  journeyId            String?
+  channel              String?
+  templateId           String?
+  decisionTrace        Json
+  engineVersion        String               @default("1.0.0")
+  decidedAt            DateTime             @default(now())
+  restaurant           Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  deliveries           EngagementDelivery[]
+
+  @@index([restaurantId, decidedAt])
+  @@index([recommendationCode])
+}
+
+model EngagementDelivery {
+  id                   String                   @id @default(cuid())
+  restaurantId         String
+  decisionId           String?
+  recommendationId     String
+  recommendationCode   String
+  policyId             String
+  journeyId            String
+  journeyStepId        String
+  templateId           String
+  channel              String
+  status               EngagementDeliveryStatus @default(SCHEDULED)
+  recipient            String?
+  subject              String?
+  bodyPreview          String                   @db.Text
+  bodyFull             String?                  @db.Text
+  ctaLabel             String?
+  ctaUrl               String?
+  scheduledAt          DateTime
+  deliverAt            DateTime
+  sentAt               DateTime?
+  externalMessageId    String?
+  errorMessage         String?
+  engineVersion        String                   @default("1.0.0")
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  restaurant           Restaurant               @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  decision             EngagementDecisionRecord? @relation(fields: [decisionId], references: [id], onDelete: SetNull)
+  outcomes             EngagementOutcome[]
+
+  @@index([restaurantId, createdAt])
+  @@index([status, deliverAt])
+  @@index([recommendationCode])
+}
+
+model EngagementOutcome {
+  id                   String                @id @default(cuid())
+  deliveryId           String
+  restaurantId         String
+  recommendationCode   String
+  type                 EngagementOutcomeType
+  rssBefore            Int?
+  rssAfter             Int?
+  rssDelta             Int?
+  metadata             Json?
+  recordedAt           DateTime              @default(now())
+  delivery             EngagementDelivery    @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  restaurant           Restaurant            @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId])
+  @@index([restaurantId, recordedAt])
+}
+
+model EngagementActiveJourney {
+  id                       String                        @id @default(cuid())
+  restaurantId             String
+  journeyId                String
+  journeyType              String
+  sourceRecommendationCode String
+  sourceRecommendationId   String
+  currentStepIndex         Int                           @default(0)
+  status                   EngagementActiveJourneyStatus @default(ACTIVE)
+  startedAt                DateTime                      @default(now())
+  completedAt              DateTime?
+  lastTouchAt              DateTime?
+  restaurant               Restaurant                    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, status])
+  @@index([journeyId, status])
 }

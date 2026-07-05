@@ -1,0 +1,23 @@
+{
+  "version": "1.0.0",
+  "signalWeights": {
+    "SIG-CFG-01": { "dimension": "configuration", "direction": "positive" },
+    "SIG-CFG-02": { "dimension": "configuration", "direction": "negative" },
+    "SIG-CFG-03": { "dimension": "configuration", "direction": "positive" },
+    "SIG-CFG-05": { "dimension": "configuration", "direction": "positive" },
+    "SIG-CFG-06": { "dimension": "configuration", "direction": "negative" },
+    "SIG-CFG-08": { "dimension": "configuration", "direction": "positive" },
+    "SIG-CFG-09": { "dimension": "configuration", "direction": "negative" },
+    "SIG-CFG-10": { "dimension": "configuration", "direction": "positive" },
+    "SIG-OPS-02": { "dimension": "operation", "direction": "positive" },
+    "SIG-OPS-07": { "dimension": "operation", "direction": "positive" },
+    "SIG-OPS-09": { "dimension": "operation", "direction": "negative" },
+    "SIG-BIZ-01": { "dimension": "business", "direction": "positive" },
+    "SIG-BIZ-03": { "dimension": "business", "direction": "negative" },
+    "SIG-ENG-01": { "dimension": "engagement", "direction": "negative" },
+    "SIG-RSK-02": { "dimension": "relationship", "direction": "negative" },
+    "SIG-RSK-03": { "dimension": "relationship", "direction": "negative" },
+    "SIG-RSK-06": { "dimension": "relationship", "direction": "negative" },
+    "SIG-RSK-08": { "dimension": "relationship", "direction": "negative" }
+  }
+}

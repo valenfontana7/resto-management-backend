@@ -1,0 +1,35 @@
+{
+  "version": "1.0.0",
+  "bands": [
+    {
+      "id": "champion",
+      "label": "Champion",
+      "minInclusive": 90,
+      "maxInclusive": 100
+    },
+    {
+      "id": "healthy",
+      "label": "Healthy",
+      "minInclusive": 75,
+      "maxInclusive": 89
+    },
+    {
+      "id": "attention",
+      "label": "Attention",
+      "minInclusive": 60,
+      "maxInclusive": 74
+    },
+    {
+      "id": "at_risk",
+      "label": "At Risk",
+      "minInclusive": 40,
+      "maxInclusive": 59
+    },
+    {
+      "id": "critical",
+      "label": "Critical",
+      "minInclusive": 0,
+      "maxInclusive": 39
+    }
+  ]
+}

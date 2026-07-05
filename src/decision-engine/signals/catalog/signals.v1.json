@@ -1,0 +1,185 @@
+{
+  "version": "1.0.0",
+  "signals": {
+    "SIG-CFG-01": {
+      "code": "SIG-CFG-01",
+      "category": "configuration",
+      "importance": "P0",
+      "direction": "positive",
+      "dimension": "configuration",
+      "primaryJob": "Presencia digital propia",
+      "description": "Canal propio visible (site.published)",
+      "explanationTemplate": "El sitio del restaurante está publicado y visible para clientes."
+    },
+    "SIG-CFG-02": {
+      "code": "SIG-CFG-02",
+      "category": "configuration",
+      "importance": "P0",
+      "direction": "negative",
+      "dimension": "configuration",
+      "primaryJob": "Independencia",
+      "description": "Canal oculto tras haber estado publicado",
+      "explanationTemplate": "El sitio fue despublicado después de haber estado visible."
+    },
+    "SIG-CFG-03": {
+      "code": "SIG-CFG-03",
+      "category": "configuration",
+      "importance": "P0",
+      "direction": "positive",
+      "dimension": "configuration",
+      "primaryJob": "Operar con una fuente de verdad",
+      "description": "Menú vendible con platos activos",
+      "explanationTemplate": "El menú tiene platos activos listos para vender."
+    },
+    "SIG-CFG-05": {
+      "code": "SIG-CFG-05",
+      "category": "configuration",
+      "importance": "P0",
+      "direction": "positive",
+      "dimension": "configuration",
+      "primaryJob": "Cobrar sin fricción",
+      "description": "Medios de pago online conectados",
+      "explanationTemplate": "Los medios de pago online están conectados y verificados."
+    },
+    "SIG-CFG-06": {
+      "code": "SIG-CFG-06",
+      "category": "configuration",
+      "importance": "P0",
+      "direction": "negative",
+      "dimension": "configuration",
+      "primaryJob": "Margen / tranquilidad",
+      "description": "Medios de pago fallidos",
+      "explanationTemplate": "Hay fallos recurrentes en la conexión o cobro online."
+    },
+    "SIG-CFG-08": {
+      "code": "SIG-CFG-08",
+      "category": "configuration",
+      "importance": "P0",
+      "direction": "positive",
+      "dimension": "configuration",
+      "primaryJob": "Empezar sin proyecto eterno",
+      "description": "Configuración inicial completa (go-live)",
+      "explanationTemplate": "La configuración inicial de go-live está completa."
+    },
+    "SIG-CFG-09": {
+      "code": "SIG-CFG-09",
+      "category": "configuration",
+      "importance": "P0",
+      "direction": "negative",
+      "dimension": "configuration",
+      "primaryJob": "Primer valor",
+      "description": "Paso go-live estancado",
+      "explanationTemplate": "Un paso del go-live lleva demasiados días sin avanzar."
+    },
+    "SIG-CFG-10": {
+      "code": "SIG-CFG-10",
+      "category": "configuration",
+      "importance": "P0",
+      "direction": "positive",
+      "dimension": "configuration",
+      "primaryJob": "Cerrar el día con tranquilidad",
+      "description": "Caja conectada (salon desktop ready)",
+      "explanationTemplate": "La caja del salón está conectada y operativa."
+    },
+    "SIG-OPS-02": {
+      "code": "SIG-OPS-02",
+      "category": "operation",
+      "importance": "P0",
+      "direction": "positive",
+      "dimension": "operation",
+      "primaryJob": "Margen propio",
+      "description": "Primer pedido de valor pagado",
+      "explanationTemplate": "Se registró el primer pedido pagado de valor."
+    },
+    "SIG-OPS-07": {
+      "code": "SIG-OPS-07",
+      "category": "operation",
+      "importance": "P0",
+      "direction": "positive",
+      "dimension": "operation",
+      "primaryJob": "Menos caos sostenido",
+      "description": "Frecuencia de uso operativa semanal",
+      "explanationTemplate": "Hay actividad operativa de valor al menos una vez por semana."
+    },
+    "SIG-OPS-09": {
+      "code": "SIG-OPS-09",
+      "category": "operation",
+      "importance": "P0",
+      "direction": "negative",
+      "dimension": "operation",
+      "primaryJob": "Ausencia de valor operativo",
+      "description": "Sin operación de valor en 14 días",
+      "explanationTemplate": "No hubo pedidos, caja ni reservas de valor en los últimos 14 días."
+    },
+    "SIG-BIZ-01": {
+      "code": "SIG-BIZ-01",
+      "category": "business",
+      "importance": "P0",
+      "direction": "positive",
+      "dimension": "business",
+      "primaryJob": "Vender sin regalar margen",
+      "description": "Pedidos canal propio",
+      "explanationTemplate": "Hay pedidos registrados por canal propio."
+    },
+    "SIG-BIZ-03": {
+      "code": "SIG-BIZ-03",
+      "category": "business",
+      "importance": "P0",
+      "direction": "negative",
+      "dimension": "business",
+      "primaryJob": "Margen en riesgo",
+      "description": "Caída de volumen vs baseline",
+      "explanationTemplate": "El volumen de pedidos cayó significativamente vs el baseline."
+    },
+    "SIG-RSK-02": {
+      "code": "SIG-RSK-02",
+      "category": "risk",
+      "importance": "P0",
+      "direction": "negative",
+      "dimension": "relationship",
+      "primaryJob": "Independencia",
+      "description": "Configuración revertida",
+      "explanationTemplate": "Se revirtió configuración clave (sitio, pagos o carta)."
+    },
+    "SIG-RSK-03": {
+      "code": "SIG-RSK-03",
+      "category": "risk",
+      "importance": "P0",
+      "direction": "negative",
+      "dimension": "relationship",
+      "primaryJob": "Retención",
+      "description": "Cancelación de suscripción iniciada",
+      "explanationTemplate": "El restaurante inició una solicitud de cancelación."
+    },
+    "SIG-RSK-06": {
+      "code": "SIG-RSK-06",
+      "category": "risk",
+      "importance": "P0",
+      "direction": "negative",
+      "dimension": "relationship",
+      "primaryJob": "Continuidad del servicio",
+      "description": "Pago de suscripción fallido",
+      "explanationTemplate": "Falló el pago de la suscripción Bentoo."
+    },
+    "SIG-RSK-08": {
+      "code": "SIG-RSK-08",
+      "category": "risk",
+      "importance": "P0",
+      "direction": "negative",
+      "dimension": "relationship",
+      "primaryJob": "Primer valor",
+      "description": "Trial sin hito de valor",
+      "explanationTemplate": "El trial superó 10 días sin alcanzar un hito de valor."
+    },
+    "SIG-ENG-01": {
+      "code": "SIG-ENG-01",
+      "category": "engagement",
+      "importance": "P0",
+      "direction": "negative",
+      "dimension": "engagement",
+      "primaryJob": "Adopción sostenida",
+      "description": "Tiempo desde última actividad de valor",
+      "explanationTemplate": "Pasaron demasiados días desde la última actividad de valor."
+    }
+  }
+}

@@ -1,0 +1,180 @@
+{
+  "version": "1.0.0",
+  "journeys": {
+    "J-ACT-01": {
+      "id": "J-ACT-01",
+      "name": "Configuración incompleta",
+      "objective": "Destrabar go-live estancado",
+      "journeyType": "activation",
+      "linkedRecommendationCodes": ["REC-GOL-01", "REC-MNU-01"],
+      "frequencyCapDays": 10,
+      "maxActiveSteps": 3,
+      "steps": [
+        {
+          "stepId": "J-ACT-01-S1",
+          "delayDays": 0,
+          "channel": "email",
+          "templateTrigger": "activation.stalled",
+          "goal": "Completar paso pendiente de go-live"
+        },
+        {
+          "stepId": "J-ACT-01-S2",
+          "delayDays": 3,
+          "channel": "in_app",
+          "templateTrigger": "activation.stalled.reminder",
+          "goal": "Recordatorio in-app del paso pendiente"
+        }
+      ]
+    },
+    "J-ACT-02": {
+      "id": "J-ACT-02",
+      "name": "Publicar canal",
+      "objective": "Canal propio visible y listo para pedidos",
+      "journeyType": "activation",
+      "linkedRecommendationCodes": ["REC-PUB-01"],
+      "frequencyCapDays": 14,
+      "maxActiveSteps": 3,
+      "steps": [
+        {
+          "stepId": "J-ACT-02-S1",
+          "delayDays": 0,
+          "channel": "email",
+          "templateTrigger": "activation.publish_site",
+          "goal": "Publicar sitio"
+        },
+        {
+          "stepId": "J-ACT-02-S2",
+          "delayDays": 2,
+          "channel": "in_app",
+          "templateTrigger": "activation.publish_site.reminder",
+          "goal": "Recordatorio publicación"
+        }
+      ]
+    },
+    "J-ACT-03": {
+      "id": "J-ACT-03",
+      "name": "Conectar cobro online",
+      "objective": "Cobro online operativo en el canal propio",
+      "journeyType": "activation",
+      "linkedRecommendationCodes": ["REC-PAY-01"],
+      "frequencyCapDays": 14,
+      "maxActiveSteps": 2,
+      "steps": [
+        {
+          "stepId": "J-ACT-03-S1",
+          "delayDays": 0,
+          "channel": "email",
+          "templateTrigger": "activation.connect_payments",
+          "goal": "Conectar Mercado Pago"
+        }
+      ]
+    },
+    "J-REC-01": {
+      "id": "J-REC-01",
+      "name": "Recuperación — te extrañamos",
+      "objective": "Reactivar valor con un paso concreto",
+      "journeyType": "recovery",
+      "linkedRecommendationCodes": ["REC-REA-01"],
+      "frequencyCapDays": 21,
+      "maxActiveSteps": 4,
+      "steps": [
+        {
+          "stepId": "J-REC-01-S1",
+          "delayDays": 0,
+          "channel": "email",
+          "templateTrigger": "recovery.missed_you",
+          "goal": "Re-engagement suave"
+        },
+        {
+          "stepId": "J-REC-01-S2",
+          "delayDays": 7,
+          "channel": "whatsapp",
+          "templateTrigger": "recovery.missed_you.whatsapp",
+          "goal": "Contacto por WhatsApp"
+        },
+        {
+          "stepId": "J-REC-01-S3",
+          "delayDays": 14,
+          "channel": "cs_task",
+          "templateTrigger": "recovery.human_followup",
+          "goal": "Task Customer Success"
+        }
+      ]
+    },
+    "J-RSK-01": {
+      "id": "J-RSK-01",
+      "name": "Riesgo — RSS en caída",
+      "objective": "Diagnosticar y recuperar momentum",
+      "journeyType": "recovery",
+      "linkedRecommendationCodes": ["REC-CHK-01", "REC-FIX-01"],
+      "frequencyCapDays": 14,
+      "maxActiveSteps": 3,
+      "steps": [
+        {
+          "stepId": "J-RSK-01-S1",
+          "delayDays": 0,
+          "channel": "email",
+          "templateTrigger": "risk.rss_drop",
+          "goal": "Ofrecer ayuda concreta"
+        },
+        {
+          "stepId": "J-RSK-01-S2",
+          "delayDays": 3,
+          "channel": "email",
+          "templateTrigger": "risk.guide",
+          "goal": "Guía paso a paso"
+        },
+        {
+          "stepId": "J-RSK-01-S3",
+          "delayDays": 7,
+          "channel": "cs_task",
+          "templateTrigger": "risk.cs_followup",
+          "goal": "Seguimiento CS"
+        }
+      ]
+    },
+    "J-CEL-01": {
+      "id": "J-CEL-01",
+      "name": "Champion — milestone",
+      "objective": "Celebrar hito y promover referidos",
+      "journeyType": "milestone",
+      "linkedRecommendationCodes": ["REC-CEL-01"],
+      "frequencyCapDays": 30,
+      "maxActiveSteps": 2,
+      "steps": [
+        {
+          "stepId": "J-CEL-01-S1",
+          "delayDays": 0,
+          "channel": "email",
+          "templateTrigger": "milestone.celebrate",
+          "goal": "Felicitación sobria"
+        },
+        {
+          "stepId": "J-CEL-01-S2",
+          "delayDays": 3,
+          "channel": "email",
+          "templateTrigger": "milestone.referral",
+          "goal": "Invitar referidos"
+        }
+      ]
+    },
+    "J-ONB-01": {
+      "id": "J-ONB-01",
+      "name": "Activación — primer pedido",
+      "objective": "Primer pedido de valor end-to-end",
+      "journeyType": "activation",
+      "linkedRecommendationCodes": ["REC-TST-01"],
+      "frequencyCapDays": 10,
+      "maxActiveSteps": 2,
+      "steps": [
+        {
+          "stepId": "J-ONB-01-S1",
+          "delayDays": 0,
+          "channel": "email",
+          "templateTrigger": "activation.first_order",
+          "goal": "Pedido de prueba"
+        }
+      ]
+    }
+  }
+}

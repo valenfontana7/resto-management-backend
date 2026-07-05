@@ -7,6 +7,8 @@ import { UpdateLeadDto } from './dto/update-lead.dto';
 import { LeadFiltersDto } from './dto/lead-filters.dto';
 import { LeadScoringService } from './lead-scoring.service';
 import { LeadDemoProvisionService } from './lead-demo-provision.service';
+import { LeadRevenueSyncService } from '../revenue/lead-revenue-sync.service';
+import { withRevenueRelationId } from './lead-serializer';
 import { getLeadPriority } from './lead-scoring.rules';
 import {
   findLeadDuplicateMatch,
@@ -36,6 +38,7 @@ export class LeadsService {
     private readonly scoring: LeadScoringService,
     private readonly reactiveSensing: CommercialReactiveSensingHandler,
     private readonly leadDemoProvision: LeadDemoProvisionService,
+    private readonly leadRevenueSync: LeadRevenueSyncService,
   ) {}
 
   async findAll(filters: LeadFiltersDto) {
@@ -62,6 +65,7 @@ export class LeadsService {
           orderBy: { changedAt: 'desc' },
           take: 50,
         },
+        commercialRelation: { select: { id: true } },
       },
     });
 
@@ -69,7 +73,7 @@ export class LeadsService {
       throw new NotFoundException(`Lead ${id} no encontrado`);
     }
 
-    return lead;
+    return withRevenueRelationId(lead) as LeadWithRelations;
   }
 
   async create(dto: CreateLeadDto, userId?: string) {
@@ -82,7 +86,7 @@ export class LeadsService {
       branchCount: dto.branchCount ?? 1,
     });
 
-    return this.prisma.lead.create({
+    const created = await this.prisma.lead.create({
       data: {
         businessName: dto.businessName.trim(),
         category: dto.category?.trim() || null,
@@ -113,6 +117,13 @@ export class LeadsService {
           },
         },
       },
+    });
+
+    await this.leadRevenueSync.syncFromLead(created).catch(() => undefined);
+
+    return withRevenueRelationId({
+      ...created,
+      commercialRelation: null,
     });
   }
 
@@ -176,7 +187,14 @@ export class LeadsService {
       await this.leadDemoProvision.syncDemoFromLead(id).catch(() => undefined);
     }
 
-    return updated;
+    await this.leadRevenueSync.syncFromLead(updated).catch(() => undefined);
+
+    const relation = await this.prisma.commercialRelation.findUnique({
+      where: { leadId: id },
+      select: { id: true },
+    });
+
+    return withRevenueRelationId({ ...updated, commercialRelation: relation });
   }
 
   async generateDemoForLead(id: string) {
@@ -213,7 +231,14 @@ export class LeadsService {
 
     void this.reactiveSensing.onLeadStatusChanged(id, status);
 
-    return updated;
+    await this.leadRevenueSync.syncFromLead(updated).catch(() => undefined);
+
+    const relation = await this.prisma.commercialRelation.findUnique({
+      where: { leadId: id },
+      select: { id: true },
+    });
+
+    return withRevenueRelationId({ ...updated, commercialRelation: relation });
   }
 
   async getDashboardStats() {

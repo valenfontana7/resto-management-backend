@@ -1,0 +1,33 @@
+{
+  "name": "La Parrilla Norte",
+  "restaurantId": "rest-la-parrilla-norte",
+  "context": {
+    "intent": "digital",
+    "tenureDays": 20,
+    "evaluatedAt": "2026-03-20T12:00:00.000Z"
+  },
+  "events": [
+    {
+      "id": "ev-1",
+      "type": "menu.ready",
+      "occurredAt": "2026-03-05T10:00:00.000Z",
+      "source": "fixture"
+    },
+    {
+      "id": "ev-2",
+      "type": "payments.online_connected",
+      "occurredAt": "2026-03-08T10:00:00.000Z",
+      "source": "fixture"
+    }
+  ],
+  "expectedActiveSignals": [
+    "SIG-CFG-03",
+    "SIG-CFG-05",
+    "SIG-OPS-09",
+    "SIG-ENG-01"
+  ],
+  "expectedInactiveSignals": [
+    "SIG-CFG-01",
+    "SIG-OPS-02"
+  ]
+}

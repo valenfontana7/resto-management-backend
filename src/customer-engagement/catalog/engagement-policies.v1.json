@@ -1,0 +1,139 @@
+{
+  "version": "1.0.0",
+  "globalFrequencyCapDays": 7,
+  "globalMaxMessagesPerWindow": 3,
+  "policies": [
+    {
+      "id": "POL-ACT-01",
+      "label": "Activación — onboarding incompleto",
+      "recommendationCodes": ["REC-GOL-01", "REC-MNU-01"],
+      "minPriority": "medium",
+      "frequencyCapDays": 7,
+      "maxMessagesPerWindow": 2,
+      "preferredChannels": ["email", "in_app"],
+      "journeyTypeHint": "activation",
+      "minDaysSinceRecommendation": 0,
+      "respectChampionBlock": true
+    },
+    {
+      "id": "POL-ACT-02",
+      "label": "Activación — publicar sitio",
+      "recommendationCodes": ["REC-PUB-01"],
+      "minPriority": "high",
+      "frequencyCapDays": 7,
+      "maxMessagesPerWindow": 2,
+      "preferredChannels": ["email", "in_app"],
+      "journeyTypeHint": "activation",
+      "minDaysSinceRecommendation": 0,
+      "respectChampionBlock": true
+    },
+    {
+      "id": "POL-ACT-03",
+      "label": "Activación — conectar pagos",
+      "recommendationCodes": ["REC-PAY-01"],
+      "minPriority": "high",
+      "frequencyCapDays": 7,
+      "maxMessagesPerWindow": 2,
+      "preferredChannels": ["email", "in_app"],
+      "journeyTypeHint": "activation",
+      "minDaysSinceRecommendation": 0,
+      "respectChampionBlock": true
+    },
+    {
+      "id": "POL-ACT-04",
+      "label": "Activación — primer pedido",
+      "recommendationCodes": ["REC-TST-01"],
+      "minPriority": "medium",
+      "frequencyCapDays": 7,
+      "maxMessagesPerWindow": 2,
+      "preferredChannels": ["email", "in_app"],
+      "journeyTypeHint": "activation",
+      "minDaysSinceRecommendation": 0,
+      "respectChampionBlock": false
+    },
+    {
+      "id": "POL-REC-01",
+      "label": "Recuperación — RSS en riesgo",
+      "recommendationCodes": ["REC-REA-01", "REC-CHK-01"],
+      "minPriority": "high",
+      "frequencyCapDays": 7,
+      "maxMessagesPerWindow": 2,
+      "preferredChannels": ["email", "whatsapp", "cs_task"],
+      "journeyTypeHint": "recovery",
+      "minDaysSinceRecommendation": 0,
+      "respectChampionBlock": false
+    },
+    {
+      "id": "POL-SAV-01",
+      "label": "Save — cancelación iniciada",
+      "recommendationCodes": ["REC-SAV-01"],
+      "minPriority": "critical",
+      "frequencyCapDays": 7,
+      "maxMessagesPerWindow": 3,
+      "preferredChannels": ["email", "cs_task"],
+      "journeyTypeHint": "save",
+      "minDaysSinceRecommendation": 0,
+      "respectChampionBlock": false
+    },
+    {
+      "id": "POL-RSK-01",
+      "label": "Riesgo — trial sin hito",
+      "recommendationCodes": ["REC-TRI-01"],
+      "minPriority": "high",
+      "frequencyCapDays": 7,
+      "maxMessagesPerWindow": 2,
+      "preferredChannels": ["email", "in_app"],
+      "journeyTypeHint": "activation",
+      "minDaysSinceRecommendation": 0,
+      "respectChampionBlock": false
+    },
+    {
+      "id": "POL-RSK-02",
+      "label": "Riesgo — pagos rotos",
+      "recommendationCodes": ["REC-FIX-01"],
+      "minPriority": "critical",
+      "frequencyCapDays": 7,
+      "maxMessagesPerWindow": 2,
+      "preferredChannels": ["email", "in_app"],
+      "journeyTypeHint": "recovery",
+      "minDaysSinceRecommendation": 0,
+      "respectChampionBlock": false
+    },
+    {
+      "id": "POL-EXP-01",
+      "label": "Expansión — segundo pilar",
+      "recommendationCodes": ["REC-2PL-01", "REC-GRW-01"],
+      "minPriority": "medium",
+      "frequencyCapDays": 14,
+      "maxMessagesPerWindow": 1,
+      "preferredChannels": ["email", "in_app"],
+      "journeyTypeHint": "expansion",
+      "minDaysSinceRecommendation": 1,
+      "respectChampionBlock": false
+    },
+    {
+      "id": "POL-CEL-01",
+      "label": "Celebración — milestone",
+      "recommendationCodes": ["REC-CEL-01"],
+      "minPriority": "low",
+      "frequencyCapDays": 14,
+      "maxMessagesPerWindow": 1,
+      "preferredChannels": ["email", "in_app"],
+      "journeyTypeHint": "milestone",
+      "minDaysSinceRecommendation": 0,
+      "respectChampionBlock": false
+    },
+    {
+      "id": "POL-EDU-01",
+      "label": "Educación — invitar equipo",
+      "recommendationCodes": ["REC-INV-01"],
+      "minPriority": "medium",
+      "frequencyCapDays": 14,
+      "maxMessagesPerWindow": 1,
+      "preferredChannels": ["email", "in_app"],
+      "journeyTypeHint": "activation",
+      "minDaysSinceRecommendation": 2,
+      "respectChampionBlock": true
+    }
+  ]
+}

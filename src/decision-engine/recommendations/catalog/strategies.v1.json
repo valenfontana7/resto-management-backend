@@ -1,0 +1,40 @@
+{
+  "version": "1.0.0",
+  "strategies": {
+    "educate": {
+      "id": "educate",
+      "label": "Educate",
+      "description": "Guiar al restaurante para entender y completar un paso de valor."
+    },
+    "assist": {
+      "id": "assist",
+      "label": "Assist",
+      "description": "Acompañar la ejecución de una configuración o activación concreta."
+    },
+    "recover": {
+      "id": "recover",
+      "label": "Recover",
+      "description": "Intervenir para revertir riesgo, churn o caída de valor."
+    },
+    "expand": {
+      "id": "expand",
+      "label": "Expand",
+      "description": "Proponer el siguiente nivel de crecimiento dentro de Bentoo."
+    },
+    "celebrate": {
+      "id": "celebrate",
+      "label": "Celebrate",
+      "description": "Reconocer un hito alcanzado y orientar el siguiente paso."
+    },
+    "warn": {
+      "id": "warn",
+      "label": "Warn",
+      "description": "Alertar sobre riesgo inminente con intervención sugerida."
+    },
+    "validate": {
+      "id": "validate",
+      "label": "Validate",
+      "description": "Confirmar que el flujo funciona con una acción de prueba acotada."
+    }
+  }
+}

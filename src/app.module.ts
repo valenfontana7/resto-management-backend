@@ -48,12 +48,15 @@ import { OnboardingAiModule } from './onboarding-ai/onboarding-ai.module';
 import { OnboardingAnalyticsModule } from './onboarding-analytics/onboarding-analytics.module';
 import { DemoExamplesModule } from './demo-examples/demo-examples.module';
 import { LeadsModule } from './leads/leads.module';
+import { RevenueModule } from './revenue/revenue.module';
 import { AiPlatformModule } from './ai-platform/ai-platform.module';
 import { CommercialIntelligenceModule } from './commercial-intelligence/commercial-intelligence.module';
 import { FloorModule } from './floor/floor.module';
 import { BusinessHealthModule } from './business-health/business-health.module';
 import { BusinessMemoryModule } from './business-memory/business-memory.module';
 import { BusinessEventsModule } from './business-events/business-events.module';
+import { DecisionEngineModule } from './decision-engine/decision-engine.module';
+import { CustomerEngagementModule } from './customer-engagement/customer-engagement.module';
 import { getJwtSecret } from './common/config/jwt.config';
 import { validateEnvironment } from './common/config/env.validation';
 import { isLocalMode } from './common/config/bentoo-mode.config';
@@ -162,10 +165,13 @@ import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage';
     AiPlatformModule,
     CommercialIntelligenceModule,
     LeadsModule,
+    RevenueModule,
     FloorModule,
     BusinessHealthModule,
     BusinessMemoryModule,
     BusinessEventsModule,
+    DecisionEngineModule,
+    CustomerEngagementModule,
     EdgeSyncModule,
     SalonDesktopModule,
     ...(isLocalMode() ? [LocalDiscoveryModule] : []),
