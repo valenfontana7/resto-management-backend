@@ -1,0 +1,363 @@
+{
+  "version": "1.0.0",
+  "globalFrequencyCapDays": 7,
+  "globalMaxMessagesPerWindow": 3,
+  "recommendationBindings": [
+    { "recommendationCode": "REC-GOL-01", "campaignId": "LCM-ONBOARDING-01" },
+    { "recommendationCode": "REC-MNU-01", "campaignId": "LCM-ACTIVATION-01" },
+    { "recommendationCode": "REC-PUB-01", "campaignId": "LCM-ACTIVATION-02" },
+    { "recommendationCode": "REC-PAY-01", "campaignId": "LCM-ACTIVATION-03" },
+    { "recommendationCode": "REC-TST-01", "campaignId": "LCM-FIRST-VALUE-01" },
+    { "recommendationCode": "REC-REA-01", "campaignId": "LCM-WINBACK-01" },
+    { "recommendationCode": "REC-CHK-01", "campaignId": "LCM-CHECKIN-01" },
+    { "recommendationCode": "REC-RSK-01", "campaignId": "LCM-CHURN-01" },
+    { "recommendationCode": "REC-ADP-01", "campaignId": "LCM-FEATURE-01" },
+    { "recommendationCode": "REC-MLT-01", "campaignId": "LCM-MILESTONE-01" }
+  ],
+  "campaigns": [
+    {
+      "id": "LCM-WELCOME-01",
+      "type": "WELCOME",
+      "goal": "Dar la bienvenida y orientar el primer paso",
+      "priority": 50,
+      "cooldownDays": 30,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email", "in_app"],
+      "entryConditions": {
+        "requiresRecommendationCodes": ["REC-GOL-01"],
+        "lifecycleStages": ["CLIENT", "ACTIVATION"]
+      },
+      "exitConditions": { "maxDeliveries": 1 },
+      "suppressionRules": { "respectChampionBlock": true },
+      "templates": ["LMT-WELCOME-01"],
+      "steps": [{ "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-WELCOME-01" }],
+      "expectedOutcome": "golive.step_completed",
+      "successMetric": "activation_rate_7d",
+      "primaryJob": "JOB-OWN-START"
+    },
+    {
+      "id": "LCM-ONBOARDING-01",
+      "type": "ONBOARDING",
+      "goal": "Completar setup inicial del restaurante",
+      "priority": 70,
+      "cooldownDays": 7,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email", "in_app"],
+      "entryConditions": {
+        "requiresRecommendationCodes": ["REC-GOL-01"],
+        "rssBands": ["attention", "at_risk", "healthy"]
+      },
+      "exitConditions": { "maxDeliveries": 4, "rssBands": ["champion"] },
+      "suppressionRules": { "respectChampionBlock": true },
+      "templates": ["LMT-ONBOARDING-01", "LMT-ONBOARDING-02"],
+      "steps": [
+        { "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-ONBOARDING-01" },
+        { "stepId": "S2", "delayDays": 2, "channel": "in_app", "templateId": "LMT-ONBOARDING-02" }
+      ],
+      "expectedOutcome": "golive.activated",
+      "successMetric": "ttv_first_value",
+      "primaryJob": "JOB-OWN-START"
+    },
+    {
+      "id": "LCM-ACTIVATION-01",
+      "type": "ACTIVATION",
+      "goal": "Publicar menú y activar canal de venta",
+      "priority": 75,
+      "cooldownDays": 7,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email", "in_app"],
+      "entryConditions": { "requiresRecommendationCodes": ["REC-MNU-01"] },
+      "exitConditions": { "maxDeliveries": 3 },
+      "suppressionRules": { "respectChampionBlock": true },
+      "templates": ["LMT-ACTIVATION-MENU-01"],
+      "steps": [{ "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-ACTIVATION-MENU-01" }],
+      "expectedOutcome": "menu.published",
+      "successMetric": "activation_rate_14d"
+    },
+    {
+      "id": "LCM-ACTIVATION-02",
+      "type": "ACTIVATION",
+      "goal": "Publicar sitio web del restaurante",
+      "priority": 80,
+      "cooldownDays": 7,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email", "in_app"],
+      "entryConditions": { "requiresRecommendationCodes": ["REC-PUB-01"] },
+      "exitConditions": { "maxDeliveries": 3 },
+      "suppressionRules": { "respectChampionBlock": true },
+      "templates": ["LMT-ACTIVATION-SITE-01"],
+      "steps": [{ "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-ACTIVATION-SITE-01" }],
+      "expectedOutcome": "site.published",
+      "successMetric": "activation_rate_14d"
+    },
+    {
+      "id": "LCM-ACTIVATION-03",
+      "type": "ACTIVATION",
+      "goal": "Conectar pagos online",
+      "priority": 85,
+      "cooldownDays": 7,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email", "in_app"],
+      "entryConditions": { "requiresRecommendationCodes": ["REC-PAY-01"] },
+      "exitConditions": { "maxDeliveries": 3 },
+      "suppressionRules": { "respectChampionBlock": false },
+      "templates": ["LMT-ACTIVATION-PAY-01"],
+      "steps": [{ "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-ACTIVATION-PAY-01" }],
+      "expectedOutcome": "payment.connected",
+      "successMetric": "ttv_first_payment"
+    },
+    {
+      "id": "LCM-FIRST-VALUE-01",
+      "type": "FIRST_VALUE",
+      "goal": "Lograr el primer pedido o cobro real",
+      "priority": 90,
+      "cooldownDays": 7,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email", "in_app"],
+      "entryConditions": { "requiresRecommendationCodes": ["REC-TST-01"] },
+      "exitConditions": { "maxDeliveries": 2, "goalCompletedEventTypes": ["order.paid"] },
+      "suppressionRules": {},
+      "templates": ["LMT-FIRST-VALUE-01"],
+      "steps": [{ "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-FIRST-VALUE-01" }],
+      "expectedOutcome": "order.paid",
+      "successMetric": "ttv_first_order"
+    },
+    {
+      "id": "LCM-FEATURE-01",
+      "type": "FEATURE_ADOPTION",
+      "goal": "Adoptar funcionalidad relevante no usada",
+      "priority": 60,
+      "cooldownDays": 14,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email", "in_app"],
+      "entryConditions": {
+        "requiresRecommendationCodes": ["REC-ADP-01"],
+        "rssBands": ["healthy", "champion", "attention"]
+      },
+      "exitConditions": { "maxDeliveries": 2 },
+      "suppressionRules": { "respectChampionBlock": true },
+      "templates": ["LMT-FEATURE-01"],
+      "steps": [{ "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-FEATURE-01" }],
+      "expectedOutcome": "feature.first_use",
+      "successMetric": "feature_adoption_rate"
+    },
+    {
+      "id": "LCM-INACTIVITY-01",
+      "type": "INACTIVITY",
+      "goal": "Recuperar uso tras inactividad operativa",
+      "priority": 85,
+      "cooldownDays": 10,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email", "in_app"],
+      "entryConditions": {
+        "requiresRecommendationCodes": ["REC-REA-01"],
+        "rssBands": ["attention", "at_risk"],
+        "minDaysInactive": 10
+      },
+      "exitConditions": { "maxDeliveries": 2, "rssBands": ["healthy", "champion"] },
+      "suppressionRules": { "blockIfActiveCampaignTypes": ["WINBACK"] },
+      "templates": ["LMT-INACTIVITY-01"],
+      "steps": [{ "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-INACTIVITY-01" }],
+      "expectedOutcome": "usage.reengaged",
+      "successMetric": "recovery_rate_14d"
+    },
+    {
+      "id": "LCM-WINBACK-01",
+      "type": "WINBACK",
+      "goal": "Recuperar restaurante en riesgo o crítico",
+      "priority": 95,
+      "cooldownDays": 14,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email", "whatsapp", "cs_task"],
+      "entryConditions": {
+        "requiresRecommendationCodes": ["REC-REA-01"],
+        "rssBands": ["at_risk", "critical"],
+        "minDaysInactive": 7
+      },
+      "exitConditions": { "maxDeliveries": 3, "rssBands": ["healthy", "champion"] },
+      "suppressionRules": {},
+      "templates": ["LMT-WINBACK-EMAIL-01", "LMT-WINBACK-WA-01"],
+      "steps": [
+        { "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-WINBACK-EMAIL-01" },
+        { "stepId": "S2", "delayDays": 3, "channel": "whatsapp", "templateId": "LMT-WINBACK-WA-01", "fallbackChannel": "cs_task" },
+        { "stepId": "S3", "delayDays": 7, "channel": "cs_task", "templateId": "LMT-WINBACK-WA-01" }
+      ],
+      "expectedOutcome": "usage.reengaged",
+      "successMetric": "rss_recovery_7d"
+    },
+    {
+      "id": "LCM-RECOVERY-01",
+      "type": "RECOVERY",
+      "goal": "Recuperación temprana antes del churn",
+      "priority": 88,
+      "cooldownDays": 7,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email"],
+      "entryConditions": {
+        "requiresOpportunityCodes": ["OPP-RSK-01"],
+        "rssBands": ["at_risk", "attention"]
+      },
+      "exitConditions": { "maxDeliveries": 2 },
+      "suppressionRules": { "blockIfActiveCampaignTypes": ["WINBACK"] },
+      "templates": ["LMT-RECOVERY-01"],
+      "steps": [{ "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-RECOVERY-01" }],
+      "expectedOutcome": "rss.stabilized",
+      "successMetric": "recovery_rate_7d"
+    },
+    {
+      "id": "LCM-CHURN-01",
+      "type": "CHURN_PREVENTION",
+      "goal": "Evitar churn inminente con intervención CS",
+      "priority": 98,
+      "cooldownDays": 7,
+      "recommendedChannel": "cs_task",
+      "recommendedChannels": ["cs_task", "email"],
+      "entryConditions": {
+        "requiresRecommendationCodes": ["REC-RSK-01"],
+        "requiresOpportunityCodes": ["OPP-RSK-03"],
+        "rssBands": ["critical", "at_risk"]
+      },
+      "exitConditions": { "maxDeliveries": 2, "rssBands": ["attention", "healthy", "champion"] },
+      "suppressionRules": {},
+      "templates": ["LMT-CHURN-01"],
+      "steps": [
+        { "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-CHURN-01" },
+        { "stepId": "S2", "delayDays": 1, "channel": "cs_task", "templateId": "LMT-CHURN-01" }
+      ],
+      "expectedOutcome": "churn.prevented",
+      "successMetric": "retention_rate_30d"
+    },
+    {
+      "id": "LCM-CHECKIN-01",
+      "type": "CHECK_IN",
+      "goal": "Check-in proactivo con dueño saludable",
+      "priority": 40,
+      "cooldownDays": 30,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email"],
+      "entryConditions": {
+        "requiresRecommendationCodes": ["REC-CHK-01"],
+        "rssBands": ["healthy", "champion"]
+      },
+      "exitConditions": { "maxDeliveries": 1 },
+      "suppressionRules": { "respectChampionBlock": false },
+      "templates": ["LMT-CHECKIN-01"],
+      "steps": [{ "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-CHECKIN-01" }],
+      "expectedOutcome": "engagement.maintained",
+      "successMetric": "retention_rate_90d"
+    },
+    {
+      "id": "LCM-MILESTONE-01",
+      "type": "MILESTONE",
+      "goal": "Celebrar hito operativo significativo",
+      "priority": 55,
+      "cooldownDays": 90,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email", "in_app"],
+      "entryConditions": {
+        "requiresRecommendationCodes": ["REC-MLT-01"],
+        "requiresOpportunityCodes": ["OPP-OPS-02"]
+      },
+      "exitConditions": { "maxDeliveries": 1 },
+      "suppressionRules": {},
+      "templates": ["LMT-MILESTONE-01"],
+      "steps": [{ "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-MILESTONE-01" }],
+      "expectedOutcome": "milestone.achieved",
+      "successMetric": "referral_rate_90d"
+    },
+    {
+      "id": "LCM-CELEBRATION-01",
+      "type": "CELEBRATION",
+      "goal": "Celebrar logro y pedir reseña social",
+      "priority": 45,
+      "cooldownDays": 180,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email"],
+      "entryConditions": {
+        "requiresOpportunityCodes": ["OPP-OPS-02"],
+        "rssBands": ["healthy", "champion"]
+      },
+      "exitConditions": { "maxDeliveries": 1 },
+      "suppressionRules": {},
+      "templates": ["LMT-CELEBRATION-01"],
+      "steps": [{ "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-CELEBRATION-01" }],
+      "expectedOutcome": "review.submitted",
+      "successMetric": "nps_promoter_rate"
+    },
+    {
+      "id": "LCM-REFERRAL-01",
+      "type": "REFERRAL",
+      "goal": "Pedir recomendación a champion de 90+ días",
+      "priority": 35,
+      "cooldownDays": 90,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email"],
+      "entryConditions": {
+        "rssBands": ["champion"],
+        "lifecycleStages": ["CLIENT"]
+      },
+      "exitConditions": { "maxDeliveries": 1 },
+      "suppressionRules": { "respectChampionBlock": false },
+      "templates": ["LMT-REFERRAL-01"],
+      "steps": [{ "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-REFERRAL-01" }],
+      "expectedOutcome": "referral.submitted",
+      "successMetric": "referral_rate"
+    },
+    {
+      "id": "LCM-UPSELL-01",
+      "type": "UPSELL",
+      "goal": "Upgrade de plan cuando el Job del dueño creció",
+      "priority": 65,
+      "cooldownDays": 30,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email", "in_app"],
+      "entryConditions": {
+        "requiresOpportunityCodes": ["OPP-EXP-01"],
+        "rssBands": ["healthy", "champion"]
+      },
+      "exitConditions": { "maxDeliveries": 2, "goalCompletedEventTypes": ["subscription.plan_upgraded"] },
+      "suppressionRules": { "respectChampionBlock": false },
+      "templates": ["LMT-UPSELL-01"],
+      "steps": [{ "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-UPSELL-01" }],
+      "expectedOutcome": "subscription.plan_upgraded",
+      "successMetric": "expansion_rate"
+    },
+    {
+      "id": "LCM-RENEWAL-01",
+      "type": "RENEWAL",
+      "goal": "Renovación de suscripción próxima a vencer",
+      "priority": 92,
+      "cooldownDays": 14,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email", "in_app"],
+      "entryConditions": {
+        "requiresOpportunityCodes": ["OPP-RSK-05"]
+      },
+      "exitConditions": { "maxDeliveries": 3, "goalCompletedEventTypes": ["subscription.renewed"] },
+      "suppressionRules": {},
+      "templates": ["LMT-RENEWAL-01"],
+      "steps": [{ "stepId": "S1", "delayDays": 0, "channel": "email", "templateId": "LMT-RENEWAL-01" }],
+      "expectedOutcome": "subscription.renewed",
+      "successMetric": "renewal_rate"
+    },
+    {
+      "id": "LCM-NPS-01",
+      "type": "NPS",
+      "goal": "Medir satisfacción post-hito",
+      "priority": 30,
+      "cooldownDays": 180,
+      "recommendedChannel": "email",
+      "recommendedChannels": ["email"],
+      "entryConditions": {
+        "requiresOpportunityCodes": ["OPP-OPS-02"],
+        "rssBands": ["healthy", "champion"]
+      },
+      "exitConditions": { "maxDeliveries": 1 },
+      "suppressionRules": { "blockIfActiveCampaignTypes": ["CELEBRATION"] },
+      "templates": ["LMT-NPS-01"],
+      "steps": [{ "stepId": "S1", "delayDays": 7, "channel": "email", "templateId": "LMT-NPS-01" }],
+      "expectedOutcome": "nps.responded",
+      "successMetric": "nps_score"
+    }
+  ]
+}

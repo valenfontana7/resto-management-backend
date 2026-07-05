@@ -1,0 +1,94 @@
+{
+  "version": "1.0.0",
+  "globalFrequencyCapDays": 7,
+  "globalMaxMessagesPerWindow": 3,
+  "minDaysBetweenSameRecommendation": 7,
+  "countableDeliveryStatuses": ["SCHEDULED", "QUEUED", "SENT", "SIMULATED"],
+  "recommendationOwnership": [
+    {
+      "recommendationCode": "REC-GOL-01",
+      "primaryEngine": "lifecycle_marketing",
+      "reason": "Onboarding lifecycle — LCM"
+    },
+    {
+      "recommendationCode": "REC-MNU-01",
+      "primaryEngine": "lifecycle_marketing",
+      "reason": "Activación menú — LCM"
+    },
+    {
+      "recommendationCode": "REC-PUB-01",
+      "primaryEngine": "lifecycle_marketing",
+      "reason": "Publicar sitio — LCM"
+    },
+    {
+      "recommendationCode": "REC-PAY-01",
+      "primaryEngine": "lifecycle_marketing",
+      "reason": "Conectar pagos — LCM"
+    },
+    {
+      "recommendationCode": "REC-TST-01",
+      "primaryEngine": "lifecycle_marketing",
+      "reason": "First value — LCM"
+    },
+    {
+      "recommendationCode": "REC-ADP-01",
+      "primaryEngine": "lifecycle_marketing",
+      "reason": "Feature adoption — LCM"
+    },
+    {
+      "recommendationCode": "REC-MLT-01",
+      "primaryEngine": "lifecycle_marketing",
+      "reason": "Milestone — LCM"
+    },
+    {
+      "recommendationCode": "REC-RSK-01",
+      "primaryEngine": "lifecycle_marketing",
+      "reason": "Churn prevention journey — LCM"
+    },
+    {
+      "recommendationCode": "REC-REA-01",
+      "primaryEngine": "lifecycle_marketing",
+      "reason": "Winback / inactividad — secuencia automática LCM"
+    },
+    {
+      "recommendationCode": "REC-CHK-01",
+      "primaryEngine": "customer_engagement",
+      "reason": "Check-in CS proactivo — journey J-*"
+    },
+    {
+      "recommendationCode": "REC-SAV-01",
+      "primaryEngine": "customer_engagement",
+      "reason": "Save / cancelación — solo CS"
+    },
+    {
+      "recommendationCode": "REC-FIX-01",
+      "primaryEngine": "customer_engagement",
+      "reason": "Intervención técnica CS"
+    },
+    {
+      "recommendationCode": "REC-TRI-01",
+      "primaryEngine": "customer_engagement",
+      "reason": "Trial en riesgo — CS"
+    },
+    {
+      "recommendationCode": "REC-2PL-01",
+      "primaryEngine": "customer_engagement",
+      "reason": "Expansión consultiva CS"
+    },
+    {
+      "recommendationCode": "REC-GRW-01",
+      "primaryEngine": "customer_engagement",
+      "reason": "Growth consultivo CS"
+    },
+    {
+      "recommendationCode": "REC-CEL-01",
+      "primaryEngine": "lifecycle_marketing",
+      "reason": "Celebración lifecycle"
+    },
+    {
+      "recommendationCode": "REC-INV-01",
+      "primaryEngine": "customer_engagement",
+      "reason": "Invitar equipo — CS onboarding"
+    }
+  ]
+}

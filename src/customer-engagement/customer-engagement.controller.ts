@@ -14,9 +14,11 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { EngagementEngineService } from './services/engagement-engine.service';
 import { OutcomeTracker } from './services/outcome-tracker.service';
 import { EngagementDeliveryProcessorService } from './services/engagement-delivery-processor.service';
+import { RestaurantRefResolverService } from './services/restaurant-ref-resolver.service';
 import { listJourneys } from './catalog/journey-catalog.loader';
 import { listTemplates } from './catalog/template-catalog.loader';
 import type { OutcomeRegistrationInput } from './types/outcome.types';
+import { RegisterOutcomeDto } from './dto/register-outcome.dto';
 
 @ApiTags('Customer Engagement')
 @Controller('api/super-admin/customer-engagement')
@@ -28,6 +30,7 @@ export class CustomerEngagementController {
     private readonly engine: EngagementEngineService,
     private readonly outcomeTracker: OutcomeTracker,
     private readonly deliveryProcessor: EngagementDeliveryProcessorService,
+    private readonly restaurantRef: RestaurantRefResolverService,
   ) {}
 
   @Get('dashboard')
@@ -74,7 +77,8 @@ export class CustomerEngagementController {
     @Param('restaurantId') restaurantId: string,
     @Query('refresh') refresh?: string,
   ) {
-    return this.engine.planForRestaurant(restaurantId, {
+    const id = await this.restaurantRef.resolveRestaurantId(restaurantId);
+    return this.engine.planForRestaurant(id, {
       dryRun: true,
       refreshIntelligence: refresh === 'true',
     });
@@ -86,7 +90,8 @@ export class CustomerEngagementController {
     @Param('restaurantId') restaurantId: string,
     @Query('refresh') refresh?: string,
   ) {
-    return this.engine.planForRestaurant(restaurantId, {
+    const id = await this.restaurantRef.resolveRestaurantId(restaurantId);
+    return this.engine.planForRestaurant(id, {
       dryRun: false,
       refreshIntelligence: refresh === 'true',
     });
@@ -104,24 +109,27 @@ export class CustomerEngagementController {
   @Get('deliveries/:restaurantId')
   @ApiOperation({ summary: 'Entregas del restaurante' })
   async listDeliveries(@Param('restaurantId') restaurantId: string) {
-    return { deliveries: await this.engine.listDeliveries(restaurantId) };
+    const id = await this.restaurantRef.resolveRestaurantId(restaurantId);
+    return { deliveries: await this.engine.listDeliveries(id) };
   }
 
   @Get('journeys/:restaurantId')
   @ApiOperation({ summary: 'Journeys activos del restaurante' })
   async listActiveJourneys(@Param('restaurantId') restaurantId: string) {
-    return { journeys: await this.engine.listActiveJourneys(restaurantId) };
+    const id = await this.restaurantRef.resolveRestaurantId(restaurantId);
+    return { journeys: await this.engine.listActiveJourneys(id) };
   }
 
   @Get('outcomes/:restaurantId')
   @ApiOperation({ summary: 'Outcomes del restaurante' })
   async listOutcomes(@Param('restaurantId') restaurantId: string) {
-    return { outcomes: await this.engine.listOutcomes(restaurantId) };
+    const id = await this.restaurantRef.resolveRestaurantId(restaurantId);
+    return { outcomes: await this.engine.listOutcomes(id) };
   }
 
   @Post('outcomes')
   @ApiOperation({ summary: 'Registrar outcome (webhook / manual)' })
-  registerOutcome(@Body() body: OutcomeRegistrationInput) {
-    return this.outcomeTracker.register(body);
+  registerOutcome(@Body() body: RegisterOutcomeDto) {
+    return this.outcomeTracker.register(body as OutcomeRegistrationInput);
   }
 }

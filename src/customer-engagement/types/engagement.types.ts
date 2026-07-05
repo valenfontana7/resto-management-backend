@@ -77,4 +77,6 @@ export interface EngagementProcessInput {
   bundle: RestaurantIntelligenceBundle;
   personalization: EngagementPersonalizationContext;
   dryRun?: boolean;
+  /** Índice del paso J-* cuando es follow-up de journey (default 0). */
+  journeyStepIndex?: number;
 }

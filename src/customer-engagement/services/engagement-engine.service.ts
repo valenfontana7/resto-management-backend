@@ -18,6 +18,7 @@ import {
   type EngagementProcessInput,
 } from '../types/engagement.types';
 import { resolveEngagementRecipient } from '../lib/engagement-recipient.util';
+import type { DetectedRecommendation } from '../../decision-engine/recommendations/types/recommendation.types';
 
 @Injectable()
 export class EngagementEngineService {
@@ -194,7 +195,10 @@ export class EngagementEngineService {
       };
     }
 
-    const journey = this.journeySelector.select(recommendation);
+    const journey = this.journeySelector.select(
+      recommendation,
+      input.journeyStepIndex ?? 0,
+    );
     if (!journey) {
       return {
         ...baseDecision,
@@ -304,5 +308,86 @@ export class EngagementEngineService {
 
   listPolicies() {
     return this.policyRegistry.listPolicies();
+  }
+
+  /**
+   * Follow-up de journey multi-step: pasa por policy registry + pipeline completo.
+   */
+  async processJourneyFollowUpStep(input: {
+    restaurantId: string;
+    recommendationId: string;
+    recommendationCode: string;
+    journeyId: string;
+    journeyStepIndex: number;
+  }): Promise<void> {
+    let bundle = await this.orchestrator.getSnapshot(input.restaurantId);
+    if (!bundle?.snapshot) {
+      bundle = await this.orchestrator.evaluateRestaurant(input.restaurantId);
+    }
+
+    const recommendation =
+      bundle.recommendations.find((r) => r.code === input.recommendationCode) ??
+      this.buildFollowUpRecommendation(input);
+
+    const personalization = await this.contextLoader.loadPersonalizationContext(
+      input.restaurantId,
+      bundle.snapshot!,
+      recommendation,
+    );
+
+    const decision = await this.processRecommendation({
+      restaurantId: input.restaurantId,
+      recommendation,
+      snapshot: bundle.snapshot!,
+      bundle,
+      personalization,
+      dryRun: false,
+      journeyStepIndex: input.journeyStepIndex,
+    });
+
+    if (!decision?.shouldCommunicate) {
+      this.logger.debug(
+        `Follow-up ${input.journeyId} paso ${input.journeyStepIndex} suprimido: ${decision?.policy.reason ?? 'sin decisión'}`,
+      );
+      return;
+    }
+
+    if (decision.delivery) {
+      await this.outcomeTracker.registerPending(decision.delivery.id);
+    }
+  }
+
+  private buildFollowUpRecommendation(input: {
+    recommendationId: string;
+    recommendationCode: string;
+    journeyId: string;
+  }): DetectedRecommendation {
+    return {
+      id: input.recommendationId,
+      code: input.recommendationCode,
+      strategy: 'assist',
+      priority: 'medium',
+      confidence: 'medium',
+      title: input.recommendationCode,
+      summary: '',
+      explanation: '',
+      opportunityIds: [],
+      signalIds: [],
+      rssDimensions: [],
+      expectedOutcome: '',
+      recommendedJourneyType: 'activation',
+      estimatedImpact: {
+        rssDeltaRange: '0-5',
+        outcome: 'followup',
+        timeframe: '7d',
+      },
+      estimatedEffort: 'minutes',
+      primaryJob: '',
+      consumerHints: { journeyId: input.journeyId },
+      principles: [],
+      createdAt: new Date().toISOString(),
+      ruleVersion: CUSTOMER_ENGAGEMENT_ENGINE_VERSION,
+      ruleId: 'journey-step-followup',
+    };
   }
 }

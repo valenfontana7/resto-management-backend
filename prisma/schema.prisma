@@ -89,6 +89,11 @@ model Restaurant {
   engagementDeliveries  EngagementDelivery[]
   engagementOutcomes    EngagementOutcome[]
   engagementActiveJourneys EngagementActiveJourney[]
+  lifecycleCampaignRuns LifecycleCampaignRun[]
+  lifecycleDeliveries     LifecycleDelivery[]
+  lifecycleOutcomes       LifecycleOutcome[]
+  lifecycleActiveCampaigns LifecycleActiveCampaign[]
+  intelligenceSnapshotCache RestaurantIntelligenceSnapshotCache?
 
   @@index([slug])
   @@index([status])
@@ -2557,4 +2562,153 @@ model EngagementActiveJourney {
 
   @@index([restaurantId, status])
   @@index([journeyId, status])
+}
+
+/// Cache técnico del bundle v1 del Decision Engine (no entidad de dominio).
+model RestaurantIntelligenceSnapshotCache {
+  restaurantId    String   @id
+  contractVersion String
+  bundle          Json
+  computedAt      DateTime
+  updatedAt       DateTime @updatedAt
+  restaurant      Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+
+// --- Lifecycle Marketing Engine (campañas automáticas, consume Decision Engine) ---
+
+enum LifecycleDeliveryStatus {
+  SCHEDULED
+  QUEUED
+  SENT
+  SIMULATED
+  FAILED
+  CANCELLED
+}
+
+enum LifecycleOutcomeType {
+  SENT
+  OPENED
+  CLICKED
+  REPLIED
+  GOAL_COMPLETED
+  IGNORED
+  UNSUBSCRIBED
+  RSS_CONTRIBUTION
+  JOURNEY_COMPLETED
+}
+
+enum LifecycleActiveCampaignStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  SUPERSEDED
+}
+
+model LifecycleCampaignRun {
+  id                   String   @id @default(cuid())
+  restaurantId         String
+  campaignId           String
+  campaignType         String
+  recommendationCode   String?
+  opportunityCode      String?
+  shouldCommunicate    Boolean
+  reason               String   @db.Text
+  intelligenceBacked   Boolean  @default(true)
+  channel              String?
+  templateId           String?
+  decisionTrace        Json
+  engineVersion        String   @default("1.0.0")
+  decidedAt            DateTime @default(now())
+  restaurant           Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  deliveries           LifecycleDelivery[]
+
+  @@index([restaurantId, decidedAt])
+  @@index([campaignId])
+}
+
+model LifecycleDelivery {
+  id                   String                  @id @default(cuid())
+  restaurantId         String
+  campaignRunId        String?
+  campaignId           String
+  campaignType         String
+  stepId               String
+  recommendationCode   String?
+  opportunityCode      String?
+  templateId           String
+  channel              String
+  status               LifecycleDeliveryStatus @default(SCHEDULED)
+  recipient            String?
+  subject              String?
+  bodyPreview          String                  @db.Text
+  bodyFull             String?                 @db.Text
+  ctaLabel             String?
+  ctaUrl               String?
+  scheduledAt          DateTime
+  deliverAt            DateTime
+  sentAt               DateTime?
+  externalMessageId    String?
+  errorMessage         String?
+  engineVersion        String                  @default("1.0.0")
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  restaurant           Restaurant              @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  campaignRun          LifecycleCampaignRun?   @relation(fields: [campaignRunId], references: [id], onDelete: SetNull)
+  outcomes             LifecycleOutcome[]
+
+  @@index([restaurantId, createdAt])
+  @@index([status, deliverAt])
+  @@index([campaignId])
+}
+
+model LifecycleOutcome {
+  id             String               @id @default(cuid())
+  deliveryId     String
+  restaurantId   String
+  campaignId     String
+  campaignType   String
+  type           LifecycleOutcomeType
+  rssBefore      Int?
+  rssAfter       Int?
+  rssDelta       Int?
+  metadata       Json?
+  recordedAt     DateTime             @default(now())
+  delivery       LifecycleDelivery    @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  restaurant     Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([deliveryId])
+  @@index([restaurantId, recordedAt])
+}
+
+model LifecycleActiveCampaign {
+  id                       String                        @id @default(cuid())
+  restaurantId             String
+  campaignId               String
+  campaignType             String
+  sourceRecommendationCode String?
+  sourceOpportunityCode    String?
+  currentStepIndex         Int                           @default(0)
+  status                   LifecycleActiveCampaignStatus @default(ACTIVE)
+  startedAt                DateTime                      @default(now())
+  completedAt              DateTime?
+  lastTouchAt              DateTime?
+  restaurant               Restaurant                    @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, status])
+  @@index([campaignId, status])
+}
+
+/// Override editable desde el panel Marketing (base sigue en catálogo JSON).
+model LifecycleTemplateOverride {
+  templateId   String   @id
+  subject      String?
+  preview      String?
+  body         String?  @db.Text
+  cta          String?
+  tone         String?
+  locale       String?
+  version      String   @default("1.0.0")
+  updatedBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }

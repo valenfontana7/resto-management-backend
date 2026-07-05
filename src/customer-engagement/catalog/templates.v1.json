@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "templates": {
     "TPL-ACT-PUB-01": {
       "id": "TPL-ACT-PUB-01",
@@ -16,11 +16,11 @@
         "ctaUrl",
         "adminUrl"
       ],
-      "subject": "{{restaurantName}} — tu canal está a un paso de estar online",
-      "body": "Hola {{firstName}},\n\nTu carta en Bentoo ya está lista. Falta un paso para que {{restaurantName}} reciba pedidos directamente, sin que todo pase por WhatsApp.\n\n{{topRecommendation}}\n\nResultado que buscamos: {{expectedOutcome}}\n\nCuando quieras, entrá y publicamos juntos en unos minutos.",
-      "cta": "Publicar mi canal",
+      "subject": "{{restaurantName}} — falta un paso para estar online",
+      "body": "Hola {{firstName}},\n\nTu carta en Bentoo ya está. Falta publicarla para que la gente pueda pedir directo, sin depender solo del WhatsApp.\n\n{{topRecommendation}}\n\nEntrá al panel cuando tengas un ratito — son unos minutos.",
+      "cta": "Publicar mi local",
       "expectedOutcome": "Canal propio visible y listo para recibir pedidos",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "locale": "es-AR",
       "linkedRecommendationCodes": ["REC-PUB-01"],
       "supportedChannels": ["email", "in_app"]
@@ -37,11 +37,11 @@
         "expectedOutcome",
         "ctaUrl"
       ],
-      "subject": "Prepará {{restaurantName}} para cobrar online en tu cuenta",
-      "body": "Hola {{firstName}},\n\nVimos que tu canal ya está publicado, pero todavía no conectaste medios de pago. Sin eso, los pedidos online no pueden cerrarse solos.\n\nConectar Mercado Pago lleva unos minutos y el dinero va directo a tu cuenta — Bentoo no custodia fondos.\n\n{{topRecommendation}}",
-      "cta": "Conectar cobro online",
+      "subject": "Falta conectar el cobro online en {{restaurantName}}",
+      "body": "Hola {{firstName}},\n\nTu local ya está publicado, pero todavía no conectaste Mercado Pago. Sin eso, los pedidos online no se pueden cobrar solos.\n\nEs rápido y la plata va directo a tu cuenta — Bentoo no toca tu dinero.\n\n{{topRecommendation}}",
+      "cta": "Conectar cobro",
       "expectedOutcome": "Cobro online operativo en el canal propio",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "locale": "es-AR",
       "linkedRecommendationCodes": ["REC-PAY-01"],
       "supportedChannels": ["email", "in_app"]
@@ -59,11 +59,11 @@
         "expectedOutcome",
         "ctaUrl"
       ],
-      "subject": "Queda un paso para que {{restaurantName}} esté listo",
-      "body": "Hola {{firstName}},\n\nQueda un paso para que tu local esté listo — te lleva unos minutos y lo vemos juntos si querés.\n\nEnfoque: {{primaryJob}}\n\nPróximo paso sugerido: {{topRecommendation}}\n\nSi hubo algún inconveniente o cambió tu forma de trabajar, contanos — queremos ayudarte.",
-      "cta": "Ver siguiente paso",
+      "subject": "Queda un pasito para que {{restaurantName}} quede listo",
+      "body": "Hola {{firstName}},\n\nTe falta poco para terminar de dejar {{restaurantName}} listo. Son unos minutos.\n\nLo que sigue: {{topRecommendation}}\n\nSi algo te trabó o cambió tu forma de trabajar, contanos — te ayudamos.",
+      "cta": "Ver qué sigue",
       "expectedOutcome": "Go-live completado",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "locale": "es-AR",
       "linkedRecommendationCodes": ["REC-GOL-01", "REC-MNU-01"],
       "supportedChannels": ["email", "in_app"]
@@ -76,10 +76,10 @@
       "goal": "Primer pedido de valor",
       "variables": ["restaurantName", "firstName", "ctaUrl"],
       "subject": "Probemos el primer pedido en {{restaurantName}}",
-      "body": "Hola {{firstName}},\n\nLa configuración avanzó bien. Ahora conviene hacer un pedido de prueba para confirmar que cocina, caja y canal hablan entre sí.\n\nSon 5 minutos y te ahorrás sorpresas en el turno real.",
+      "body": "Hola {{firstName}},\n\nTodo viene bien. Ahora conviene hacer un pedido de prueba para ver que cocina, caja y pedidos online funcionen juntos.\n\nSon 5 minutos y te ahorrás un susto en el turno.",
       "cta": "Hacer pedido de prueba",
       "expectedOutcome": "Primer pedido pagado que confirma el flujo",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "locale": "es-AR",
       "linkedRecommendationCodes": ["REC-TST-01"],
       "supportedChannels": ["email", "in_app"]
@@ -99,10 +99,10 @@
         "ctaUrl"
       ],
       "subject": "¿Todo bien en {{restaurantName}}?",
-      "body": "Hola {{firstName}},\n\nHace unos días no vemos movimiento en {{restaurantName}}. Si hubo algún inconveniente o cambió tu forma de trabajar, queremos ayudarte.\n\nUn paso concreto que puede destrabar: {{topRecommendation}}\n\nCuando quieras retomar, acá estamos — un login y seguimos desde donde quedó.",
-      "cta": "Retomar desde acá",
+      "body": "Hola {{firstName}},\n\nHace unos días que no vemos movimiento en {{restaurantName}}. Puede ser el día a día, un cambio de rutina o algo que no anduvo — pasa.\n\nSi querés retomar, un buen primer paso: {{topRecommendation}}\n\nEntrá cuando puedas y seguimos desde donde quedó.",
+      "cta": "Entrar a Bentoo",
       "expectedOutcome": "Reactivación medible en configuración u operación",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "locale": "es-AR",
       "linkedRecommendationCodes": ["REC-REA-01"],
       "supportedChannels": ["email"]
@@ -121,11 +121,11 @@
         "topRecommendation",
         "ctaUrl"
       ],
-      "subject": "Te ayudamos a retomar el ritmo en {{restaurantName}}",
-      "body": "Hola {{firstName}},\n\nNotamos que el local perdió algo de momentum recientemente. No es una alerta — es una señal para actuar antes de que se enfríe el canal.\n\nSugerencia concreta: {{topRecommendation}}\n\nSi preferís, respondé este mail y lo vemos juntos.",
-      "cta": "Ver plan de recuperación",
+      "subject": "¿Cómo va todo en {{restaurantName}}?",
+      "body": "Hola {{firstName}},\n\nHace un tiempo que {{restaurantName}} viene más tranqui de lo usual. No es una alarma — solo queríamos saber si está todo bien.\n\nSi te sirve, probá esto: {{topRecommendation}}\n\n¿Preferís que lo veamos juntos? Respondé este mail y te ayudamos.",
+      "cta": "Entrar a Bentoo",
       "expectedOutcome": "Recuperación de valor operativo",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "locale": "es-AR",
       "linkedRecommendationCodes": ["REC-CHK-01", "REC-FIX-01"],
       "supportedChannels": ["email", "in_app"]
@@ -137,11 +137,11 @@
       "tone": "warm_sober",
       "goal": "Celebrar milestone",
       "variables": ["restaurantName", "firstName", "expectedOutcome"],
-      "subject": "Un hito para {{restaurantName}} 🎉",
-      "body": "Hola {{firstName}},\n\n{{restaurantName}} acaba de dar un paso importante: {{expectedOutcome}}.\n\nEso significa que el local ya opera con más orden y menos fricción. Felicitaciones al equipo.\n\n¿Qué sigue? Seguir el ritmo con un paso pequeño por semana.",
+      "subject": "¡Buena noticia para {{restaurantName}}!",
+      "body": "Hola {{firstName}},\n\n{{restaurantName}} acaba de dar un paso importante: {{expectedOutcome}}.\n\nEso significa menos vueltas y más orden en el día a día. Felicitaciones al equipo.\n\nSeguí con un pasito por semana y vas sumando.",
       "cta": null,
       "expectedOutcome": "Refuerzo de hábito y confianza",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "locale": "es-AR",
       "linkedRecommendationCodes": ["REC-CEL-01"],
       "supportedChannels": ["email", "in_app"]
@@ -160,10 +160,10 @@
         "topRecommendation"
       ],
       "subject": null,
-      "body": "Seguimiento CS para {{restaurantName}} ({{ownerName}}).\n\nRSS: {{rss}} ({{rssBand}}).\n\nRecomendación activa: {{topRecommendation}}.\n\nAcción: contacto humano en 24h — diagnosticar bloqueo y acordar un solo next step.",
+      "body": "Seguimiento para {{restaurantName}} ({{ownerName}}).\n\nSalud del local: {{rss}} ({{rssBand}}).\n\nSugerencia del sistema: {{topRecommendation}}.\n\nAcción: llamar o escribir en 24 h — entender qué pasó y acordar un solo paso concreto.",
       "cta": null,
       "expectedOutcome": "Diagnóstico claro y plan acordado",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "locale": "es-AR",
       "linkedRecommendationCodes": ["REC-CHK-01", "REC-REA-01", "REC-SAV-01"],
       "supportedChannels": ["cs_task"]

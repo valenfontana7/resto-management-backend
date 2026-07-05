@@ -57,6 +57,9 @@ import { BusinessMemoryModule } from './business-memory/business-memory.module';
 import { BusinessEventsModule } from './business-events/business-events.module';
 import { DecisionEngineModule } from './decision-engine/decision-engine.module';
 import { CustomerEngagementModule } from './customer-engagement/customer-engagement.module';
+import { LifecycleMarketingModule } from './lifecycle-marketing/lifecycle-marketing.module';
+import { MarketingHubModule } from './marketing-hub/marketing-hub.module';
+import { OwnerCommunicationsModule } from './owner-communications/owner-communications.module';
 import { getJwtSecret } from './common/config/jwt.config';
 import { validateEnvironment } from './common/config/env.validation';
 import { isLocalMode } from './common/config/bentoo-mode.config';
@@ -171,7 +174,10 @@ import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage';
     BusinessMemoryModule,
     BusinessEventsModule,
     DecisionEngineModule,
+    OwnerCommunicationsModule,
     CustomerEngagementModule,
+    LifecycleMarketingModule,
+    MarketingHubModule,
     EdgeSyncModule,
     SalonDesktopModule,
     ...(isLocalMode() ? [LocalDiscoveryModule] : []),

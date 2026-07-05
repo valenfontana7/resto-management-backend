@@ -4,6 +4,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 
 import { DecisionEngineModule } from '../decision-engine/decision-engine.module';
 
+import { OwnerCommunicationsModule } from '../owner-communications/owner-communications.module';
+
 import { EmailModule } from '../email/email.module';
 
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -36,6 +38,8 @@ import { ActiveJourneyService } from './services/active-journey.service';
 
 import { EngagementDeliveryProcessorService } from './services/engagement-delivery-processor.service';
 
+import { RestaurantRefResolverService } from './services/restaurant-ref-resolver.service';
+
 import { JourneyStepSchedulerService } from './services/journey-step-scheduler.service';
 
 import { EngagementCronService } from './services/engagement-cron.service';
@@ -55,6 +59,8 @@ import {
 @Module({
   imports: [
     ScheduleModule.forRoot(),
+
+    OwnerCommunicationsModule,
 
     DecisionEngineModule,
 
@@ -98,6 +104,8 @@ import {
 
     EngagementEngineService,
 
+    RestaurantRefResolverService,
+
     EmailChannelAdapter,
 
     WhatsAppChannelAdapter,
@@ -111,12 +119,10 @@ import {
 
   exports: [
     EngagementEngineService,
-
     EngagementPersistenceService,
-
     OutcomeTracker,
-
     ActiveJourneyService,
+    RestaurantRefResolverService,
   ],
 })
 export class CustomerEngagementModule implements OnModuleInit {

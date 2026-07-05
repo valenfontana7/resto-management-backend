@@ -42,6 +42,7 @@ export class CommercialRelationService {
     const bundles = await this.orchestrator.getSnapshotsBatch(
       restaurantIds,
       lifecycleMap,
+      { evaluateIfMissing: true },
     );
 
     const ownerFallback = userId ?? 'unassigned';
@@ -123,7 +124,9 @@ export class CommercialRelationService {
       where: { id },
       include: { lead: true },
     });
-    if (!relation) return null;
+    if (!relation) {
+      throw new NotFoundException(`Relación ${id} no encontrada`);
+    }
 
     const bundle = relation.convertedRestaurantId
       ? await this.orchestrator.getSnapshot(relation.convertedRestaurantId, {
@@ -144,7 +147,11 @@ export class CommercialRelationService {
       where: { leadId },
       include: { lead: true },
     });
-    if (!relation) return null;
+    if (!relation) {
+      throw new NotFoundException(
+        `Relación comercial para lead ${leadId} no encontrada`,
+      );
+    }
 
     const bundle = relation.convertedRestaurantId
       ? await this.orchestrator.getSnapshot(relation.convertedRestaurantId, {
@@ -183,7 +190,7 @@ export class CommercialRelationService {
         argumentSummary: rec.expectedOutcome,
         playbookId: rec.consumerHints.playbookId ?? null,
         playbookName: rec.recommendedJourneyType ?? null,
-        draft: { channel: card!.channelsAvailable[0] ?? 'whatsapp', body: '' },
+        draft: { channel: card.channelsAvailable[0] ?? 'whatsapp', body: '' },
         warnings: [],
         intelligence: intel,
       };

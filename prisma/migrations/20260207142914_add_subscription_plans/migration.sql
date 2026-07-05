@@ -1,0 +1,3 @@
+-- Placeholder restaurado: esta migración ya fue aplicada en bases existentes.
+-- El archivo original se perdió del repositorio; no ejecutar en entornos nuevos
+-- sin regenerar el SQL desde el historial de schema.

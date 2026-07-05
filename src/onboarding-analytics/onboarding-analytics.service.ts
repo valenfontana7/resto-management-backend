@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { TrackOnboardingEventDto } from './dto/track-event.dto';
+import {
+  buildFunnelBiggestDrop,
+  buildFunnelRecommendations,
+} from './onboarding-funnel-insights.utils';
 
 export const FUNNEL_STEPS = [
   'landing_viewed',
@@ -151,55 +155,68 @@ export class OnboardingAnalyticsService {
         .sort((a, b) => b.sessions - a.sessions)
         .slice(0, limit);
 
+    const highlights = {
+      landingToRegisterConversion: conversion(
+        'landing_viewed',
+        'register_started',
+      ),
+      registerToPublishConversion: conversion(
+        'register_started',
+        'preview_published',
+      ),
+      publishToDashboardConversion: conversion(
+        'preview_published',
+        'first_dashboard_visit',
+      ),
+      trialBannerToPaymentIntentConversion: conversion(
+        'trial_banner_viewed',
+        'trial_banner_cta_clicked',
+      ),
+      trialIntentToPaymentSavedConversion: conversion(
+        'trial_banner_cta_clicked',
+        'trial_payment_method_saved',
+      ),
+      goLiveToPaymentSavedConversion: conversion(
+        'go_live_completed',
+        'trial_payment_method_saved',
+      ),
+      trialBannerSessions: sessions.get('trial_banner_viewed') ?? 0,
+      trialPaymentIntentSessions: sessions.get('trial_banner_cta_clicked') ?? 0,
+      trialPaymentMethodSavedSessions:
+        sessions.get('trial_payment_method_saved') ?? 0,
+      trialHelpSessions: sessions.get('trial_help_whatsapp_clicked') ?? 0,
+      customerWhatsappNotifiedSessions:
+        sessions.get('customer_whatsapp_notified') ?? 0,
+      customerWhatsappNotificationsTotal:
+        totals.get('customer_whatsapp_notified') ?? 0,
+    };
+
+    const topSourcesPayload = {
+      landingCta: topSources('landing_cta_clicked'),
+      landingDemo: topSources('landing_demo_clicked'),
+      landingWhatsapp: topSources('landing_whatsapp_clicked'),
+      trialPaymentIntent: topSources('trial_banner_cta_clicked'),
+      trialPaymentSaved: topSources('trial_payment_method_saved'),
+      trialHelp: topSources('trial_help_whatsapp_clicked'),
+    };
+
+    const biggestDrop = buildFunnelBiggestDrop(steps);
+    const recommendations = buildFunnelRecommendations({
+      steps,
+      highlights,
+      topSources: topSourcesPayload,
+      biggestDrop,
+    });
+
     return {
       sinceDays: days,
       since: since.toISOString(),
       steps,
       overallConversion,
-      highlights: {
-        landingToRegisterConversion: conversion(
-          'landing_viewed',
-          'register_started',
-        ),
-        registerToPublishConversion: conversion(
-          'register_started',
-          'preview_published',
-        ),
-        publishToDashboardConversion: conversion(
-          'preview_published',
-          'first_dashboard_visit',
-        ),
-        trialBannerToPaymentIntentConversion: conversion(
-          'trial_banner_viewed',
-          'trial_banner_cta_clicked',
-        ),
-        trialIntentToPaymentSavedConversion: conversion(
-          'trial_banner_cta_clicked',
-          'trial_payment_method_saved',
-        ),
-        goLiveToPaymentSavedConversion: conversion(
-          'go_live_completed',
-          'trial_payment_method_saved',
-        ),
-        trialBannerSessions: sessions.get('trial_banner_viewed') ?? 0,
-        trialPaymentIntentSessions:
-          sessions.get('trial_banner_cta_clicked') ?? 0,
-        trialPaymentMethodSavedSessions:
-          sessions.get('trial_payment_method_saved') ?? 0,
-        trialHelpSessions: sessions.get('trial_help_whatsapp_clicked') ?? 0,
-        customerWhatsappNotifiedSessions:
-          sessions.get('customer_whatsapp_notified') ?? 0,
-        customerWhatsappNotificationsTotal:
-          totals.get('customer_whatsapp_notified') ?? 0,
-      },
-      topSources: {
-        landingCta: topSources('landing_cta_clicked'),
-        landingDemo: topSources('landing_demo_clicked'),
-        landingWhatsapp: topSources('landing_whatsapp_clicked'),
-        trialPaymentIntent: topSources('trial_banner_cta_clicked'),
-        trialPaymentSaved: topSources('trial_payment_method_saved'),
-        trialHelp: topSources('trial_help_whatsapp_clicked'),
-      },
+      highlights,
+      biggestDrop,
+      recommendations,
+      topSources: topSourcesPayload,
     };
   }
 

@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { RestaurantEventAdapterService } from './adapters/restaurant-event.adapter';
 import { OpportunityEngineService } from './opportunities/opportunity-engine.service';
+import { InMemoryOpportunityStateStore } from './opportunities/stores/opportunity-state.store';
 import { RecommendationEngineService } from './recommendations/recommendation-engine.service';
+import { InMemoryRecommendationStateStore } from './recommendations/stores/recommendation-state.store';
 import { RssEngineService } from './rss/rss-engine.service';
+import { InMemoryRssHistoryStore } from './rss/stores/rss-history.store';
 import { SignalEngineService } from './signals/signal-engine.service';
+import { InMemorySignalStateStore } from './signals/stores/signal-state.store';
 import { buildQueueRankMeta } from './queue/revenue-queue-rank';
 import { IntelligenceSnapshotStore } from './stores/intelligence-snapshot.store';
 import {
@@ -11,15 +15,30 @@ import {
   type RestaurantIntelligenceBundle,
 } from './types/restaurant-intelligence-bundle.v1';
 import type { CommercialRelationStage } from '@prisma/client';
+import {
+  INTELLIGENCE_SNAPSHOT_TTL_MS,
+  isIntelligenceSnapshotFresh,
+} from './constants/snapshot-cache.constants';
+
+export interface SnapshotBatchOptions {
+  evaluateIfMissing?: boolean;
+  /** Re-evalúa snapshots cacheados más viejos que el TTL. Default false. */
+  refreshStale?: boolean;
+  cacheTtlMs?: number;
+}
 
 @Injectable()
 export class DecisionEngineOrchestratorService {
   constructor(
     private readonly eventAdapter: RestaurantEventAdapterService,
     private readonly signalEngine: SignalEngineService,
+    private readonly signalStateStore: InMemorySignalStateStore,
     private readonly rssEngine: RssEngineService,
+    private readonly rssHistoryStore: InMemoryRssHistoryStore,
     private readonly opportunityEngine: OpportunityEngineService,
+    private readonly opportunityStateStore: InMemoryOpportunityStateStore,
     private readonly recommendationEngine: RecommendationEngineService,
+    private readonly recommendationStateStore: InMemoryRecommendationStateStore,
     private readonly snapshotStore: IntelligenceSnapshotStore,
   ) {}
 
@@ -34,13 +53,19 @@ export class DecisionEngineOrchestratorService {
     }
 
     const events = await this.eventAdapter.loadDomainEvents(restaurantId);
+    const priorSignals =
+      await this.signalStateStore.getActiveSignals(restaurantId);
     const signalOutput = this.signalEngine.evaluateFromEvents(
       events,
       evalContext,
+      priorSignals,
     );
+    await this.signalStateStore.saveSignals(restaurantId, signalOutput.signals);
 
+    const rssHistory = await this.rssHistoryStore.getHistory(restaurantId);
     const { snapshot } = this.rssEngine.evaluate({
       signals: signalOutput.signals,
+      historicalSnapshots: rssHistory,
       context: {
         restaurantId: evalContext.restaurantId,
         evaluatedAt: evalContext.evaluatedAt,
@@ -49,16 +74,30 @@ export class DecisionEngineOrchestratorService {
         modelVersion: evalContext.modelVersion,
       },
     });
+    await this.rssHistoryStore.append(snapshot);
 
+    const priorOpen = this.opportunityStateStore.getOpen(restaurantId);
     const oppOutput = this.opportunityEngine.evaluate({
       snapshot,
       context: { trialDay: evalContext.trialDay ?? null },
+      openOpportunities: priorOpen,
     });
+    this.opportunityStateStore.setOpen(
+      restaurantId,
+      oppOutput.openOpportunities,
+    );
 
+    const priorRecommendations =
+      this.recommendationStateStore.getActive(restaurantId);
     const recOutput = this.recommendationEngine.evaluate({
       opportunities: oppOutput.opportunities,
       snapshot,
+      activeRecommendations: priorRecommendations,
     });
+    this.recommendationStateStore.setActive(
+      restaurantId,
+      recOutput.activeRecommendations,
+    );
 
     const topRec = recOutput.recommendations[0] ?? null;
     const topOpp = oppOutput.opportunities[0] ?? null;
@@ -92,7 +131,7 @@ export class DecisionEngineOrchestratorService {
       ),
     };
 
-    this.snapshotStore.set(bundle);
+    await this.snapshotStore.set(bundle);
     return bundle;
   }
 
@@ -107,31 +146,55 @@ export class DecisionEngineOrchestratorService {
       );
     }
 
-    const cached = this.snapshotStore.get(restaurantId);
-    if (cached) return cached;
-
-    try {
-      return await this.evaluateRestaurant(
-        restaurantId,
-        options?.lifecycleStage ?? 'CLIENT',
-      );
-    } catch {
-      return null;
-    }
+    return this.snapshotStore.get(restaurantId);
   }
 
   async getSnapshotsBatch(
     restaurantIds: string[],
     lifecycleByRestaurant: Map<string, CommercialRelationStage>,
+    options?: SnapshotBatchOptions,
   ): Promise<Map<string, RestaurantIntelligenceBundle>> {
     const result = new Map<string, RestaurantIntelligenceBundle>();
+    const uniqueIds = [...new Set(restaurantIds)];
+
+    const ttlMs = options?.cacheTtlMs ?? INTELLIGENCE_SNAPSHOT_TTL_MS;
+    const refreshStale = options?.refreshStale ?? false;
+
+    const cached = await this.snapshotStore.getMany(uniqueIds);
+    const toEvaluate: string[] = [];
+
+    for (const id of uniqueIds) {
+      const bundle = cached.get(id);
+      if (!bundle) {
+        toEvaluate.push(id);
+        continue;
+      }
+
+      result.set(id, bundle);
+
+      if (
+        refreshStale &&
+        !isIntelligenceSnapshotFresh(bundle.computedAt, ttlMs)
+      ) {
+        toEvaluate.push(id);
+      }
+    }
+
+    if (toEvaluate.length === 0 || !options?.evaluateIfMissing) {
+      return result;
+    }
 
     await Promise.all(
-      restaurantIds.map(async (id) => {
-        const bundle = await this.getSnapshot(id, {
-          lifecycleStage: lifecycleByRestaurant.get(id) ?? 'CLIENT',
-        });
-        if (bundle) result.set(id, bundle);
+      toEvaluate.map(async (id) => {
+        try {
+          const bundle = await this.evaluateRestaurant(
+            id,
+            lifecycleByRestaurant.get(id) ?? 'CLIENT',
+          );
+          result.set(id, bundle);
+        } catch {
+          /* omit restaurant on evaluation failure */
+        }
       }),
     );
 

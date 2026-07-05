@@ -645,6 +645,53 @@ export class EmailService {
     }
   }
 
+  /**
+   * Email Lifecycle Marketing Engine.
+   */
+  async sendLifecycleMarketingEmail(params: {
+    to: string;
+    subject: string;
+    html: string;
+    deliveryId: string;
+  }): Promise<{ ok: boolean; simulated: boolean; providerId?: string }> {
+    if (!this.resend) {
+      this.logger.log(
+        `[EMAIL MOCK] Lifecycle marketing ${params.deliveryId} → ${params.to}`,
+      );
+      return { ok: true, simulated: true };
+    }
+
+    try {
+      const result = await this.resend.emails.send({
+        from: `Bentoo <${this.fromEmail}>`,
+        to: params.to,
+        subject: params.subject,
+        html: params.html,
+        tags: [
+          { name: 'lifecycle_delivery_id', value: params.deliveryId },
+          { name: 'source', value: 'lifecycle_marketing' },
+        ],
+      });
+
+      if (result.error) {
+        this.logger.error(
+          `Lifecycle marketing email failed: ${result.error.message}`,
+        );
+        return { ok: false, simulated: false };
+      }
+
+      return {
+        ok: true,
+        simulated: false,
+        providerId: result.data?.id,
+      };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Lifecycle marketing email error: ${message}`);
+      return { ok: false, simulated: false };
+    }
+  }
+
   private formatDate(date: Date): string {
     return date.toLocaleDateString('es-AR', {
       day: 'numeric',
