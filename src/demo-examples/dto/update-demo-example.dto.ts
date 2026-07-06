@@ -7,6 +7,7 @@ import {
   IsString,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 
 export class UpdateDemoExampleDto {
@@ -43,6 +44,16 @@ export class UpdateDemoExampleDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isPublic?: boolean;
+
+  @IsOptional()
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(80)
+  leadId?: string | null;
 
   @IsOptional()
   @IsBoolean()

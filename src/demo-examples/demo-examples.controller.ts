@@ -30,6 +30,13 @@ export class PublicDemoExamplesController {
   async findPublic() {
     return this.demoExamplesService.findPublic();
   }
+
+  /** Acceso por link directo (incluye demos privadas de leads, no listadas). */
+  @Get('by-slug/:slug')
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  async findBySlug(@Param('slug') slug: string) {
+    return this.demoExamplesService.findBySlug(slug);
+  }
 }
 
 @Controller('api/master/demo-examples')

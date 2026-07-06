@@ -40,6 +40,15 @@ export class CreateDemoExampleDto {
 
   @IsOptional()
   @IsBoolean()
+  isPublic?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  leadId?: string;
+
+  @IsOptional()
+  @IsBoolean()
   isFeatured?: boolean;
 
   @IsOptional()

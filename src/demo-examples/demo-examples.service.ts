@@ -14,10 +14,12 @@ export class DemoExamplesService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findPublic() {
-    const [total, data] = await this.prisma.$transaction([
-      this.prisma.demoExample.count(),
+    const [totalPublic, data] = await this.prisma.$transaction([
+      this.prisma.demoExample.count({
+        where: { isPublic: true },
+      }),
       this.prisma.demoExample.findMany({
-        where: { isActive: true },
+        where: { isActive: true, isPublic: true },
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
       }),
     ]);
@@ -26,9 +28,26 @@ export class DemoExamplesService {
       data,
       meta: {
         totalActive: data.length,
-        hasDatabaseRecords: total > 0,
+        hasDatabaseRecords: totalPublic > 0,
       },
     };
+  }
+
+  /**
+   * Acceso por link directo (incl. demos privadas de leads).
+   * No lista en el catálogo público; solo resuelve un slug activo.
+   */
+  async findBySlug(slug: string) {
+    const normalized = this.normalizeSlug(slug);
+    const example = await this.prisma.demoExample.findUnique({
+      where: { slug: normalized },
+    });
+
+    if (!example || !example.isActive) {
+      throw new NotFoundException(`Demo example ${slug} not found`);
+    }
+
+    return example;
   }
 
   async findAll() {
@@ -54,6 +73,8 @@ export class DemoExamplesService {
     await this.ensureSlugAvailable(slug);
 
     const sortOrder = dto.sortOrder ?? (await this.nextSortOrder());
+    const leadId = dto.leadId?.trim() || null;
+    const isPublic = dto.isPublic ?? leadId == null;
 
     const example = await this.prisma.demoExample.create({
       data: {
@@ -63,8 +84,10 @@ export class DemoExamplesService {
         cuisine: this.normalizeStringArray(dto.cuisine),
         city: dto.city.trim(),
         neighborhood: dto.neighborhood.trim(),
+        isPublic,
+        leadId,
         isActive: dto.isActive ?? true,
-        isFeatured: dto.isFeatured ?? false,
+        isFeatured: isPublic ? (dto.isFeatured ?? false) : false,
         sortOrder,
         payload: this.preparePayload(dto.payload, slug, dto.name),
         updatedBy: adminId,
@@ -94,6 +117,15 @@ export class DemoExamplesService {
         ? this.preparePayload(dto.payload, nextSlug, dto.name ?? current.name)
         : undefined;
 
+    const leadId =
+      dto.leadId !== undefined ? dto.leadId.trim() || null : current.leadId;
+    const isPublic =
+      dto.isPublic !== undefined
+        ? dto.isPublic
+        : leadId
+          ? false
+          : current.isPublic;
+
     const example = await this.prisma.demoExample.update({
       where: { id },
       data: {
@@ -110,7 +142,14 @@ export class DemoExamplesService {
           ? { neighborhood: dto.neighborhood.trim() }
           : {}),
         ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
-        ...(dto.isFeatured !== undefined ? { isFeatured: dto.isFeatured } : {}),
+        ...(dto.isPublic !== undefined || dto.leadId !== undefined
+          ? { isPublic, leadId }
+          : {}),
+        ...(dto.isFeatured !== undefined
+          ? { isFeatured: isPublic ? dto.isFeatured : false }
+          : !isPublic
+            ? { isFeatured: false }
+            : {}),
         ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
         ...(payload !== undefined ? { payload } : {}),
         updatedBy: adminId,

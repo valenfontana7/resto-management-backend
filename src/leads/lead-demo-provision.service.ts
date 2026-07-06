@@ -255,6 +255,12 @@ export class LeadDemoProvisionService {
   }
 
   private async findDemoRecordForLead(lead: Lead) {
+    const byLeadId = await this.prisma.demoExample.findFirst({
+      where: { leadId: lead.id },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (byLeadId) return byLeadId;
+
     if (lead.demoExampleSlug) {
       const bySlug = await this.prisma.demoExample.findUnique({
         where: { slug: lead.demoExampleSlug },
@@ -269,7 +275,7 @@ export class LeadDemoProvisionService {
     if (byBusinessSlug) return byBusinessSlug;
 
     const rows = await this.prisma.demoExample.findMany({
-      where: { sortOrder: { gte: 9000 } },
+      where: { isPublic: false, sortOrder: { gte: 9000 } },
       take: 200,
       orderBy: { updatedAt: 'desc' },
     });
@@ -315,6 +321,8 @@ export class LeadDemoProvisionService {
           '',
         neighborhood:
           (payload.location as { neighborhood?: string })?.neighborhood || '',
+        isPublic: false,
+        leadId: lead.id,
         isActive: true,
         isFeatured: false,
         sortOrder: 9000,
@@ -324,7 +332,10 @@ export class LeadDemoProvisionService {
         name: lead.businessName,
         city: lead.city?.trim() || undefined,
         payload: payload as Prisma.InputJsonValue,
+        isPublic: false,
+        leadId: lead.id,
         isActive: true,
+        isFeatured: false,
       },
     });
   }

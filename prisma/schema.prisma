@@ -1234,6 +1234,10 @@ model DemoExample {
   cuisine      String[] @default([])
   city         String   @default("")
   neighborhood String   @default("")
+  /// Catálogo público (landing /demo). Las demos de leads van en false: solo link directo.
+  isPublic     Boolean  @default(true)
+  /// Prospecto dueño de una demo personalizada (null = showcase del catálogo).
+  leadId       String?
   isActive     Boolean  @default(true)
   isFeatured   Boolean  @default(false)
   sortOrder    Int      @default(0)
@@ -1243,6 +1247,8 @@ model DemoExample {
   updatedBy    String?
 
   @@index([isActive])
+  @@index([isPublic])
+  @@index([leadId])
   @@index([isFeatured])
   @@index([sortOrder])
   @@index([city])
