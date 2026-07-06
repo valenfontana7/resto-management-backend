@@ -26,6 +26,11 @@ FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Prisma needs OpenSSL available to detect libssl (bookworm-slim ships without it).
+RUN apt-get update -y \
+    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=prod-deps /app/package.json /app/package-lock.json ./
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/prisma.config.ts ./
