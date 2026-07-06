@@ -22,26 +22,40 @@ describe('GoLiveEnforcementService', () => {
     prisma.order.count.mockResolvedValue(0);
   });
 
-  it('bloquea publicar si faltan pasos del gate', async () => {
+  it('bloquea publicar si faltan datos básicos del gate', async () => {
     prisma.restaurant.findUnique.mockResolvedValue({
       id: 'r1',
       name: 'Demo',
       type: 'restaurant',
       phone: '111',
       address: 'Calle 1',
-      logo: 'logo.png',
+      logo: null,
       isPublished: false,
-      branding: {
-        theme: { colors: { primary: '#000' } },
-        assets: { logo: 'logo.png' },
-      },
-      businessRules: { payment: { methods: ['cash'] } },
-      _count: { dishes: 2 },
+      branding: null,
+      businessRules: { payment: { methods: [] } },
+      _count: { dishes: 0 },
     });
 
     await expect(service.assertCanPublish('r1')).rejects.toBeInstanceOf(
       BadRequestException,
     );
+  });
+
+  it('permite publicar con nombre, contacto y carta aunque falten cobros', async () => {
+    prisma.restaurant.findUnique.mockResolvedValue({
+      id: 'r1',
+      name: 'Demo',
+      type: 'restaurant',
+      phone: '111',
+      address: 'Calle 1',
+      logo: null,
+      isPublished: false,
+      branding: null,
+      businessRules: { payment: { methods: [] } },
+      _count: { dishes: 2 },
+    });
+
+    await expect(service.assertCanPublish('r1')).resolves.toBeUndefined();
   });
 
   it('permite publicar si el sitio ya está publicado', async () => {
