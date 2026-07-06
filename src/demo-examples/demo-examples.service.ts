@@ -118,7 +118,7 @@ export class DemoExamplesService {
         : undefined;
 
     const leadId =
-      dto.leadId !== undefined ? dto.leadId.trim() || null : current.leadId;
+      dto.leadId !== undefined ? dto.leadId?.trim() || null : current.leadId;
     const isPublic =
       dto.isPublic !== undefined
         ? dto.isPublic
