@@ -188,6 +188,39 @@ export class OppCfg04Evaluator implements OpportunityEvaluator {
   }
 }
 
+export class OppCfg05Evaluator implements OpportunityEvaluator {
+  readonly ruleId = getOpportunityCatalogEntry('OPP-CFG-05').ruleId;
+  readonly ruleVersion = OPPORTUNITY_RULE_VERSION;
+  readonly opportunityCode = 'OPP-CFG-05' as const;
+
+  evaluate(ctx: OpportunityEvaluatorContext): OpportunityEvaluatorResult {
+    const entry = getOpportunityCatalogEntry(this.opportunityCode);
+    const { view } = ctx;
+    const condition =
+      hasSignal(view, SignalCode.SIG_OPS_07) &&
+      lacksSignal(view, SignalCode.SIG_CFG_07);
+
+    if (!condition) {
+      return {
+        detected: null,
+        reason: 'Sin operación semanal o equipo ya invitado',
+      };
+    }
+
+    return {
+      detected: buildDetectedOpportunity(
+        entry,
+        view,
+        [SignalCode.SIG_OPS_07],
+        [SignalCode.SIG_CFG_07],
+        'Existe porque hay operación semanal (SIG-OPS-07) pero un solo usuario activo (SIG-CFG-07 ausente).',
+        false,
+      ),
+      reason: 'Weekly operation with single active user',
+    };
+  }
+}
+
 export class OppOps02Evaluator implements OpportunityEvaluator {
   readonly ruleId = getOpportunityCatalogEntry('OPP-OPS-02').ruleId;
   readonly ruleVersion = OPPORTUNITY_RULE_VERSION;
@@ -465,6 +498,7 @@ export const ALL_OPPORTUNITY_EVALUATORS: OpportunityEvaluator[] = [
   new OppCfg01Evaluator(),
   new OppCfg02Evaluator(),
   new OppCfg04Evaluator(),
+  new OppCfg05Evaluator(),
   new OppOps02Evaluator(),
   new OppRsk01Evaluator(),
   new OppRsk03Evaluator(),

@@ -17,3 +17,4 @@ export {
   normalizeDomainEvent,
 } from './types/domain-event.types';
 export { InMemorySignalStateStore } from './stores/signal-state.store';
+export { PrismaSignalStateStore } from './stores/prisma-signal-state.store';

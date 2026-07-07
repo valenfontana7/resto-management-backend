@@ -53,6 +53,23 @@
       "resolvedWhen": { "type": "signal_absent", "signalCode": "SIG-CFG-09" },
       "ruleId": "RULE-OPP-CFG-04"
     },
+    "OPP-CFG-05": {
+      "code": "OPP-CFG-05",
+      "category": "gap",
+      "basePriority": "medium",
+      "baseConfidence": "high",
+      "primaryJob": "Dejar de ser el sistema",
+      "title": "Invitar al equipo",
+      "description": "El restaurante opera con un solo usuario activo.",
+      "expectedOutcome": "Equipo invitado repartiendo la operación en Bentoo.",
+      "recommendedActionType": "invite_team",
+      "suggestedAction": "Invitar equipo",
+      "rssDimensions": ["configuration"],
+      "requiredSignals": ["SIG-OPS-07"],
+      "absentSignals": ["SIG-CFG-07"],
+      "resolvedWhen": { "type": "signal_present", "signalCode": "SIG-CFG-07" },
+      "ruleId": "RULE-OPP-CFG-05"
+    },
     "OPP-OPS-02": {
       "code": "OPP-OPS-02",
       "category": "gap",

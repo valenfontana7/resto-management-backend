@@ -19,6 +19,8 @@ import {
   DiscoverRestaurantsTask,
   EnrichCandidateTask,
 } from './tasks/leads-discovery.tasks';
+import { GenerateProspectBundleTask } from './tasks/leads-prospect-package.tasks';
+import { RunProspectPipelineTask } from './tasks/leads-prospect-pipeline.tasks';
 
 @Injectable()
 export class LeadsTasksRegistrar implements OnModuleInit {
@@ -38,6 +40,8 @@ export class LeadsTasksRegistrar implements OnModuleInit {
     private readonly analyzeReply: AnalyzeClientReplyTask,
     private readonly proposal: GenerateProposalTask,
     private readonly demo: GenerateDemoTask,
+    private readonly prospectBundle: GenerateProspectBundleTask,
+    private readonly prospectPipeline: RunProspectPipelineTask,
   ) {}
 
   onModuleInit(): void {
@@ -56,6 +60,8 @@ export class LeadsTasksRegistrar implements OnModuleInit {
       this.analyzeReply,
       this.proposal,
       this.demo,
+      this.prospectBundle,
+      this.prospectPipeline,
     ];
     this.registry.registerMany(handlers);
   }

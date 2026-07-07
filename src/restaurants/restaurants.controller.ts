@@ -78,6 +78,7 @@ import { Throttle } from '@nestjs/throttler';
 import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
 import { getClientIp } from '../common/utils/client-ip.util';
 import { GoLiveReadinessService } from './services/go-live-readiness.service';
+import { DemoActivationService } from '../demo-examples/demo-activation.service';
 
 @ApiTags('Restaurants')
 @Controller('api/restaurants')
@@ -94,6 +95,7 @@ export class RestaurantsController {
     private readonly prisma: PrismaService,
     private readonly publicWriteAbuse: PublicWriteAbuseService,
     private readonly goLiveReadiness: GoLiveReadinessService,
+    private readonly demoActivationService: DemoActivationService,
     @Optional() private readonly adminAlerts?: AdminAlertsService,
   ) {}
 
@@ -339,6 +341,18 @@ export class RestaurantsController {
       payload,
       user.userId,
     );
+
+    const demoExampleSlug =
+      createDto?.demoExampleSlug?.trim() ||
+      createDto?.onboardingData?.demoActivation?.demoExampleSlug?.trim();
+
+    if (demoExampleSlug) {
+      await this.demoActivationService.materializeFromDemoExample(
+        restaurant.id,
+        demoExampleSlug,
+        user.userId,
+      );
+    }
 
     // Associate restaurant with user
     await this.restaurantsService.associateUserWithRestaurant(

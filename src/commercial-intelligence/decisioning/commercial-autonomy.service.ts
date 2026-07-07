@@ -8,7 +8,11 @@ import type {
   CommercialAutonomyLevel,
 } from '../types/commercial-intelligence.types';
 
-const FORCE_L0_ACTION_TYPES = new Set(['SEND_FIRST_MESSAGE', 'GENERATE_DEMO']);
+const FORCE_L0_ACTION_TYPES = new Set([
+  'SEND_FIRST_MESSAGE',
+  'GENERATE_DEMO',
+  'GENERATE_PROSPECT_PACKAGE',
+]);
 
 export interface L2EligibilityResult {
   eligible: boolean;

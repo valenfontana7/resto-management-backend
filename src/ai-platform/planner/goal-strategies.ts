@@ -54,10 +54,17 @@ export class AcquireLeadsStrategy implements GoalPlanningStrategy {
     ];
 
     if (!context.constraints.skipDemo) {
+      const demoTaskKey = context.filters.premium
+        ? 'leads.run_prospect_pipeline'
+        : 'leads.generate_prospect_bundle';
+      const demoLabel = context.filters.premium
+        ? 'Pipeline prospecto completo'
+        : 'Generar paquete prospecto';
+
       stages.push({
         stageKey: 'demo',
-        taskKey: 'leads.generate_demo',
-        label: 'Generar demo',
+        taskKey: demoTaskKey,
+        label: demoLabel,
         dependsOnStages: ['score'],
         scope: 'per_entity',
         optional: true,

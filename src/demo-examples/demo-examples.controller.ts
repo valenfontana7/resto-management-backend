@@ -19,11 +19,15 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { CreateDemoExampleDto } from './dto/create-demo-example.dto';
 import { UpdateDemoExampleDto } from './dto/update-demo-example.dto';
 import { DemoExamplesService } from './demo-examples.service';
+import { DemoActivationService } from './demo-activation.service';
 
 @Public()
 @Controller('api/demo-examples')
 export class PublicDemoExamplesController {
-  constructor(private readonly demoExamplesService: DemoExamplesService) {}
+  constructor(
+    private readonly demoExamplesService: DemoExamplesService,
+    private readonly demoActivationService: DemoActivationService,
+  ) {}
 
   @Get()
   @Throttle({ default: { ttl: 60_000, limit: 60 } })
@@ -36,6 +40,13 @@ export class PublicDemoExamplesController {
   @Throttle({ default: { ttl: 60_000, limit: 60 } })
   async findBySlug(@Param('slug') slug: string) {
     return this.demoExamplesService.findBySlug(slug);
+  }
+
+  /** Seed de onboarding para activar una demo personalizada al registrarse. */
+  @Get('by-slug/:slug/onboarding-seed')
+  @Throttle({ default: { ttl: 60_000, limit: 30 } })
+  async getOnboardingSeed(@Param('slug') slug: string) {
+    return this.demoActivationService.buildOnboardingSeed(slug);
   }
 }
 

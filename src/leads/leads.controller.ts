@@ -9,6 +9,7 @@ import {
   Query,
   Request,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -34,7 +35,13 @@ import { LeadApprovalService } from './approval/lead-approval.service';
 import { UpdateLeadApprovalDto } from './dto/update-lead-approval.dto';
 import { PatchDiscoveryCandidateDto } from './dto/patch-discovery-candidate.dto';
 import { UpdateLeadDemoDto } from './dto/update-lead-demo.dto';
+import { ImportProspectPackageDto } from './dto/import-prospect-package.dto';
+import { GenerateProspectPackageDto } from './dto/generate-prospect-package.dto';
+import { RunProspectPipelineDto } from './dto/run-prospect-pipeline.dto';
 import { LeadDemoProvisionService } from './lead-demo-provision.service';
+import { LeadProspectPackageService } from './lead-prospect-package.service';
+import { BundleValidationError } from '../prospect-importer/prospect-importer.service';
+import type { ProspectBundle } from '../prospect-importer/types';
 
 @ApiTags('Leads')
 @Controller('api/super-admin/leads')
@@ -49,6 +56,7 @@ export class LeadsController {
     private readonly aiQuota: OnboardingAiQuotaService,
     private readonly approvalService: LeadApprovalService,
     private readonly leadDemoProvision: LeadDemoProvisionService,
+    private readonly leadProspectPackage: LeadProspectPackageService,
   ) {}
 
   @Get('stats/dashboard')
@@ -206,6 +214,107 @@ export class LeadsController {
   @Post(':id/demo/sync-from-lead')
   syncLeadDemoFromLead(@Param('id') id: string) {
     return this.leadDemoProvision.syncDemoFromLead(id);
+  }
+
+  @Get(':id/prospect-package/status')
+  getProspectPackageStatus(@Param('id') id: string) {
+    return this.leadProspectPackage.getPackageStatus(id);
+  }
+
+  @Post(':id/prospect-package/import')
+  async importProspectPackage(
+    @Param('id') id: string,
+    @Body() dto: ImportProspectPackageDto,
+    @Request() req,
+  ) {
+    try {
+      this.leadProspectPackage.assertValidBundle(dto.bundle);
+      return await this.leadProspectPackage.importBundleForLead(
+        id,
+        dto.bundle as unknown as ProspectBundle,
+        {
+          dryRun: dto.dryRun ?? false,
+          importedBy: req.user?.userId,
+        },
+      );
+    } catch (error) {
+      if (error instanceof BundleValidationError) {
+        throw new BadRequestException({
+          message: 'El bundle no pasó la validación',
+          errors: error.validationErrors,
+        });
+      }
+      throw error;
+    }
+  }
+
+  @Post(':id/prospect-package/validate')
+  async validateProspectPackage(
+    @Param('id') id: string,
+    @Body() dto: ImportProspectPackageDto,
+  ) {
+    try {
+      this.leadProspectPackage.assertValidBundle(dto.bundle);
+      return await this.leadProspectPackage.importBundleForLead(
+        id,
+        dto.bundle as unknown as ProspectBundle,
+        { dryRun: true },
+      );
+    } catch (error) {
+      if (error instanceof BundleValidationError) {
+        throw new BadRequestException({
+          message: 'El bundle no pasó la validación',
+          errors: error.validationErrors,
+        });
+      }
+      throw error;
+    }
+  }
+
+  @Post(':id/prospect-package/generate')
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  async generateProspectPackage(
+    @Param('id') id: string,
+    @Body() dto: GenerateProspectPackageDto,
+    @Request() req,
+  ) {
+    return this.leadsAiService.generateProspectPackage(id, req.user?.userId, {
+      wait: dto.wait,
+      autoImport: dto.autoImport,
+    });
+  }
+
+  @Get(':id/prospect-package/generation/:taskId')
+  getProspectPackageGeneration(
+    @Param('id') id: string,
+    @Param('taskId') taskId: string,
+  ) {
+    return this.leadsAiService.getProspectPackageGeneration(taskId, id);
+  }
+
+  @Post(':id/prospect-package/pipeline/run')
+  @Throttle({ default: { ttl: 120_000, limit: 3 } })
+  runProspectPipeline(
+    @Param('id') id: string,
+    @Body() dto: RunProspectPipelineDto,
+    @Request() req,
+  ) {
+    return this.leadsAiService.runProspectPipeline(id, req.user?.userId, {
+      skipImport: dto.skipImport,
+      skipImages: dto.skipImages,
+      skipSalesPackage: dto.skipSalesPackage,
+    });
+  }
+
+  @Get(':id/prospect-package/pipeline')
+  getProspectPipeline(@Param('id') id: string) {
+    return this.leadsAiService.getProspectPipeline(id);
+  }
+
+  @Get(':id/prospect-package/sales-package')
+  async getSalesPackage(@Param('id') id: string) {
+    const artifacts = await this.leadsAiService.getProspectPipeline(id);
+    return artifacts.salesPackage ?? null;
   }
 
   @Post()

@@ -163,6 +163,28 @@ export class PaymentsFailedEvaluator implements SignalEvaluator {
   }
 }
 
+export class TeamInvitedEvaluator implements SignalEvaluator {
+  readonly ruleId = 'RULE-CFG-07';
+  readonly ruleVersion = RULE_VERSION;
+  readonly signalCode = SignalCode.SIG_CFG_07;
+
+  evaluate(ctx: SignalEvaluatorContext): SignalEvaluatorResult {
+    const ids = getLatestEventIds(
+      ctx.restaurantContext,
+      DecisionDomainEventType.UserInvited,
+    );
+    return positiveResult(
+      ctx,
+      this.ruleId,
+      SignalCode.SIG_CFG_07,
+      ctx.restaurantContext.invitedUserCount >= 2,
+      ids,
+      'Team has at least two active members',
+      'Single active member',
+    );
+  }
+}
+
 export class GoliveCompleteEvaluator implements SignalEvaluator {
   readonly ruleId = 'RULE-CFG-08';
   readonly ruleVersion = RULE_VERSION;
@@ -527,6 +549,7 @@ export const ALL_SIGNAL_EVALUATORS: SignalEvaluator[] = [
   new MenuReadyEvaluator(),
   new PaymentsConnectedEvaluator(),
   new PaymentsFailedEvaluator(),
+  new TeamInvitedEvaluator(),
   new GoliveCompleteEvaluator(),
   new GoliveStalledEvaluator(),
   new SalonDesktopReadyEvaluator(),

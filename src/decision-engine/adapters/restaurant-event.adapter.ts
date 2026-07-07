@@ -8,6 +8,9 @@ import {
 } from '../signals/types/domain-event.types';
 import { getRestaurantProductIntent } from '../../restaurants/onboarding-product-intent';
 
+/** Ventana del baseline de volumen (VolumeDropEvaluator / SIG-BIZ-03). */
+const BASELINE_WINDOW_WEEKS = 8;
+
 @Injectable()
 export class RestaurantEventAdapterService {
   constructor(private readonly prisma: PrismaService) {}
@@ -43,6 +46,15 @@ export class RestaurantEventAdapterService {
             cancelAtPeriodEnd: true,
             updatedAt: true,
           },
+        },
+        memberships: {
+          select: { id: true, createdAt: true },
+        },
+        terminals: {
+          where: { isActive: true },
+          select: { id: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+          take: 1,
         },
       },
     });
@@ -107,18 +119,68 @@ export class RestaurantEventAdapterService {
       );
     }
 
-    const paidOrders = await this.prisma.order.findMany({
-      where: {
-        restaurantId,
-        OR: [
-          { orderSource: 'FLOOR_FINAL' },
-          { status: { in: [OrderStatus.PAID, OrderStatus.DELIVERED] } },
-        ],
-      },
+    for (const membership of restaurant.memberships) {
+      events.push(
+        normalizeDomainEvent({
+          id: `${restaurantId}:user.invited:${membership.id}`,
+          restaurantId,
+          type: DecisionDomainEventType.UserInvited,
+          payload: { membershipId: membership.id },
+          occurredAt: membership.createdAt,
+          source: 'restaurant-event-adapter',
+        }),
+      );
+    }
+
+    const activeTerminal = restaurant.terminals[0];
+    if (activeTerminal) {
+      events.push(
+        normalizeDomainEvent({
+          id: `${restaurantId}:salon.desktop_ready`,
+          restaurantId,
+          type: DecisionDomainEventType.SalonDesktopReady,
+          payload: { terminalId: activeTerminal.id },
+          occurredAt: activeTerminal.createdAt,
+          source: 'restaurant-event-adapter',
+        }),
+      );
+    }
+
+    const paidOrderWhere = {
+      restaurantId,
+      OR: [
+        { orderSource: 'FLOOR_FINAL' as const },
+        { status: { in: [OrderStatus.PAID, OrderStatus.DELIVERED] } },
+      ],
+    };
+
+    // Primer pedido pagado (hito) + ventana reciente completa para el baseline
+    // de volumen (SIG-BIZ-03) y las reglas de inactividad. El viejo `take: 50`
+    // ascendente dejaba fuera los pedidos recientes de restaurantes activos.
+    const firstPaidOrder = await this.prisma.order.findFirst({
+      where: paidOrderWhere,
       select: { id: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
-      take: 50,
     });
+
+    const baselineStart = new Date(
+      now.getTime() - BASELINE_WINDOW_WEEKS * 7 * 24 * 60 * 60 * 1000,
+    );
+    const recentPaidOrdersDesc = firstPaidOrder
+      ? await this.prisma.order.findMany({
+          where: { ...paidOrderWhere, createdAt: { gte: baselineStart } },
+          select: { id: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1000,
+        })
+      : [];
+    const recentPaidOrders = [...recentPaidOrdersDesc].reverse();
+
+    const includeFirstSeparately =
+      firstPaidOrder && firstPaidOrder.createdAt < baselineStart;
+    const paidOrders = includeFirstSeparately
+      ? [firstPaidOrder, ...recentPaidOrders]
+      : recentPaidOrders;
 
     for (const order of paidOrders) {
       events.push(
@@ -230,6 +292,7 @@ export class RestaurantEventAdapterService {
       tenureDays,
       trialDay,
       lifecycleStage: restaurant.subscription?.status ?? 'unknown',
+      baseline: { windowWeeks: BASELINE_WINDOW_WEEKS },
       modelVersion: '1.0.0',
       ruleCatalogVersion: '1.0.0',
     };

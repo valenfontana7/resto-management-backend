@@ -406,7 +406,7 @@ describe('OpportunityRegistry', () => {
   it('registra evaluadores independientes (1 OPP cada uno)', () => {
     const registry = new OpportunityRegistry();
     registry.onModuleInit();
-    expect(registry.getEvaluatorCount()).toBe(10);
+    expect(registry.getEvaluatorCount()).toBe(11);
     const codes = registry.getEvaluators().map((e) => e.opportunityCode);
     expect(new Set(codes).size).toBe(codes.length);
   });

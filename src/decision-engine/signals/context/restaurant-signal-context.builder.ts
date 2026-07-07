@@ -25,6 +25,7 @@ export interface RestaurantSignalContext {
   hasPaidOrder: boolean;
   paidOrderCount: number;
   paidOrderEventIds: string[];
+  invitedUserCount: number;
   valueEventTimestamps: Date[];
   lastValueEventAt: Date | null;
   ordersLast7Days: number;
@@ -52,6 +53,7 @@ export function buildRestaurantSignalContext(
   let cancelRequested = false;
   let subscriptionPaymentFailed = false;
   let configReverted = false;
+  let invitedUserCount = 0;
 
   const paidOrderEventIds: string[] = [];
   const valueEventTimestamps: Date[] = [];
@@ -100,6 +102,9 @@ export function buildRestaurantSignalContext(
         break;
       case DecisionDomainEventType.SalonDesktopReady:
         salonDesktopReady = true;
+        break;
+      case DecisionDomainEventType.UserInvited:
+        invitedUserCount += 1;
         break;
       case DecisionDomainEventType.OrderPaid:
         paidOrderEventIds.push(event.id);
@@ -161,6 +166,7 @@ export function buildRestaurantSignalContext(
     hasPaidOrder: paidOrderEventIds.length > 0,
     paidOrderCount: paidOrderEventIds.length,
     paidOrderEventIds,
+    invitedUserCount,
     valueEventTimestamps,
     lastValueEventAt,
     ordersLast7Days,

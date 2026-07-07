@@ -51,6 +51,16 @@
       "description": "Medios de pago fallidos",
       "explanationTemplate": "Hay fallos recurrentes en la conexión o cobro online."
     },
+    "SIG-CFG-07": {
+      "code": "SIG-CFG-07",
+      "category": "configuration",
+      "importance": "P1",
+      "direction": "positive",
+      "dimension": "configuration",
+      "primaryJob": "Dejar de ser el sistema",
+      "description": "Usuarios invitados activos (≥2 miembros)",
+      "explanationTemplate": "El equipo tiene al menos dos usuarios con acceso operando en Bentoo."
+    },
     "SIG-CFG-08": {
       "code": "SIG-CFG-08",
       "category": "configuration",

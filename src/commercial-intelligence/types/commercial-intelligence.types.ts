@@ -2,6 +2,7 @@ export type CommercialActionType =
   | 'SEND_FIRST_MESSAGE'
   | 'SEND_FOLLOWUP'
   | 'GENERATE_DEMO'
+  | 'GENERATE_PROSPECT_PACKAGE'
   | 'RE_ANALYZE'
   | 'WAIT'
   | 'NO_ACTION'

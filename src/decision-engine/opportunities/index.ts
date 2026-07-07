@@ -1,6 +1,7 @@
 export { OpportunityEngineService } from './opportunity-engine.service';
 export { OpportunityRegistry } from './opportunity-registry.service';
 export { InMemoryOpportunityStateStore } from './stores/opportunity-state.store';
+export { PrismaOpportunityStateStore } from './stores/prisma-opportunity-state.store';
 export {
   OpportunityCode,
   getOpportunityCatalogEntry,

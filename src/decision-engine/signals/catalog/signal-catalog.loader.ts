@@ -30,6 +30,7 @@ export const SignalCode = {
   SIG_CFG_03: 'SIG-CFG-03',
   SIG_CFG_05: 'SIG-CFG-05',
   SIG_CFG_06: 'SIG-CFG-06',
+  SIG_CFG_07: 'SIG-CFG-07',
   SIG_CFG_08: 'SIG-CFG-08',
   SIG_CFG_09: 'SIG-CFG-09',
   SIG_CFG_10: 'SIG-CFG-10',

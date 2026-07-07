@@ -67,6 +67,7 @@ export const OpportunityCode = {
   OPP_CFG_01: 'OPP-CFG-01',
   OPP_CFG_02: 'OPP-CFG-02',
   OPP_CFG_04: 'OPP-CFG-04',
+  OPP_CFG_05: 'OPP-CFG-05',
   OPP_OPS_02: 'OPP-OPS-02',
   OPP_RSK_01: 'OPP-RSK-01',
   OPP_RSK_03: 'OPP-RSK-03',

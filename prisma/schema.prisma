@@ -94,6 +94,9 @@ model Restaurant {
   lifecycleOutcomes       LifecycleOutcome[]
   lifecycleActiveCampaigns LifecycleActiveCampaign[]
   intelligenceSnapshotCache RestaurantIntelligenceSnapshotCache?
+  intelligenceStates        RestaurantIntelligenceState[]
+  rssHistoryEntries         RestaurantRssHistoryEntry[]
+  briefingFeedbacks         BriefingFeedback[]
 
   @@index([slug])
   @@index([status])
@@ -2578,6 +2581,66 @@ model RestaurantIntelligenceSnapshotCache {
   computedAt      DateTime
   updatedAt       DateTime @updatedAt
   restaurant      Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+}
+
+enum IntelligenceStateKind {
+  SIGNALS
+  OPPORTUNITIES
+  RECOMMENDATIONS
+}
+
+/// Estado vigente del Decision Engine entre corridas (señales activas,
+/// oportunidades abiertas, recomendaciones activas). Payload JSON versionado
+/// por el propio engine; sobrevive restarts (reemplaza stores in-memory R1).
+model RestaurantIntelligenceState {
+  restaurantId String
+  kind         IntelligenceStateKind
+  payload      Json
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@id([restaurantId, kind])
+}
+
+/// Historial append-only de snapshots RSS, necesario para deltas 7d/30d y tendencia.
+model RestaurantRssHistoryEntry {
+  id           String     @id @default(cuid())
+  restaurantId String
+  computedAt   DateTime
+  value        Float
+  band         String
+  snapshot     Json
+  createdAt    DateTime   @default(now())
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, computedAt])
+}
+
+enum BriefingFeedbackKind {
+  DISMISSED
+  SNOOZED
+}
+
+/// Feedback persistente del briefing operativo (Operations Copilot).
+/// Alcance por restaurante: el equipo comparte la operación. `preparationId`
+/// es el id estable de la preparation de cognition (p.ej.
+/// `cognition:preparation:kitchen-order-delay:{orderId}`). TTL vía expiresAt
+/// para no suprimir ítems para siempre.
+model BriefingFeedback {
+  id              String               @id @default(cuid())
+  restaurantId    String
+  preparationId   String
+  kind            BriefingFeedbackKind
+  snoozedUntil    DateTime?
+  expiresAt       DateTime
+  createdByUserId String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  restaurant      Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, preparationId])
+  @@index([restaurantId, expiresAt])
 }
 
 // --- Lifecycle Marketing Engine (campañas automáticas, consume Decision Engine) ---

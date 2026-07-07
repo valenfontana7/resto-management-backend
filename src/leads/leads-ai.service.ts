@@ -69,6 +69,34 @@ export class LeadsAiService implements OnModuleInit {
     return this.execution.importWithAutoAnalyze(dto, userId, postProcessMode);
   }
 
+  generateProspectPackage(
+    leadId: string,
+    userId?: string,
+    options?: { wait?: boolean; autoImport?: boolean },
+  ) {
+    return this.execution.generateProspectPackage(leadId, userId, options);
+  }
+
+  getProspectPackageGeneration(taskId: string, leadId: string) {
+    return this.execution.getProspectPackageGeneration(taskId, leadId);
+  }
+
+  runProspectPipeline(
+    leadId: string,
+    userId?: string,
+    options?: {
+      skipImport?: boolean;
+      skipImages?: boolean;
+      skipSalesPackage?: boolean;
+    },
+  ) {
+    return this.execution.runProspectPipeline(leadId, userId, options);
+  }
+
+  getProspectPipeline(leadId: string) {
+    return this.execution.getProspectPipeline(leadId);
+  }
+
   async getLeadAnalyses(leadId: string) {
     await this.leadsService.findOne(leadId);
     return this.prisma.leadAnalysis.findMany({

@@ -14,12 +14,15 @@ import { ImportLeadsDto } from './dto/import-leads.dto';
 import { LeadAnalysisPersistenceService } from './lead-analysis-persistence.service';
 import { LeadImportOrchestratorService } from './lead-import-orchestrator.service';
 import type { ImportLeadsExtendedResult } from './lead-import-orchestrator.service';
+import { LeadProspectPackageService } from './lead-prospect-package.service';
 import { LeadsService } from './leads.service';
 import type {
   LeadBusinessDiagnosis,
   LeadMessageContent,
 } from './types/lead-ai.types';
 import type { LeadDiscoveryResult } from './types/lead-discovery.types';
+import type { GenerateProspectBundleOutput } from './tasks/leads-prospect-package.tasks';
+import type { ProspectPipelineReport } from './types/prospect-pipeline.types';
 
 const MESSAGE_TASK_KEYS = {
   instagram: 'leads.draft_message_instagram',
@@ -48,6 +51,7 @@ export class LeadsAiExecutionService {
     private readonly runner: AiTaskRunnerService,
     private readonly analysisPersistence: LeadAnalysisPersistenceService,
     private readonly importOrchestrator: LeadImportOrchestratorService,
+    private readonly leadProspectPackage: LeadProspectPackageService,
   ) {}
 
   async discoverProspects(
@@ -150,6 +154,104 @@ export class LeadsAiExecutionService {
     });
   }
 
+  async generateProspectPackage(
+    leadId: string,
+    userId?: string,
+    options?: { wait?: boolean; autoImport?: boolean },
+  ) {
+    const input = {
+      leadId,
+      autoImport: options?.autoImport ?? false,
+    };
+
+    const shouldWaitInline =
+      options?.wait === true || process.env.LEADS_AI_TASKS_ENABLED === 'false';
+
+    if (!shouldWaitInline) {
+      const task = await this.queue.enqueue({
+        taskKey: 'leads.generate_prospect_bundle',
+        input: input as unknown as Record<string, unknown>,
+        leadId,
+        createdById: userId,
+        runImmediately: !process.env.REDIS_URL,
+      });
+
+      const taskId =
+        typeof task === 'object' && task && 'id' in task
+          ? String(task.id)
+          : null;
+
+      if (taskId && !process.env.REDIS_URL) {
+        const completed = await this.queue.waitForCompletion(taskId, 180_000);
+        return this.buildGenerateProspectPackageResponse(
+          leadId,
+          userId,
+          completed.output as GenerateProspectBundleOutput | null,
+          taskId,
+          options?.autoImport,
+        );
+      }
+
+      return { taskId, status: 'queued' as const };
+    }
+
+    const inline = await this.runner.runInline<
+      typeof input,
+      GenerateProspectBundleOutput
+    >('leads.generate_prospect_bundle', input, { userId, leadId });
+
+    return this.buildGenerateProspectPackageResponse(
+      leadId,
+      userId,
+      inline.output,
+      inline.taskId,
+      options?.autoImport,
+      inline.totalCostUsd,
+      inline.durationMs,
+    );
+  }
+
+  async getProspectPackageGeneration(taskId: string, leadId: string) {
+    const task = await this.queue.getTask(taskId);
+    if (task.leadId && task.leadId !== leadId) {
+      throw new Error('La tarea no pertenece a este prospecto');
+    }
+    return task;
+  }
+
+  async runProspectPipeline(
+    leadId: string,
+    userId?: string,
+    options?: {
+      skipImport?: boolean;
+      skipImages?: boolean;
+      skipSalesPackage?: boolean;
+    },
+  ) {
+    const input = {
+      leadId,
+      skipImport: options?.skipImport ?? false,
+      skipImages: options?.skipImages ?? false,
+      skipSalesPackage: options?.skipSalesPackage ?? false,
+    };
+
+    const inline = await this.runner.runInline<
+      typeof input,
+      ProspectPipelineReport
+    >('leads.run_prospect_pipeline', input, { userId, leadId });
+
+    return {
+      status: 'completed' as const,
+      pipelineReport: inline.output,
+      totalCostUsd: inline.totalCostUsd,
+      durationMs: inline.durationMs,
+    };
+  }
+
+  async getProspectPipeline(leadId: string) {
+    return this.leadProspectPackage.getPipelineArtifacts(leadId);
+  }
+
   async importWithAutoAnalyze(
     dto: ImportLeadsDto,
     userId?: string,
@@ -191,5 +293,41 @@ export class LeadsAiExecutionService {
       LeadDiscoveryResult
     >('leads.discover_restaurants', dto, { userId });
     return inline.output;
+  }
+
+  private async buildGenerateProspectPackageResponse(
+    leadId: string,
+    userId: string | undefined,
+    output: GenerateProspectBundleOutput | null,
+    taskId: string | null,
+    autoImport?: boolean,
+    totalCostUsd?: number,
+    durationMs?: number,
+  ) {
+    if (!output?.bundle) {
+      throw new Error('La generación no devolvió un bundle');
+    }
+
+    let importReport: Awaited<
+      ReturnType<LeadProspectPackageService['importBundleForLead']>
+    > | null = null;
+    if (autoImport && output.validation.errors.length === 0) {
+      importReport = await this.leadProspectPackage.importBundleForLead(
+        leadId,
+        output.bundle,
+        { importedBy: userId },
+      );
+    }
+
+    return {
+      taskId,
+      status: 'completed' as const,
+      bundle: output.bundle,
+      validation: output.validation,
+      researchSummary: output.researchSummary,
+      importReport,
+      totalCostUsd,
+      durationMs,
+    };
   }
 }

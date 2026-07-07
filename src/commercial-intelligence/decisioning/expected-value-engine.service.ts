@@ -301,7 +301,10 @@ export class ExpectedValueEngineService {
     if (ev < cfg.thresholds.minEvToAct) {
       return 'NO_ACTION';
     }
-    if (action.actionType === 'GENERATE_DEMO') {
+    if (
+      action.actionType === 'GENERATE_DEMO' ||
+      action.actionType === 'GENERATE_PROSPECT_PACKAGE'
+    ) {
       return ev > 0 ? 'GENERATE_DEMO' : 'SKIP_DEMO';
     }
     if (cost.modelSource === 'budget_policy') {

@@ -1,13 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { RestaurantEventAdapterService } from './adapters/restaurant-event.adapter';
 import { OpportunityEngineService } from './opportunities/opportunity-engine.service';
-import { InMemoryOpportunityStateStore } from './opportunities/stores/opportunity-state.store';
+import { PrismaOpportunityStateStore } from './opportunities/stores/prisma-opportunity-state.store';
 import { RecommendationEngineService } from './recommendations/recommendation-engine.service';
-import { InMemoryRecommendationStateStore } from './recommendations/stores/recommendation-state.store';
+import { PrismaRecommendationStateStore } from './recommendations/stores/prisma-recommendation-state.store';
 import { RssEngineService } from './rss/rss-engine.service';
-import { InMemoryRssHistoryStore } from './rss/stores/rss-history.store';
+import { PrismaRssHistoryStore } from './rss/stores/prisma-rss-history.store';
 import { SignalEngineService } from './signals/signal-engine.service';
-import { InMemorySignalStateStore } from './signals/stores/signal-state.store';
+import { PrismaSignalStateStore } from './signals/stores/prisma-signal-state.store';
 import { buildQueueRankMeta } from './queue/revenue-queue-rank';
 import { IntelligenceSnapshotStore } from './stores/intelligence-snapshot.store';
 import {
@@ -32,13 +32,13 @@ export class DecisionEngineOrchestratorService {
   constructor(
     private readonly eventAdapter: RestaurantEventAdapterService,
     private readonly signalEngine: SignalEngineService,
-    private readonly signalStateStore: InMemorySignalStateStore,
+    private readonly signalStateStore: PrismaSignalStateStore,
     private readonly rssEngine: RssEngineService,
-    private readonly rssHistoryStore: InMemoryRssHistoryStore,
+    private readonly rssHistoryStore: PrismaRssHistoryStore,
     private readonly opportunityEngine: OpportunityEngineService,
-    private readonly opportunityStateStore: InMemoryOpportunityStateStore,
+    private readonly opportunityStateStore: PrismaOpportunityStateStore,
     private readonly recommendationEngine: RecommendationEngineService,
-    private readonly recommendationStateStore: InMemoryRecommendationStateStore,
+    private readonly recommendationStateStore: PrismaRecommendationStateStore,
     private readonly snapshotStore: IntelligenceSnapshotStore,
   ) {}
 
@@ -76,25 +76,25 @@ export class DecisionEngineOrchestratorService {
     });
     await this.rssHistoryStore.append(snapshot);
 
-    const priorOpen = this.opportunityStateStore.getOpen(restaurantId);
+    const priorOpen = await this.opportunityStateStore.getOpen(restaurantId);
     const oppOutput = this.opportunityEngine.evaluate({
       snapshot,
       context: { trialDay: evalContext.trialDay ?? null },
       openOpportunities: priorOpen,
     });
-    this.opportunityStateStore.setOpen(
+    await this.opportunityStateStore.setOpen(
       restaurantId,
       oppOutput.openOpportunities,
     );
 
     const priorRecommendations =
-      this.recommendationStateStore.getActive(restaurantId);
+      await this.recommendationStateStore.getActive(restaurantId);
     const recOutput = this.recommendationEngine.evaluate({
       opportunities: oppOutput.opportunities,
       snapshot,
       activeRecommendations: priorRecommendations,
     });
-    this.recommendationStateStore.setActive(
+    await this.recommendationStateStore.setActive(
       restaurantId,
       recOutput.activeRecommendations,
     );

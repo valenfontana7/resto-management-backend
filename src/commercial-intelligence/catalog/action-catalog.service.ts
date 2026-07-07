@@ -24,6 +24,14 @@ export class ActionCatalogService {
     }
 
     if (lead.status === LeadStatus.NEW || lead.status === LeadStatus.ANALYZED) {
+      if (!lead.hasWebsite && lead.score >= 70) {
+        return {
+          actionType: 'GENERATE_PROSPECT_PACKAGE',
+          taskKey: 'leads.run_prospect_pipeline',
+          label: 'Pipeline prospecto completo (demo + ventas)',
+        };
+      }
+
       if (!lead.hasWebsite && lead.score >= 60) {
         return {
           actionType: 'GENERATE_DEMO',
@@ -80,6 +88,18 @@ export class ActionCatalogService {
         actionType: 'GENERATE_DEMO',
         taskKey: 'leads.generate_demo',
         label: 'Generar demo (alternativa)',
+      });
+    }
+
+    if (
+      primary !== 'GENERATE_PROSPECT_PACKAGE' &&
+      !lead.hasWebsite &&
+      lead.score >= 65
+    ) {
+      alts.push({
+        actionType: 'GENERATE_PROSPECT_PACKAGE',
+        taskKey: 'leads.run_prospect_pipeline',
+        label: 'Pipeline prospecto completo',
       });
     }
 

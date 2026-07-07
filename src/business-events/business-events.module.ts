@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { CommonModule } from '../common/common.module';
 import { BusinessMemoryModule } from '../business-memory/business-memory.module';
+import { DecisionEngineModule } from '../decision-engine/decision-engine.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { WebsocketModule } from '../websocket/websocket.module';
 import { BusinessEventBusService } from './business-event-bus.service';
@@ -13,6 +14,7 @@ import { BusinessEventStoreService } from './business-event-store.service';
 import { BusinessEventsController } from './business-events.controller';
 import { BusinessMemoryEventSubscriber } from './subscribers/business-memory.subscriber';
 import { InAppNotificationsEventSubscriber } from './subscribers/in-app-notifications.subscriber';
+import { IntelligenceRefreshEventSubscriber } from './subscribers/intelligence-refresh.subscriber';
 import { MenuBusinessEventsService } from './publishers/menu-business-events.service';
 import { PaymentBusinessEventsService } from './publishers/payment-business-events.service';
 import { MarketingBusinessEventsService } from './publishers/marketing-business-events.service';
@@ -25,6 +27,7 @@ import { BusinessEventDigestService } from './business-event-digest.service';
   imports: [
     CommonModule,
     BusinessMemoryModule,
+    DecisionEngineModule,
     forwardRef(() => NotificationsModule),
     WebsocketModule,
     ScheduleModule.forRoot(),
@@ -39,6 +42,7 @@ import { BusinessEventDigestService } from './business-event-digest.service';
     BusinessEventMonitorService,
     BusinessMemoryEventSubscriber,
     InAppNotificationsEventSubscriber,
+    IntelligenceRefreshEventSubscriber,
     MenuBusinessEventsService,
     PaymentBusinessEventsService,
     MarketingBusinessEventsService,

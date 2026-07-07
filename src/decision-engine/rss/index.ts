@@ -1,6 +1,7 @@
 export { RssEngineService, RssAggregatorService } from './rss-engine.service';
 export { DimensionRegistry } from './dimension-registry.service';
 export { InMemoryRssHistoryStore } from './stores/rss-history.store';
+export { PrismaRssHistoryStore } from './stores/prisma-rss-history.store';
 export {
   getRssAlgorithmVersion,
   getRssBandsCatalog,
