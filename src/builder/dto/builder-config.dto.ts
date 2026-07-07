@@ -2816,6 +2816,258 @@ export class ReservationsConfigDto {
   submitButton?: ContentButtonConfigDto;
 }
 
+// ==================== AUTO-COMPOSED HOME SECTIONS DTOs ====================
+// Secciones compuestas por el Demo Builder Engine (destacados, historia,
+// testimonios, FAQ). Espejan los tipos del frontend en types/builder-config.ts.
+
+export class FeaturedSectionConfigDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  showSection?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'backgroundColor must be a valid hex color',
+  })
+  backgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, { message: 'textColor must be a valid hex color' })
+  textColor?: string;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  title?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  subtitle?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({
+    description: 'Referencias a platos del menú (source of truth)',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  dishIds?: string[];
+
+  @ApiPropertyOptional({ enum: ['auto', 'carousel', 'grid'] })
+  @IsOptional()
+  @IsIn(['auto', 'carousel', 'grid'])
+  displayStyle?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  @Max(12)
+  maxItems?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  ctaText?: string;
+}
+
+export class AboutSectionConfigDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  showSection?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'backgroundColor must be a valid hex color',
+  })
+  backgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, { message: 'textColor must be a valid hex color' })
+  textColor?: string;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  eyebrow?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  title?: ContentTextConfigDto;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  body?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  image?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  imageAlt?: string;
+
+  @ApiPropertyOptional({ enum: ['left', 'right'] })
+  @IsOptional()
+  @IsIn(['left', 'right'])
+  imagePosition?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  highlights?: string[];
+}
+
+export class TestimonialItemConfigDto {
+  @ApiPropertyOptional({ description: 'Referencia a la entidad de origen' })
+  @IsOptional()
+  @IsString()
+  sourceId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  author?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(5)
+  rating?: number;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  text?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  source?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  date?: string;
+}
+
+export class TestimonialsSectionConfigDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  showSection?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'backgroundColor must be a valid hex color',
+  })
+  backgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, { message: 'textColor must be a valid hex color' })
+  textColor?: string;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  title?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  subtitle?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: [TestimonialItemConfigDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => TestimonialItemConfigDto)
+  items?: TestimonialItemConfigDto[];
+}
+
+export class FaqItemConfigDto {
+  @ApiPropertyOptional({ description: 'Referencia a la entidad de origen' })
+  @IsOptional()
+  @IsString()
+  sourceId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  question?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  answer?: string;
+}
+
+export class FaqSectionConfigDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  showSection?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, {
+    message: 'backgroundColor must be a valid hex color',
+  })
+  backgroundColor?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @Matches(HEX_COLOR_REGEX, { message: 'textColor must be a valid hex color' })
+  textColor?: string;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  title?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: ContentTextConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ContentTextConfigDto)
+  subtitle?: ContentTextConfigDto;
+
+  @ApiPropertyOptional({ type: [FaqItemConfigDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => FaqItemConfigDto)
+  items?: FaqItemConfigDto[];
+}
+
 // ==================== SECTIONS DTO ====================
 
 export class SectionsConfigDto {
@@ -2831,11 +3083,35 @@ export class SectionsConfigDto {
   @Type(() => HeroConfigDto)
   hero?: HeroConfigDto;
 
+  @ApiPropertyOptional({ type: FeaturedSectionConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FeaturedSectionConfigDto)
+  featured?: FeaturedSectionConfigDto;
+
   @ApiPropertyOptional({ type: MenuConfigDto })
   @IsOptional()
   @ValidateNested()
   @Type(() => MenuConfigDto)
   menu?: MenuConfigDto;
+
+  @ApiPropertyOptional({ type: AboutSectionConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AboutSectionConfigDto)
+  about?: AboutSectionConfigDto;
+
+  @ApiPropertyOptional({ type: TestimonialsSectionConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TestimonialsSectionConfigDto)
+  testimonials?: TestimonialsSectionConfigDto;
+
+  @ApiPropertyOptional({ type: FaqSectionConfigDto })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => FaqSectionConfigDto)
+  faq?: FaqSectionConfigDto;
 
   @ApiPropertyOptional({ type: InfoSectionConfigDto })
   @IsOptional()
