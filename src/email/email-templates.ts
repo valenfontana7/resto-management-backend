@@ -1177,6 +1177,14 @@ export function renderDigestEmail(params: {
     count: number;
     tone: 'positive' | 'attention' | 'neutral';
   }>;
+  coordinationStats?: {
+    shiftsClosed: number;
+    coordinationsTotal: number;
+    coordinationsResolved: number;
+    coordinationsEscalated: number;
+    coordinationsExpired: number;
+    resolutionRatePercent: number;
+  } | null;
 }): string {
   const topDishesHtml =
     params.topDishes.length > 0
@@ -1291,6 +1299,45 @@ export function renderDigestEmail(params: {
     </table>`
       : '';
 
+  const coordinationStatsHtml = params.coordinationStats
+    ? `
+    ${emailSectionTitle('Operación del turno')}
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 20px;">
+      <tr>
+        <td style="padding: 10px 0; color: ${C.text};">Coordinaciones en el período</td>
+        <td style="padding: 10px 0; text-align: right; font-weight: 600; color: ${C.text};">${params.coordinationStats.coordinationsTotal}</td>
+      </tr>
+      <tr style="border-top: 1px solid ${C.borderLight};">
+        <td style="padding: 10px 0; color: ${C.text};">Resueltas</td>
+        <td style="padding: 10px 0; text-align: right; color: #0F766E; font-weight: 600;">${params.coordinationStats.coordinationsResolved} (${params.coordinationStats.resolutionRatePercent}%)</td>
+      </tr>
+      ${
+        params.coordinationStats.coordinationsEscalated > 0
+          ? `<tr style="border-top: 1px solid ${C.borderLight};">
+        <td style="padding: 10px 0; color: ${C.text};">Escaladas al encargado</td>
+        <td style="padding: 10px 0; text-align: right; color: #B45309; font-weight: 600;">${params.coordinationStats.coordinationsEscalated}</td>
+      </tr>`
+          : ''
+      }
+      ${
+        params.coordinationStats.coordinationsExpired > 0
+          ? `<tr style="border-top: 1px solid ${C.borderLight};">
+        <td style="padding: 10px 0; color: ${C.text};">Vencidas sin ack</td>
+        <td style="padding: 10px 0; text-align: right; color: #B45309; font-weight: 600;">${params.coordinationStats.coordinationsExpired}</td>
+      </tr>`
+          : ''
+      }
+      ${
+        params.coordinationStats.shiftsClosed > 0
+          ? `<tr style="border-top: 1px solid ${C.borderLight};">
+        <td style="padding: 10px 0; color: ${C.text};">Turnos cerrados</td>
+        <td style="padding: 10px 0; text-align: right; color: ${C.textMuted};">${params.coordinationStats.shiftsClosed}</td>
+      </tr>`
+          : ''
+      }
+    </table>`
+    : '';
+
   const content = `
 ${emailHeader({
   eyebrow: params.restaurantName ?? 'Resumen del negocio',
@@ -1321,6 +1368,7 @@ ${emailHeader({
     ${topDishesHtml}
     ${breakdownHtml}
     ${eventHighlightsHtml}
+    ${coordinationStatsHtml}
     ${healthHtml}
     ${emailParagraph(
       'Este resumen te ayuda a tomar mejores decisiones para tu local. ¡Gracias por confiar en Bentoo!',

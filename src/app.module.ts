@@ -56,6 +56,7 @@ import { BusinessHealthModule } from './business-health/business-health.module';
 import { BusinessMemoryModule } from './business-memory/business-memory.module';
 import { BriefingFeedbackModule } from './briefing-feedback/briefing-feedback.module';
 import { BusinessEventsModule } from './business-events/business-events.module';
+import { OperationsModule } from './operations/operations.module';
 import { DecisionEngineModule } from './decision-engine/decision-engine.module';
 import { CustomerEngagementModule } from './customer-engagement/customer-engagement.module';
 import { LifecycleMarketingModule } from './lifecycle-marketing/lifecycle-marketing.module';
@@ -175,6 +176,7 @@ import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage';
     BusinessMemoryModule,
     BriefingFeedbackModule,
     BusinessEventsModule,
+    OperationsModule,
     DecisionEngineModule,
     OwnerCommunicationsModule,
     CustomerEngagementModule,

@@ -33,6 +33,13 @@ const DIGEST_EVENT_LABELS: Partial<Record<BentooBusinessEventType, string>> = {
   [BentooBusinessEventType.LoyaltyPointsRedeemed]: 'Puntos canjeados',
   [BentooBusinessEventType.LoyaltyTierUpgraded]:
     'Clientes que subieron de nivel',
+  [BentooBusinessEventType.ShiftOpened]: 'Turnos abiertos',
+  [BentooBusinessEventType.ShiftClosed]: 'Turnos cerrados',
+  [BentooBusinessEventType.CoordinationOpened]: 'Coordinaciones abiertas',
+  [BentooBusinessEventType.CoordinationCompleted]: 'Coordinaciones resueltas',
+  [BentooBusinessEventType.CoordinationEscalated]: 'Coordinaciones escaladas',
+  [BentooBusinessEventType.HandoffPublished]: 'Traspasos publicados',
+  [BentooBusinessEventType.HandoffAccepted]: 'Traspasos aceptados',
 };
 
 const ATTENTION_TYPES = new Set<BentooBusinessEventType>([
@@ -43,6 +50,7 @@ const ATTENTION_TYPES = new Set<BentooBusinessEventType>([
   BentooBusinessEventType.DailyClosingMissing,
   BentooBusinessEventType.MarketingSkipped,
   BentooBusinessEventType.ReservationPendingConfirmation,
+  BentooBusinessEventType.CoordinationEscalated,
 ]);
 
 const POSITIVE_TYPES = new Set<BentooBusinessEventType>([
@@ -52,6 +60,8 @@ const POSITIVE_TYPES = new Set<BentooBusinessEventType>([
   BentooBusinessEventType.MarketingPublished,
   BentooBusinessEventType.DailyClosingCompleted,
   BentooBusinessEventType.LoyaltyTierUpgraded,
+  BentooBusinessEventType.CoordinationCompleted,
+  BentooBusinessEventType.HandoffAccepted,
 ]);
 
 @Injectable()

@@ -7,6 +7,7 @@ export enum BentooBusinessEventType {
   RestaurantClosed = 'RestaurantClosed',
   OrderCreated = 'OrderCreated',
   OrderDelayed = 'OrderDelayed',
+  OrderReadyStale = 'OrderReadyStale',
   ReservationNoShow = 'ReservationNoShow',
   ReservationConfirmed = 'ReservationConfirmed',
   MenuUpdated = 'MenuUpdated',
@@ -32,6 +33,25 @@ export enum BentooBusinessEventType {
   LoyaltyPointsEarned = 'LoyaltyPointsEarned',
   LoyaltyPointsRedeemed = 'LoyaltyPointsRedeemed',
   LoyaltyTierUpgraded = 'LoyaltyTierUpgraded',
+
+  // Restaurant Operating System — Operations bounded context
+  ShiftOpened = 'ShiftOpened',
+  ShiftClosingStarted = 'ShiftClosingStarted',
+  ShiftClosed = 'ShiftClosed',
+  ShiftLeadAssigned = 'ShiftLeadAssigned',
+  ShiftRosterChanged = 'ShiftRosterChanged',
+  CoordinationOpened = 'CoordinationOpened',
+  CoordinationAcknowledged = 'CoordinationAcknowledged',
+  CoordinationCompleted = 'CoordinationCompleted',
+  CoordinationDeclined = 'CoordinationDeclined',
+  CoordinationEscalated = 'CoordinationEscalated',
+  CoordinationExpired = 'CoordinationExpired',
+  HelpRequested = 'HelpRequested',
+  ApprovalRequested = 'ApprovalRequested',
+  ApprovalResolved = 'ApprovalResolved',
+  HandoffPublished = 'HandoffPublished',
+  HandoffAccepted = 'HandoffAccepted',
+  IntelligenceMovePrepared = 'IntelligenceMovePrepared',
 }
 
 export type BentooBusinessEventTypeName = `${BentooBusinessEventType}`;

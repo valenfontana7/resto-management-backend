@@ -9,6 +9,7 @@ import { ImageProcessingService } from '../common/services/image-processing.serv
 import { DigestPreferencesService } from './digest-preferences.service';
 import { BusinessHealthService } from '../business-health/business-health.service';
 import { BusinessEventDigestService } from '../business-events/business-event-digest.service';
+import { CoordinationDigestService } from '../operations/services/coordination-digest.service';
 
 @Injectable()
 export class DigestSchedulerService {
@@ -22,6 +23,7 @@ export class DigestSchedulerService {
     private readonly preferencesService: DigestPreferencesService,
     private readonly businessHealthService: BusinessHealthService,
     private readonly businessEventDigest: BusinessEventDigestService,
+    private readonly coordinationDigest: CoordinationDigestService,
   ) {}
 
   /**
@@ -170,11 +172,10 @@ export class DigestSchedulerService {
         : null;
 
     const { since, until } = this.resolveEventWindow(frequency);
-    const eventHighlights = await this.businessEventDigest.getHighlights(
-      restaurantId,
-      since,
-      until,
-    );
+    const [eventHighlights, coordinationStats] = await Promise.all([
+      this.businessEventDigest.getHighlights(restaurantId, since, until),
+      this.coordinationDigest.getWindowStats(restaurantId, since, until),
+    ]);
 
     return renderDigestEmail({
       title: this.getSubject(restaurantName, frequency),
@@ -188,6 +189,7 @@ export class DigestSchedulerService {
       restaurantName,
       healthInsights,
       eventHighlights,
+      coordinationStats,
     });
   }
 

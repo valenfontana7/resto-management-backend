@@ -9,6 +9,7 @@ export const DEFAULT_MEMORY_TTL_DAYS: Record<BusinessMemoryCategory, number> = {
   [BusinessMemoryCategory.RECOMMENDATION]: 30,
   [BusinessMemoryCategory.CONFIGURATION]: 30,
   [BusinessMemoryCategory.GROWTH]: 30,
+  [BusinessMemoryCategory.RESOLUTION_PATTERN]: 90,
 };
 
 export function computeDefaultExpiresAt(

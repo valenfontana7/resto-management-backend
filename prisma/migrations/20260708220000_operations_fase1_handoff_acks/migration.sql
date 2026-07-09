@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Handoff" ADD COLUMN IF NOT EXISTS "sectionAcks" JSONB NOT NULL DEFAULT '[]';

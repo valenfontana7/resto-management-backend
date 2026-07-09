@@ -52,6 +52,7 @@ import { BusinessEventDigestService } from './business-event-digest.service';
     BusinessEventDigestService,
   ],
   exports: [
+    BusinessEventBusService,
     BusinessEventPublisherService,
     BusinessEventStoreService,
     MenuBusinessEventsService,

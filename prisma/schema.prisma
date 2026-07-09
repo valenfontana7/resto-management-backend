@@ -97,6 +97,10 @@ model Restaurant {
   intelligenceStates        RestaurantIntelligenceState[]
   rssHistoryEntries         RestaurantRssHistoryEntry[]
   briefingFeedbacks         BriefingFeedback[]
+  operationShifts           OperationShift[]
+  coordinations             Coordination[]
+  handoffs                  Handoff[]
+  operationalEpisodes       OperationalEpisode[]
 
   @@index([slug])
   @@index([status])
@@ -1396,6 +1400,7 @@ enum BusinessMemoryCategory {
   RECOMMENDATION
   CONFIGURATION
   GROWTH
+  RESOLUTION_PATTERN
 }
 
 enum BusinessMemoryStatus {
@@ -2641,6 +2646,187 @@ model BriefingFeedback {
 
   @@unique([restaurantId, preparationId])
   @@index([restaurantId, expiresAt])
+}
+
+// --- Restaurant Operating System (Operations bounded context) ---
+
+enum OperationShiftStatus {
+  PLANNED
+  OPEN
+  CLOSING
+  CLOSED
+  CANCELLED
+}
+
+enum OperationShiftSegment {
+  MORNING
+  AFTERNOON
+  EVENING
+  CUSTOM
+}
+
+enum CoordinationType {
+  TASK
+  HEADS_UP
+  HELP_REQUEST
+  APPROVAL
+  INCIDENT
+}
+
+enum CoordinationStatus {
+  OPEN
+  ACKNOWLEDGED
+  IN_PROGRESS
+  ESCALATED
+  RESOLVED
+  REJECTED
+  EXPIRED
+}
+
+enum CoordinationPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum CoordinationOriginKind {
+  EVENT
+  HUMAN
+  INTELLIGENCE
+}
+
+enum HandoffStatus {
+  DRAFT
+  PUBLISHED
+  ACCEPTED
+  SUPERSEDED
+}
+
+/// Contenedor del turno operativo (ROS). Convive con DailyOperation (1 día → 1..n turnos).
+model OperationShift {
+  id                String                @id @default(cuid())
+  restaurantId      String
+  businessDate      DateTime              @db.Date
+  segment           OperationShiftSegment @default(EVENING)
+  label             String?
+  status            OperationShiftStatus  @default(PLANNED)
+  /// Roster: [{ userId, roleCode, stationId?, responsibilities[], joinedAt, leftAt? }]
+  assignments       Json                  @default("[]")
+  dailyOperationId  String?
+  openedAt          DateTime?
+  openedByUserId    String?
+  closingStartedAt  DateTime?
+  closedAt          DateTime?
+  closedByUserId    String?
+  metadata          Json?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  restaurant        Restaurant            @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  coordinations     Coordination[]
+  handoffsFrom      Handoff[]             @relation("HandoffFromShift")
+  handoffsTo        Handoff[]             @relation("HandoffToShift")
+  episodes          OperationalEpisode[]
+
+  @@index([restaurantId, status])
+  @@index([restaurantId, businessDate])
+  @@index([restaurantId, businessDate, segment])
+}
+
+/// Unidad de trabajo tipada entre personas (TASK, HEADS_UP, APPROVAL, HELP_REQUEST).
+model Coordination {
+  id                    String                 @id @default(cuid())
+  restaurantId          String
+  shiftId               String
+  type                  CoordinationType
+  status                CoordinationStatus     @default(OPEN)
+  priority              CoordinationPriority   @default(NORMAL)
+  title                 String
+  description           String?
+  /// ContextRef: { type, id, label?, deepLink? }
+  contextRef            Json
+  /// CoordinationOrigin: { kind, sourceEventType?, sourceEventId?, preparationId?, createdByUserId? }
+  origin                Json
+  /// Participant[]: [{ targetType, targetId, participantRole, ackRequired, ackedAt?, ackedByUserId? }]
+  participants          Json                   @default("[]")
+  attentionLevel        Int                    @default(1)
+  ackDeadlineAt         DateTime?
+  escalatedAt           DateTime?
+  escalatedToShiftLead  Boolean                @default(false)
+  /// Evidence[] append-only
+  evidence              Json                   @default("[]")
+  /// CoordinationComment[] — solo dentro de coordinación
+  comments              Json                   @default("[]")
+  /// CoordinationResult — obligatorio al cerrar
+  result                Json?
+  /// Idempotencia de policies: (sourceEventId, policyId)
+  policyDedupeKey       String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  restaurant            Restaurant             @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  shift                 OperationShift         @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  episodes              OperationalEpisode[]
+
+  @@unique([restaurantId, policyDedupeKey])
+  @@index([restaurantId, shiftId, status])
+  @@index([restaurantId, status, priority])
+  @@index([shiftId, status])
+  @@index([ackDeadlineAt])
+}
+
+/// Traspaso estructurado entre turnos consecutivos.
+model Handoff {
+  id                          String       @id @default(cuid())
+  restaurantId                String
+  fromShiftId                 String
+  toShiftId                   String?
+  status                      HandoffStatus @default(DRAFT)
+  /// HandoffSection[]: [{ kind, title, payload, requiredAck }]
+  sections                    Json         @default("[]")
+  transferredCoordinationIds  Json         @default("[]")
+  /// [{ kind, ackedAt, byUserId }] — acks de secciones requiredAck al aceptar
+  sectionAcks                 Json         @default("[]")
+  publishedAt                 DateTime?
+  publishedByUserId           String?
+  acceptedAt                  DateTime?
+  acceptedByUserId            String?
+  createdAt                   DateTime     @default(now())
+  updatedAt                   DateTime     @updatedAt
+  restaurant                  Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  fromShift                   OperationShift @relation("HandoffFromShift", fields: [fromShiftId], references: [id], onDelete: Cascade)
+  toShift                     OperationShift? @relation("HandoffToShift", fields: [toShiftId], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId, status])
+  @@index([fromShiftId])
+  @@index([toShiftId])
+}
+
+/// Episode append-only: situación → coordinación → outcome (memoria operativa).
+model OperationalEpisode {
+  id               String       @id @default(cuid())
+  restaurantId     String
+  shiftId          String
+  businessDate     DateTime     @db.Date
+  coordinationId   String?
+  coordinationType String?
+  situationId      String?
+  preparationId    String?
+  /// [{ userId?, role, actions[] }]
+  participants     Json         @default("[]")
+  /// { code, label }?
+  tactic           Json?
+  /// { status, measuredImpact?, timeToResolveSeconds?, wasEscalated }
+  outcome          Json
+  sourceEventIds   Json         @default("[]")
+  createdAt        DateTime     @default(now())
+  closedAt         DateTime?
+  restaurant       Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  shift            OperationShift @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  coordination     Coordination? @relation(fields: [coordinationId], references: [id], onDelete: SetNull)
+
+  @@index([restaurantId, businessDate])
+  @@index([restaurantId, shiftId])
+  @@index([coordinationId])
 }
 
 // --- Lifecycle Marketing Engine (campañas automáticas, consume Decision Engine) ---
