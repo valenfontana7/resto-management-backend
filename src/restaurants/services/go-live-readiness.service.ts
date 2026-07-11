@@ -134,7 +134,12 @@ export class GoLiveReadinessService {
 
   private async resolveEdgeStatus(restaurantId: string) {
     try {
-      return await this.edgeSync.getStatus(restaurantId);
+      const status = await this.edgeSync.getStatus(restaurantId);
+      const { registered, ...edgeStatus } = status;
+      if (!registered) {
+        return null;
+      }
+      return edgeStatus;
     } catch {
       return null;
     }

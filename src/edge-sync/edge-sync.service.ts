@@ -254,7 +254,10 @@ export class EdgeSyncService {
       where: { restaurantId },
     });
     if (!record) {
-      throw new NotFoundException('No edge server registered');
+      return {
+        registered: false as const,
+        restaurantId,
+      };
     }
 
     const staleMinutes = parseEdgeSyncStaleMinutes(
@@ -265,6 +268,7 @@ export class EdgeSyncService {
     const isStale = isEdgeServerStale(record, staleAfterMs);
 
     return {
+      registered: true as const,
       restaurantId,
       localId: record.localId,
       status: record.status,
