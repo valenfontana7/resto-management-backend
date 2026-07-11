@@ -74,6 +74,8 @@ jobs:
     environment: production
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Validate deploy secrets
         run: |
           missing=""
@@ -88,10 +90,9 @@ jobs:
 
       - name: Prepare SSH key
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          if ! ssh-keygen -y -f ~/.ssh/deploy_key >/dev/null 2>&1; then
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > "$GITHUB_WORKSPACE/deploy_key"
+          chmod 600 "$GITHUB_WORKSPACE/deploy_key"
+          if ! ssh-keygen -y -f "$GITHUB_WORKSPACE/deploy_key" >/dev/null 2>&1; then
             echo "::error::VPS_SSH_KEY no es una clave privada valida (revisa saltos de linea y formato PEM/OpenSSH)."
             exit 1
           fi
@@ -104,7 +105,7 @@ jobs:
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
-          key_path: ~/.ssh/deploy_key
+          key_path: /github/workspace/deploy_key
           envs: DOCKERHUB_IMAGE,VPS_APP_PATH
           script_stop: true
           script: |
