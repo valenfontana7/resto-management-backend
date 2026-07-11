@@ -2,6 +2,8 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import {
   OrderSource,
@@ -34,6 +36,7 @@ export class SalonDeliveryOrderService {
     private readonly ownership: OwnershipService,
     private readonly deliveryPricing: DeliveryPricingService,
     private readonly geocodeService: GeocodeService,
+    @Inject(forwardRef(() => OrderNotificationsService))
     private readonly notifications: OrderNotificationsService,
   ) {}
 

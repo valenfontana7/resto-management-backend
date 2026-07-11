@@ -26,6 +26,7 @@ export class OrderNotificationsService {
     private readonly emailService: EmailService,
     private readonly images: ImageProcessingService,
     private readonly ordersGateway: OrdersGateway,
+    @Inject(forwardRef(() => KitchenNotificationsService))
     private readonly kitchenNotifications: KitchenNotificationsService,
     @Inject(forwardRef(() => NotificationsService))
     private readonly notificationsService: NotificationsService,
