@@ -29,7 +29,7 @@ import { EventSpineModule } from '../event-spine/event-spine.module';
     CommonModule,
     forwardRef(() => BusinessHealthModule),
     BusinessEventsModule,
-    EventSpineModule,
+    forwardRef(() => EventSpineModule),
     MercadoPagoModule,
     EmailModule,
     WebsocketModule,
