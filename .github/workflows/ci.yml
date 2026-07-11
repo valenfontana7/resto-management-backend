@@ -56,6 +56,9 @@ jobs:
       - name: Unit tests
         run: npm test -- --testPathIgnorePatterns="mercadopago.controller.spec.ts|customer-engagement.engine.spec.ts|orders.public.spec.ts" --forceExit
 
+      - name: Build
+        run: npm run build
+
       - name: Golden flows E2E
         run: npm run test:e2e:golden -- --runInBand
 
@@ -67,6 +70,3 @@ jobs:
           path: test-results/
           retention-days: 7
           if-no-files-found: ignore
-
-      - name: Build
-        run: npm run build

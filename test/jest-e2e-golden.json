@@ -3,12 +3,13 @@
   "rootDir": "..",
   "testEnvironment": "node",
   "testMatch": ["<rootDir>/test/golden-flows.e2e-spec.ts"],
-  "setupFiles": ["<rootDir>/test/jest-e2e-golden.setup.ts"],
+  "setupFiles": ["reflect-metadata", "<rootDir>/test/jest-e2e-golden.setup.ts"],
   "transform": {
     "^.+\\.(t|j)s$": [
       "ts-jest",
       {
-        "tsconfig": "<rootDir>/tsconfig.json"
+        "tsconfig": "<rootDir>/tsconfig.json",
+        "isolatedModules": false
       }
     ]
   }
