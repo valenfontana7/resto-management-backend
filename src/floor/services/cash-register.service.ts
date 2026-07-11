@@ -2,6 +2,8 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import {
   CashMovementType,
@@ -20,6 +22,8 @@ import {
 import type { CashRegisterCloseReport } from '../types/cash-register-close-report.types';
 import { MainCashRegisterService } from './main-cash-register.service';
 import { FloorAccessService } from './floor-access.service';
+import { OperationalEventEmitter } from '../../event-spine/operational-event-emitter.service';
+import { OPERATIONAL_EVENT_TYPES } from '../../event-spine/operational-event.types';
 
 @Injectable()
 export class CashRegisterService {
@@ -28,6 +32,8 @@ export class CashRegisterService {
     private readonly ownership: OwnershipService,
     private readonly mainCashRegister: MainCashRegisterService,
     private readonly floorAccess: FloorAccessService,
+    @Inject(forwardRef(() => OperationalEventEmitter))
+    private readonly operationalEvents: OperationalEventEmitter,
   ) {}
 
   async getOpenSession(restaurantId: string, userId: string) {
@@ -108,6 +114,18 @@ export class CashRegisterService {
       return created;
     });
 
+    void this.operationalEvents.emit({
+      restaurantId,
+      eventType: OPERATIONAL_EVENT_TYPES.CASH_REGISTER_OPENED,
+      aggregateType: 'cash_register_session',
+      aggregateId: session.id,
+      data: {
+        terminalId: dto.terminalId ?? null,
+        openingFloat,
+        openedByUserId: userId,
+      },
+    });
+
     return { session: await this.formatSession(session.id) };
   }
 
@@ -162,6 +180,20 @@ export class CashRegisterService {
         { partialSessionId: open.id, amount: depositToMain },
       );
     }
+
+    void this.operationalEvents.emit({
+      restaurantId,
+      eventType: OPERATIONAL_EVENT_TYPES.CASH_REGISTER_CLOSED,
+      aggregateType: 'cash_register_session',
+      aggregateId: open.id,
+      data: {
+        countedCash: dto.countedCash,
+        expectedCash: open.expectedCash,
+        difference,
+        depositToMain: depositToMain > 0 ? depositToMain : null,
+        closedByUserId: userId,
+      },
+    });
 
     return {
       session: await this.formatSession(open.id),

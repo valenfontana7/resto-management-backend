@@ -4,6 +4,7 @@ export const OPERATIONAL_EVENT_TYPES = {
   ORDER_STATUS_CHANGED: 'operational.order.status_changed',
   TABLE_SESSION_OPENED: 'operational.table_session.opened',
   TABLE_SESSION_CLOSED: 'operational.table_session.closed',
+  TABLE_SESSION_VOIDED: 'operational.table_session.voided',
   TABLE_SESSION_ITEM_SENT: 'operational.table_session.item_sent',
   CASH_REGISTER_OPENED: 'operational.cash_register.opened',
   CASH_REGISTER_CLOSED: 'operational.cash_register.closed',

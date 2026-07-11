@@ -871,6 +871,19 @@ export class TableSessionService {
       });
     }
 
+    void this.operationalEvents.emit({
+      restaurantId,
+      eventType: OPERATIONAL_EVENT_TYPES.TABLE_SESSION_VOIDED,
+      aggregateType: 'table_session',
+      aggregateId: sessionId,
+      data: {
+        tableId: session.tableId,
+        reason: voidNote,
+        cancelledOrderIds,
+        markTableCleaning: markCleaning,
+      },
+    });
+
     return {
       success: true,
       tableStatus: markCleaning ? 'CLEANING' : 'AVAILABLE',

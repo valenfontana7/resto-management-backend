@@ -21,7 +21,12 @@ export class RealtimeOperationalEventHandler
       eventType === OPERATIONAL_EVENT_TYPES.ORDER_CREATED ||
       eventType === OPERATIONAL_EVENT_TYPES.ORDER_STATUS_CHANGED ||
       eventType === OPERATIONAL_EVENT_TYPES.TABLE_SESSION_OPENED ||
-      eventType === OPERATIONAL_EVENT_TYPES.TABLE_SESSION_CLOSED
+      eventType === OPERATIONAL_EVENT_TYPES.TABLE_SESSION_CLOSED ||
+      eventType === OPERATIONAL_EVENT_TYPES.TABLE_SESSION_VOIDED ||
+      eventType === OPERATIONAL_EVENT_TYPES.TABLE_SESSION_ITEM_SENT ||
+      eventType === OPERATIONAL_EVENT_TYPES.CASH_REGISTER_OPENED ||
+      eventType === OPERATIONAL_EVENT_TYPES.CASH_REGISTER_CLOSED ||
+      eventType === OPERATIONAL_EVENT_TYPES.FISCAL_DOCUMENT_ISSUED
     );
   }
 
@@ -30,10 +35,7 @@ export class RealtimeOperationalEventHandler
     outboxId: string,
   ): Promise<void> {
     void outboxId;
-    const eventName =
-      payload.eventType === OPERATIONAL_EVENT_TYPES.ORDER_CREATED
-        ? 'new-order'
-        : 'order-update';
+    const eventName = this.resolveEventName(payload.eventType);
 
     this.ordersGateway.emitToRestaurant(payload.restaurantId, eventName, {
       ...payload.data,
@@ -42,5 +44,25 @@ export class RealtimeOperationalEventHandler
     });
 
     this.logger.debug(`WS ${eventName} → restaurant ${payload.restaurantId}`);
+  }
+
+  private resolveEventName(eventType: OperationalEventType): string {
+    switch (eventType) {
+      case OPERATIONAL_EVENT_TYPES.ORDER_CREATED:
+        return 'new-order';
+      case OPERATIONAL_EVENT_TYPES.ORDER_STATUS_CHANGED:
+      case OPERATIONAL_EVENT_TYPES.TABLE_SESSION_OPENED:
+      case OPERATIONAL_EVENT_TYPES.TABLE_SESSION_CLOSED:
+      case OPERATIONAL_EVENT_TYPES.TABLE_SESSION_VOIDED:
+      case OPERATIONAL_EVENT_TYPES.TABLE_SESSION_ITEM_SENT:
+      case OPERATIONAL_EVENT_TYPES.CASH_REGISTER_OPENED:
+      case OPERATIONAL_EVENT_TYPES.CASH_REGISTER_CLOSED:
+      case OPERATIONAL_EVENT_TYPES.FISCAL_DOCUMENT_ISSUED:
+        return 'order-update';
+      default: {
+        const _exhaustive: never = eventType;
+        return _exhaustive;
+      }
+    }
   }
 }
