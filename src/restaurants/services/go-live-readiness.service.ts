@@ -132,14 +132,29 @@ export class GoLiveReadinessService {
     }
   }
 
-  private async resolveEdgeStatus(restaurantId: string) {
+  private async resolveEdgeStatus(
+    restaurantId: string,
+  ): Promise<GoLiveReadinessResponse['edgeStatus']> {
     try {
       const status = await this.edgeSync.getStatus(restaurantId);
-      const { registered, ...edgeStatus } = status;
-      if (!registered) {
+      if (!status.registered) {
         return null;
       }
-      return edgeStatus;
+      return {
+        restaurantId: status.restaurantId,
+        localId: status.localId,
+        status: status.status,
+        hostname: status.hostname,
+        version: status.version,
+        lastHeartbeatAt: status.lastHeartbeatAt,
+        lastLanUrl: status.lastLanUrl,
+        lastSyncPullAt: status.lastSyncPullAt,
+        lastSyncPushAt: status.lastSyncPushAt,
+        pendingPushCount: status.pendingPushCount,
+        lastActivityAt: status.lastActivityAt,
+        staleThresholdMinutes: status.staleThresholdMinutes,
+        isStale: status.isStale,
+      };
     } catch {
       return null;
     }
