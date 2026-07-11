@@ -3,6 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -58,6 +60,7 @@ export class OrdersService {
     private readonly inventoryConsumption: InventoryConsumptionService,
     private readonly businessEvents: BusinessEventPublisherService,
     private readonly paymentEvents: PaymentBusinessEventsService,
+    @Inject(forwardRef(() => OperationalEventEmitter))
     private readonly operationalEvents: OperationalEventEmitter,
   ) {}
 

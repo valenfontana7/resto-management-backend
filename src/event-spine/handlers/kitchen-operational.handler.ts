@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { KitchenNotificationsService } from '../../kitchen/kitchen-notifications.service';
 import {
   OPERATIONAL_EVENT_TYPES,
@@ -13,6 +13,7 @@ export class KitchenOperationalEventHandler implements OperationalEventHandler {
   private readonly logger = new Logger(KitchenOperationalEventHandler.name);
 
   constructor(
+    @Inject(forwardRef(() => KitchenNotificationsService))
     private readonly kitchenNotifications: KitchenNotificationsService,
   ) {}
 
