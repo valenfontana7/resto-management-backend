@@ -1,6 +1,7 @@
 import * as bcrypt from 'bcrypt';
 import type { PrismaService } from '../../src/prisma/prisma.service';
-import { migrateRestaurantSystemRoles } from '../../src/common/utils/migrate-system-roles.util';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { migrateRestaurantSystemRoles } = require('../../dist/common/utils/migrate-system-roles.util') as typeof import('../../src/common/utils/migrate-system-roles.util');
 import type { TenancyTestUser } from './tenancy.helper';
 import request from 'supertest';
 import type { App } from 'supertest/types';
