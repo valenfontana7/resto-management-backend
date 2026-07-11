@@ -57,7 +57,7 @@ jobs:
         run: npm test -- --testPathIgnorePatterns="mercadopago.controller.spec.ts|customer-engagement.engine.spec.ts|orders.public.spec.ts" --forceExit
 
       - name: Golden flows E2E
-        run: npm run test:e2e:golden
+        run: npm run test:e2e:golden -- --runInBand
 
       - name: Upload golden failure logs
         if: failure()

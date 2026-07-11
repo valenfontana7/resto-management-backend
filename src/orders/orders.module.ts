@@ -30,7 +30,7 @@ import { EventSpineModule } from '../event-spine/event-spine.module';
     forwardRef(() => BusinessHealthModule),
     BusinessEventsModule,
     forwardRef(() => EventSpineModule),
-    MercadoPagoModule,
+    forwardRef(() => MercadoPagoModule),
     EmailModule,
     WebsocketModule,
     forwardRef(() => KitchenModule),
@@ -38,7 +38,7 @@ import { EventSpineModule } from '../event-spine/event-spine.module';
     CouponsModule,
     forwardRef(() => DeliveryModule),
     CustomersModule,
-    LoyaltyModule,
+    forwardRef(() => LoyaltyModule),
   ],
   controllers: [OrdersController, PublicOrdersController],
   providers: [

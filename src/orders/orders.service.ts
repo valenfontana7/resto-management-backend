@@ -45,6 +45,7 @@ export class OrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
+    @Inject(forwardRef(() => MercadoPagoService))
     private readonly mercadopagoService: MercadoPagoService,
     private readonly configService: ConfigService,
     private readonly notifications: OrderNotificationsService,
@@ -59,6 +60,7 @@ export class OrdersService {
     private readonly deliveryService: DeliveryService,
     @Inject(forwardRef(() => GeocodeService))
     private readonly geocodeService: GeocodeService,
+    @Inject(forwardRef(() => LoyaltyService))
     private readonly loyaltyService: LoyaltyService,
     private readonly customersService: CustomersService,
     @Inject(forwardRef(() => InventoryConsumptionService))
