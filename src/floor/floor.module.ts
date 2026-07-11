@@ -36,7 +36,7 @@ import { EdgeSyncLocalModule } from '../edge-sync/edge-sync-local.module';
     BusinessEventsModule,
     forwardRef(() => EventSpineModule),
     EdgeSyncLocalModule,
-    KitchenModule,
+    forwardRef(() => KitchenModule),
     FiscalModule,
     DeliveryModule,
     TablesModule,

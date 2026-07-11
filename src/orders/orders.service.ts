@@ -48,6 +48,7 @@ export class OrdersService {
     @Inject(forwardRef(() => MercadoPagoService))
     private readonly mercadopagoService: MercadoPagoService,
     private readonly configService: ConfigService,
+    @Inject(forwardRef(() => OrderNotificationsService))
     private readonly notifications: OrderNotificationsService,
     private readonly analytics: OrderAnalyticsService,
     private readonly couponsService: CouponsService,

@@ -7,6 +7,9 @@ import { OrdersGateway } from '../websocket/orders.gateway';
 import { TableSessionService } from '../floor/services/table-session.service';
 import { EdgeSyncPushApplyService } from '../edge-sync/edge-sync-push-apply.service';
 import { TenantHealthService } from '../tenant-health/tenant-health.service';
+import { DeliveryService } from '../delivery/delivery.service';
+import { OrdersService } from '../orders/orders.service';
+import { OrderNotificationsService } from '../orders/services/order-notifications.service';
 
 /**
  * Detecta imports circulares que dejan clases undefined en Linux CI
@@ -23,6 +26,9 @@ describe('DI import sanity', () => {
     TableSessionService,
     EdgeSyncPushApplyService,
     TenantHealthService,
+    DeliveryService,
+    OrdersService,
+    OrderNotificationsService,
   };
 
   it.each(Object.entries(tokens))(

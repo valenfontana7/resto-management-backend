@@ -60,6 +60,7 @@ export class TableSessionService {
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
     private readonly discounts: FloorDiscountService,
+    @Inject(forwardRef(() => KitchenNotificationsService))
     private readonly kitchenNotifications: KitchenNotificationsService,
     @Inject(forwardRef(() => OrderNotificationsService))
     private readonly orderNotifications: OrderNotificationsService,

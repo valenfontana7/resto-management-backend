@@ -1,12 +1,11 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import request from 'supertest';
+import { NestFactory } from '@nestjs/core';
 import { App } from 'supertest/types';
 // Compilado con `nest build` antes de golden (CI y local).
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { AppModule } = require('../dist/app.module') as typeof import('../src/app.module');
+const { AppModule } = require('../dist/app.module');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { PrismaService } = require('../dist/prisma/prisma.service') as typeof import('../src/prisma/prisma.service');
+const { PrismaService } = require('../dist/prisma/prisma.service');
 import {
   GOLDEN_FLOWS_ENABLED,
   E2E_INVENTORY_RECIPE_QTY_PER_DISH,
@@ -19,7 +18,7 @@ import {
   type E2EGoldenFixture,
 } from './helpers/e2e-seed.helper';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { InventoryConsumptionService } = require('../dist/business-health/inventory-consumption.service') as typeof import('../src/business-health/inventory-consumption.service');
+const { InventoryConsumptionService } = require('../dist/business-health/inventory-consumption.service');
 
 /**
  * Flujos dorados — auth boundaries siempre; flujos reales con DB cuando
@@ -31,11 +30,7 @@ describe('Golden flows (e2e)', () => {
   let fixture: E2EGoldenFixture | null = null;
 
   beforeAll(async () => {
-    const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication();
+    app = await NestFactory.create(AppModule, { logger: false });
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
