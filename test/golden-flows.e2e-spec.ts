@@ -2,8 +2,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { AppModule } from '../dist/app.module';
-import { PrismaService } from '../dist/prisma/prisma.service';
+// Compilado con `nest build` antes de golden (CI y local).
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { AppModule } = require('../dist/app.module') as typeof import('../src/app.module');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { PrismaService } = require('../dist/prisma/prisma.service') as typeof import('../src/prisma/prisma.service');
 import {
   GOLDEN_FLOWS_ENABLED,
   E2E_INVENTORY_RECIPE_QTY_PER_DISH,
@@ -15,7 +18,8 @@ import {
   waitForOrderInventoryDeduction,
   type E2EGoldenFixture,
 } from './helpers/e2e-seed.helper';
-import { InventoryConsumptionService } from '../dist/business-health/inventory-consumption.service';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { InventoryConsumptionService } = require('../dist/business-health/inventory-consumption.service') as typeof import('../src/business-health/inventory-consumption.service');
 
 /**
  * Flujos dorados — auth boundaries siempre; flujos reales con DB cuando
