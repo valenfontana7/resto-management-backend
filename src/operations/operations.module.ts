@@ -58,6 +58,7 @@ import { OperationalRoutineService } from './services/operational-routine.servic
     CoordinationService,
     HandoffService,
     LineProjectionService,
+    EpisodeLoggingService,
     StationsService,
     EscalationConfigService,
     CoordinationDigestService,

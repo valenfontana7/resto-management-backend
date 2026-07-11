@@ -292,4 +292,17 @@ export class OrdersGateway implements OnGatewayConnection, OnGatewayDisconnect {
       timestamp: new Date().toISOString(),
     });
   }
+
+  /** Emite evento genérico del operational spine a la sala del restaurante */
+  emitToRestaurant(
+    restaurantId: string,
+    eventName: string,
+    payload: Record<string, unknown>,
+  ): void {
+    this.server.to(`restaurant:${restaurantId}`).emit(eventName, {
+      restaurantId,
+      ...payload,
+      timestamp: new Date().toISOString(),
+    });
+  }
 }

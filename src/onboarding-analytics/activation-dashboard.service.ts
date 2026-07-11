@@ -9,6 +9,16 @@ import {
   buildTopFrictions,
   computePeriodDelta,
 } from './activation-dashboard.utils';
+import {
+  buildOrderIncidentSummary,
+  CRITICAL_INCIDENT_KIND_LABELS,
+  type CriticalIncidentBreakdown,
+  type CriticalIncidentRow,
+  formatIncidentAmountCents,
+  mergeRecentCriticalIncidents,
+  resolveOrderIncidentKind,
+  sumCriticalIncidentBreakdown,
+} from './critical-incidents.utils';
 
 const STEP_LABELS: Record<string, string> = {
   register_started: 'Registro iniciado',
@@ -54,7 +64,7 @@ export class ActivationDashboardService {
       ttvMetrics,
       onlinePaymentWeek1,
       retention,
-      criticalIncidents,
+      criticalIncidentsMetrics,
       trialPaymentIntent,
     ] = await Promise.all([
       this.countRestaurantsRegistered(since),
@@ -71,7 +81,7 @@ export class ActivationDashboardService {
       this.getTtvMetrics(since),
       this.getOnlinePaymentActiveWeek1Rate(since),
       this.onboardingAnalytics.getRetentionCohorts(Math.min(safeDays, 60)),
-      this.countCriticalIncidents(since),
+      this.getCriticalIncidentsMetrics(since),
       this.getTrialPaymentIntentRate(since),
     ]);
 
@@ -132,10 +142,12 @@ export class ActivationDashboardService {
         onlinePaymentActiveWeek1Sample: onlinePaymentWeek1.sampleSize,
         averageD30Rate: retention.averageD30Rate,
         sampleUsersD30: retention.sampleUsersD30,
-        criticalIncidents: criticalIncidents.value,
+        criticalIncidents: criticalIncidentsMetrics.total,
         trialPaymentMethodRate: trialPaymentIntent.rate,
         trialPaymentMethodSample: trialPaymentIntent.sampleSize,
       },
+      criticalIncidentsBreakdown: criticalIncidentsMetrics.breakdown,
+      recentCriticalIncidents: criticalIncidentsMetrics.recent,
       conversion: {
         registeredToPublished,
         publishedToCharge,
@@ -521,14 +533,30 @@ export class ActivationDashboardService {
     };
   }
 
-  private async countCriticalIncidents(
-    since: Date,
-  ): Promise<{ value: number }> {
-    const [failedPayments, cancelledOrders] = await Promise.all([
+  private async getCriticalIncidentsMetrics(since: Date): Promise<{
+    total: number;
+    breakdown: CriticalIncidentBreakdown;
+    recent: CriticalIncidentRow[];
+  }> {
+    const [
+      paymentFailed,
+      paymentRefunded,
+      orderCancelledPaid,
+      fiscalRejected,
+      checkoutFailed,
+      menuAutoDisabled,
+      recent,
+    ] = await Promise.all([
       this.prisma.order.count({
         where: {
           createdAt: { gte: since },
-          paymentStatus: { in: ['FAILED', 'REFUNDED'] },
+          paymentStatus: 'FAILED',
+        },
+      }),
+      this.prisma.order.count({
+        where: {
+          createdAt: { gte: since },
+          paymentStatus: 'REFUNDED',
         },
       }),
       this.prisma.order.count({
@@ -538,8 +566,170 @@ export class ActivationDashboardService {
           paymentStatus: 'PAID',
         },
       }),
+      this.prisma.fiscalDocument.count({
+        where: {
+          updatedAt: { gte: since },
+          status: 'REJECTED',
+        },
+      }),
+      this.prisma.checkoutSession.count({
+        where: {
+          updatedAt: { gte: since },
+          paymentStatus: 'FAILED',
+        },
+      }),
+      this.prisma.dish.count({
+        where: {
+          updatedAt: { gte: since },
+          autoDisabledByStock: true,
+          deletedAt: null,
+        },
+      }),
+      this.listRecentCriticalIncidents(since, 12),
     ]);
 
-    return { value: failedPayments + cancelledOrders };
+    const breakdown: CriticalIncidentBreakdown = {
+      paymentFailed,
+      paymentRefunded,
+      orderCancelledPaid,
+      fiscalRejected,
+      checkoutFailed,
+      menuAutoDisabled,
+    };
+
+    return {
+      total: sumCriticalIncidentBreakdown(breakdown),
+      breakdown,
+      recent,
+    };
+  }
+
+  private async listRecentCriticalIncidents(
+    since: Date,
+    limit: number,
+  ): Promise<CriticalIncidentRow[]> {
+    const perSource = Math.max(4, Math.ceil(limit / 3));
+
+    const [orders, fiscalDocuments, checkoutSessions, dishes] =
+      await Promise.all([
+        this.prisma.order.findMany({
+          where: {
+            createdAt: { gte: since },
+            OR: [
+              { paymentStatus: 'FAILED' },
+              { paymentStatus: 'REFUNDED' },
+              { status: 'CANCELLED', paymentStatus: 'PAID' },
+            ],
+          },
+          orderBy: { createdAt: 'desc' },
+          take: perSource,
+          select: {
+            id: true,
+            orderNumber: true,
+            paymentStatus: true,
+            status: true,
+            total: true,
+            createdAt: true,
+            restaurantId: true,
+            restaurant: { select: { name: true, slug: true } },
+          },
+        }),
+        this.prisma.fiscalDocument.findMany({
+          where: {
+            updatedAt: { gte: since },
+            status: 'REJECTED',
+          },
+          orderBy: { updatedAt: 'desc' },
+          take: perSource,
+          select: {
+            id: true,
+            type: true,
+            total: true,
+            updatedAt: true,
+            restaurantId: true,
+            restaurant: { select: { name: true, slug: true } },
+          },
+        }),
+        this.prisma.checkoutSession.findMany({
+          where: {
+            updatedAt: { gte: since },
+            paymentStatus: 'FAILED',
+          },
+          orderBy: { updatedAt: 'desc' },
+          take: perSource,
+          select: {
+            id: true,
+            orderNumber: true,
+            total: true,
+            updatedAt: true,
+            restaurantId: true,
+            restaurant: { select: { name: true, slug: true } },
+          },
+        }),
+        this.prisma.dish.findMany({
+          where: {
+            updatedAt: { gte: since },
+            autoDisabledByStock: true,
+            deletedAt: null,
+          },
+          orderBy: { updatedAt: 'desc' },
+          take: perSource,
+          select: {
+            id: true,
+            name: true,
+            updatedAt: true,
+            restaurantId: true,
+            restaurant: { select: { name: true, slug: true } },
+          },
+        }),
+      ]);
+
+    const rows: CriticalIncidentRow[] = [
+      ...orders.map((order) => {
+        const kind = resolveOrderIncidentKind(order);
+        return {
+          id: `order-${order.id}`,
+          kind,
+          label: CRITICAL_INCIDENT_KIND_LABELS[kind],
+          summary: buildOrderIncidentSummary(order),
+          occurredAt: order.createdAt.toISOString(),
+          restaurantId: order.restaurantId,
+          restaurantName: order.restaurant.name,
+          restaurantSlug: order.restaurant.slug,
+        };
+      }),
+      ...fiscalDocuments.map((doc) => ({
+        id: `fiscal-${doc.id}`,
+        kind: 'fiscal_rejected' as const,
+        label: CRITICAL_INCIDENT_KIND_LABELS.fiscal_rejected,
+        summary: `${doc.type.replaceAll('_', ' ')} · ${formatIncidentAmountCents(doc.total)}`,
+        occurredAt: doc.updatedAt.toISOString(),
+        restaurantId: doc.restaurantId,
+        restaurantName: doc.restaurant.name,
+        restaurantSlug: doc.restaurant.slug,
+      })),
+      ...checkoutSessions.map((session) => ({
+        id: `checkout-${session.id}`,
+        kind: 'checkout_failed' as const,
+        label: CRITICAL_INCIDENT_KIND_LABELS.checkout_failed,
+        summary: `Checkout ${session.orderNumber} · ${formatIncidentAmountCents(session.total)}`,
+        occurredAt: session.updatedAt.toISOString(),
+        restaurantId: session.restaurantId,
+        restaurantName: session.restaurant.name,
+        restaurantSlug: session.restaurant.slug,
+      })),
+      ...dishes.map((dish) => ({
+        id: `dish-${dish.id}`,
+        kind: 'menu_auto_disabled' as const,
+        label: CRITICAL_INCIDENT_KIND_LABELS.menu_auto_disabled,
+        summary: dish.name,
+        occurredAt: dish.updatedAt.toISOString(),
+        restaurantId: dish.restaurantId,
+        restaurantName: dish.restaurant.name,
+        restaurantSlug: dish.restaurant.slug,
+      })),
+    ];
+
+    return mergeRecentCriticalIncidents(rows, limit);
   }
 }

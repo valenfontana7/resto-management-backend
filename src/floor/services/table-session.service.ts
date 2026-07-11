@@ -28,6 +28,8 @@ import { CashRegisterService } from './cash-register.service';
 import { FiscalDocumentService } from './fiscal-document.service';
 import { InventoryConsumptionService } from '../../business-health/inventory-consumption.service';
 import { FloorAccessService } from './floor-access.service';
+import { OperationalEventEmitter } from '../../event-spine/operational-event-emitter.service';
+import { OPERATIONAL_EVENT_TYPES } from '../../event-spine/operational-event.types';
 import {
   AddSessionItemsDto,
   CloseTableSessionDto,
@@ -62,6 +64,7 @@ export class TableSessionService {
     private readonly fiscalDocuments: FiscalDocumentService,
     private readonly inventoryConsumption: InventoryConsumptionService,
     private readonly floorAccess: FloorAccessService,
+    private readonly operationalEvents: OperationalEventEmitter,
   ) {}
 
   async listActive(restaurantId: string, userId: string) {
@@ -135,6 +138,18 @@ export class TableSessionService {
       });
 
       return created;
+    });
+
+    void this.operationalEvents.emit({
+      restaurantId,
+      eventType: OPERATIONAL_EVENT_TYPES.TABLE_SESSION_OPENED,
+      aggregateType: 'table_session',
+      aggregateId: session.id,
+      data: {
+        tableId: dto.tableId,
+        sessionNumber,
+        waiterId: userId,
+      },
     });
 
     return { session: this.formatSession(session) };
@@ -345,14 +360,29 @@ export class TableSessionService {
       OrderStatusDto.PREPARING,
     );
 
-    this.kitchenNotifications.emitNotification(restaurantId, {
-      type: 'order_created',
-      orderId: comandaOrder.id,
+    void this.operationalEvents.emit({
+      restaurantId,
+      eventType: OPERATIONAL_EVENT_TYPES.ORDER_CREATED,
+      aggregateType: 'order',
+      aggregateId: comandaOrder.id,
       data: {
+        orderId: comandaOrder.id,
         source: 'floor',
         sessionId,
         sessionNumber: session.sessionNumber,
         tableNumber: tableLabel,
+        roundNumber,
+      },
+    });
+
+    void this.operationalEvents.emit({
+      restaurantId,
+      eventType: OPERATIONAL_EVENT_TYPES.TABLE_SESSION_ITEM_SENT,
+      aggregateType: 'table_session',
+      aggregateId: sessionId,
+      data: {
+        orderId: comandaOrder.id,
+        itemIds: pendingItems.map((item) => item.id),
         roundNumber,
       },
     });
@@ -659,6 +689,35 @@ export class TableSessionService {
     const remainingUnpaid = this.getUnpaidItems(result.session).filter(
       (i) => !i.paidInOrderId,
     );
+
+    if (!result.partial) {
+      void this.operationalEvents.emit({
+        restaurantId,
+        eventType: OPERATIONAL_EVENT_TYPES.TABLE_SESSION_CLOSED,
+        aggregateType: 'table_session',
+        aggregateId: sessionId,
+        data: {
+          orderId: result.paymentOrder.id,
+          total,
+          paymentMethod,
+          isPartial: false,
+        },
+      });
+    }
+
+    if (fiscalDocument) {
+      void this.operationalEvents.emit({
+        restaurantId,
+        eventType: OPERATIONAL_EVENT_TYPES.FISCAL_DOCUMENT_ISSUED,
+        aggregateType: 'fiscal_document',
+        aggregateId: fiscalDocument.id,
+        data: {
+          sessionId,
+          orderId: result.paymentOrder.id,
+          type: dto.fiscalDocumentType,
+        },
+      });
+    }
 
     return {
       session: this.formatSession(result.session),

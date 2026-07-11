@@ -69,6 +69,11 @@ import { LocalDiscoveryModule } from './local-discovery/local-discovery.module';
 import { EdgeSyncModule } from './edge-sync/edge-sync.module';
 import { SalonDesktopModule } from './salon-desktop/salon-desktop.module';
 import { RedisModule } from './common/redis/redis.module';
+import { EventSpineModule } from './event-spine/event-spine.module';
+import { OperationalBrainModule } from './operational-brain/operational-brain.module';
+import { TenantHealthModule } from './tenant-health/tenant-health.module';
+import { TeamOnboardingModule } from './team-onboarding/team-onboarding.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 import { createKeyv } from '@keyv/redis';
 import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage';
 
@@ -184,6 +189,11 @@ import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage';
     MarketingHubModule,
     EdgeSyncModule,
     SalonDesktopModule,
+    EventSpineModule,
+    OperationalBrainModule,
+    TenantHealthModule,
+    TeamOnboardingModule,
+    OrganizationsModule,
     ...(isLocalMode() ? [LocalDiscoveryModule] : []),
   ],
   controllers: [AppController],

@@ -995,7 +995,8 @@ export class SubscriptionsService {
 
       await this.syncOwnedRestaurantFeatures(restaurantId, newPlan);
 
-      message = `Plan actualizado. El cambio se aplicará al final del período actual (${format(subscription.currentPeriodEnd, "d 'de' MMMM", { locale: es })}). Algunas funcionalidades han sido deshabilitadas según tu nuevo plan.`;
+      message =
+        'Plan actualizado. El cambio se aplicó de inmediato; algunas funcionalidades se ajustaron según tu nuevo plan.';
     }
 
     const updatedSubscription = await this.prisma.subscription.findUnique({

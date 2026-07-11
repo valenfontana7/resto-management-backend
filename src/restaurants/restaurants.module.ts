@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { RestaurantsController } from './restaurants.controller';
 import { RestaurantsPublicController } from './restaurants-public.controller';
 import { BranchesController } from './branches.controller';
@@ -28,7 +28,7 @@ import { DemoExamplesModule } from '../demo-examples/demo-examples.module';
     NotificationsModule,
     SubscriptionsModule,
     MercadoPagoModule,
-    EdgeSyncModule,
+    forwardRef(() => EdgeSyncModule),
     GoLiveEnforcementModule,
     DemoExamplesModule,
   ],

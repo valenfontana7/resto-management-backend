@@ -129,6 +129,13 @@ export class ShiftService {
       ] as ShiftAssignment['responsibilities'];
     }
 
+    if (dailyOp && !dailyOp.openingCompletedAt) {
+      await this.prisma.dailyOperation.update({
+        where: { id: dailyOp.id },
+        data: { openingCompletedAt: new Date() },
+      });
+    }
+
     const shift = await this.prisma.operationShift.create({
       data: {
         restaurantId,

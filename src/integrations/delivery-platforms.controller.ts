@@ -28,8 +28,8 @@ export class DeliveryPlatformsController {
   @Get()
   async list(@Param('restaurantId') restaurantId: string, @Request() req) {
     await this.ownership.verifyUserBelongsToRestaurant(
-      req.user.userId,
       restaurantId,
+      req.user.userId,
     );
     return this.platformsService.list(restaurantId);
   }
@@ -41,8 +41,8 @@ export class DeliveryPlatformsController {
     @Request() req,
   ) {
     await this.ownership.verifyUserBelongsToRestaurant(
-      req.user.userId,
       restaurantId,
+      req.user.userId,
     );
     return this.platformsService.create(restaurantId, dto);
   }
@@ -55,8 +55,8 @@ export class DeliveryPlatformsController {
     @Request() req,
   ) {
     await this.ownership.verifyUserBelongsToRestaurant(
-      req.user.userId,
       restaurantId,
+      req.user.userId,
     );
     return this.platformsService.update(restaurantId, platformId, dto);
   }
@@ -68,8 +68,8 @@ export class DeliveryPlatformsController {
     @Request() req,
   ) {
     await this.ownership.verifyUserBelongsToRestaurant(
-      req.user.userId,
       restaurantId,
+      req.user.userId,
     );
     return this.platformsService.toggle(restaurantId, platformId);
   }
@@ -81,8 +81,8 @@ export class DeliveryPlatformsController {
     @Request() req,
   ) {
     await this.ownership.verifyUserBelongsToRestaurant(
-      req.user.userId,
       restaurantId,
+      req.user.userId,
     );
     return this.platformsService.regenerateWebhookSecret(
       restaurantId,
@@ -97,8 +97,8 @@ export class DeliveryPlatformsController {
     @Request() req,
   ) {
     await this.ownership.verifyUserBelongsToRestaurant(
-      req.user.userId,
       restaurantId,
+      req.user.userId,
     );
     return this.platformsService.delete(restaurantId, platformId);
   }

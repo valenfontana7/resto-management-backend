@@ -27,12 +27,16 @@ import {
   pullMenuStream,
   pullTablesStream,
 } from './edge-sync-pull.util';
+import { EdgeSyncPushApplyService } from './edge-sync-push-apply.service';
 
 @Injectable()
 export class EdgeSyncService {
   private readonly logger = new Logger(EdgeSyncService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly pushApply: EdgeSyncPushApplyService,
+  ) {}
 
   async registerLocalServer(
     restaurantId: string,
@@ -215,51 +219,25 @@ export class EdgeSyncService {
     const rejected: { clientMutationId: string; reason: string }[] = [];
 
     for (const mutation of dto.mutations ?? []) {
-      if (!mutation.clientMutationId?.trim()) {
-        rejected.push({
-          clientMutationId: mutation.clientMutationId ?? '',
-          reason: 'missing_clientMutationId',
-        });
+      const result = await this.pushApply.applyMutation(restaurantId, mutation);
+      const mutationId = mutation.clientMutationId?.trim() ?? '';
+
+      if (result.ok) {
+        if (mutationId) accepted.push(mutationId);
         continue;
       }
 
-      const entityType = mutation.entityType?.trim();
-      if (entityType === 'table_session.close') {
-        const rawSessionId = mutation.payload?.sessionId;
-        const sessionId =
-          typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
-        if (!sessionId) {
-          rejected.push({
-            clientMutationId: mutation.clientMutationId,
-            reason: 'missing_sessionId',
-          });
-          continue;
-        }
-        const session = await this.prisma.tableSession.findFirst({
-          where: { id: sessionId, restaurantId },
-          select: { id: true, status: true },
-        });
-        if (!session) {
-          rejected.push({
-            clientMutationId: mutation.clientMutationId,
-            reason: 'session_not_found',
-          });
-          continue;
-        }
-        if (session.status === 'CLOSED') {
-          accepted.push(mutation.clientMutationId.trim());
-          continue;
-        }
-      }
-
-      accepted.push(mutation.clientMutationId.trim());
+      rejected.push({
+        clientMutationId: mutationId,
+        reason: result.reason,
+      });
     }
 
     await this.prisma.edgeLocalServer.update({
       where: { restaurantId },
       data: {
         lastSyncPushAt: new Date(),
-        pendingPushCount: Math.max(0, rejected.length),
+        pendingPushCount: rejected.length,
         status: EdgeLocalServerStatus.ACTIVE,
       },
     });

@@ -4,14 +4,24 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  BundleValidationError,
+  ProspectImporterService,
+} from '../prospect-importer/prospect-importer.service';
+import type { ImportReport, ProspectBundle } from '../prospect-importer/types';
 import { CreateDemoExampleDto } from './dto/create-demo-example.dto';
 import { UpdateDemoExampleDto } from './dto/update-demo-example.dto';
 
 @Injectable()
 export class DemoExamplesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly prospectImporter: ProspectImporterService,
+    private readonly config: ConfigService,
+  ) {}
 
   async findPublic() {
     const [totalPublic, data] = await this.prisma.$transaction([
@@ -251,5 +261,108 @@ export class DemoExamplesService {
     } catch {
       // El CRUD del demo no debe fallar si el audit log no pudo escribirse.
     }
+  }
+
+  assertProspectBundle(bundle: unknown): asserts bundle is ProspectBundle {
+    if (!bundle || typeof bundle !== 'object') {
+      throw new BundleValidationError(['El bundle debe ser un objeto JSON.']);
+    }
+    const candidate = bundle as ProspectBundle;
+    if (!candidate.schemaVersion) {
+      throw new BundleValidationError([
+        'Falta schemaVersion (se espera prospect bundle v1.0).',
+      ]);
+    }
+  }
+
+  async importProspectBundle(
+    bundleInput: ProspectBundle,
+    options: {
+      dryRun?: boolean;
+      importedBy?: string;
+      leadId?: string;
+    } = {},
+  ): Promise<ImportReport & { demoType: 'prospect-package' }> {
+    const bundle: ProspectBundle = options.leadId
+      ? {
+          ...bundleInput,
+          prospect: {
+            ...bundleInput.prospect,
+            leadId: options.leadId,
+          },
+        }
+      : bundleInput;
+
+    const report = await this.prospectImporter.importBundle(bundle, {
+      dryRun: options.dryRun ?? false,
+      frontendUrl: this.resolveFrontendUrl(),
+      importedBy: options.importedBy ?? 'master-prospect-import',
+    });
+
+    if (!options.dryRun && report.restaurantId) {
+      await this.stampProspectImportMetadata(
+        report.restaurantId,
+        report,
+        options.importedBy,
+      );
+
+      if (options.leadId) {
+        await this.prisma.lead.update({
+          where: { id: options.leadId },
+          data: { demoExampleSlug: report.slug },
+        });
+      }
+
+      await this.writeAuditLog(
+        options.importedBy,
+        'demo.prospect_bundle.import',
+        {
+          slug: report.slug,
+          created: report.created,
+          leadId: options.leadId ?? null,
+          counts: report.counts,
+        },
+      );
+    }
+
+    return { ...report, demoType: 'prospect-package' };
+  }
+
+  private async stampProspectImportMetadata(
+    demoExampleId: string,
+    report: ImportReport,
+    importedBy?: string,
+  ) {
+    const record = await this.prisma.demoExample.findUniqueOrThrow({
+      where: { id: demoExampleId },
+      select: { payload: true },
+    });
+    const payload = (record.payload as Record<string, unknown>) ?? {};
+    const importMeta = {
+      importedAt: new Date().toISOString(),
+      importedBy,
+      created: report.created,
+      counts: report.counts,
+      warnings: report.warnings,
+      durationMs: report.durationMs,
+    };
+
+    await this.prisma.demoExample.update({
+      where: { id: demoExampleId },
+      data: {
+        payload: {
+          ...payload,
+          _prospectPackageImport: importMeta,
+        } as unknown as Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  private resolveFrontendUrl(): string {
+    return (
+      this.config.get<string>('FRONTEND_URL') ??
+      process.env.FRONTEND_URL ??
+      'http://localhost:3000'
+    ).replace(/\/$/, '');
   }
 }

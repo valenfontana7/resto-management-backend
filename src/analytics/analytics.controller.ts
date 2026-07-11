@@ -10,6 +10,7 @@ import {
 import type { Response } from 'express';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsPdfService } from './analytics-pdf.service';
+import { DecisionAnalyticsService } from './decision-analytics.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/strategies/jwt.strategy';
@@ -22,6 +23,7 @@ export class AnalyticsController {
   constructor(
     private readonly analyticsService: AnalyticsService,
     private readonly pdfService: AnalyticsPdfService,
+    private readonly decisionAnalytics: DecisionAnalyticsService,
     private readonly ownership: OwnershipService,
   ) {}
 
@@ -259,5 +261,33 @@ export class AnalyticsController {
       'Content-Length': buffer.length,
     });
     res.end(buffer);
+  }
+
+  @Get('restaurant/:restaurantId/menu-engineering')
+  async getMenuEngineering(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Query('days') days?: string,
+  ) {
+    await this.assertAccess(restaurantId, user);
+    const parsed = days != null ? parseInt(days, 10) : 30;
+    return this.decisionAnalytics.getMenuEngineering(
+      restaurantId,
+      Number.isFinite(parsed) ? parsed : 30,
+    );
+  }
+
+  @Get('restaurant/:restaurantId/channel-economics')
+  async getChannelEconomics(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Query('days') days?: string,
+  ) {
+    await this.assertAccess(restaurantId, user);
+    const parsed = days != null ? parseInt(days, 10) : 30;
+    return this.decisionAnalytics.getChannelEconomics(
+      restaurantId,
+      Number.isFinite(parsed) ? parsed : 30,
+    );
   }
 }

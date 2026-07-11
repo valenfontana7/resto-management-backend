@@ -22,12 +22,17 @@ import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 import { Public } from '../auth/decorators/public.decorator';
 import { KitchenNotificationsService } from './kitchen-notifications.service';
+import { KitchenStationsService } from './kitchen-stations.service';
 import { OrdersService } from '../orders/orders.service';
 import { OrderFiltersDto } from '../orders/dto/order.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/strategies/jwt.strategy';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OwnershipService } from '../common/services/ownership.service';
+import {
+  RestaurantIdParam,
+  RestaurantOwnerGuard,
+} from '../common/guards/restaurant-owner.guard';
 import { normalizeRoleCode } from '../common/utils/role.utils';
 
 const KITCHEN_SSE_ROLES = new Set([
@@ -40,6 +45,8 @@ const KITCHEN_SSE_ROLES = new Set([
 
 @ApiTags('kitchen')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RestaurantOwnerGuard)
+@RestaurantIdParam('restaurantId')
 @Controller('api/restaurants/:restaurantId/kitchen')
 export class KitchenController {
   private readonly logger = new Logger(KitchenController.name);
@@ -47,6 +54,7 @@ export class KitchenController {
   constructor(
     private jwtService: JwtService,
     private kitchenNotifications: KitchenNotificationsService,
+    private kitchenStations: KitchenStationsService,
     private ordersService: OrdersService,
     private readonly ownership: OwnershipService,
   ) {}
@@ -103,8 +111,6 @@ export class KitchenController {
   }
 
   @Get('orders')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
   @ApiOperation({
     summary: 'Get orders for kitchen (confirmed, preparing, ready)',
   })
@@ -123,5 +129,20 @@ export class KitchenController {
       user.userId,
       kitchenFilters,
     );
+  }
+
+  @Get('stations')
+  @ApiOperation({ summary: 'KDS v2 — estaciones de cocina configuradas' })
+  getStations(@Param('restaurantId') restaurantId: string) {
+    return this.kitchenStations.getStations(restaurantId);
+  }
+
+  @Get('station-items')
+  @ApiOperation({ summary: 'KDS v2 — ítems agrupados por estación' })
+  getStationItems(
+    @Param('restaurantId') restaurantId: string,
+    @Query('stationId') stationId?: string,
+  ) {
+    return this.kitchenStations.getItemsByStation(restaurantId, stationId);
   }
 }

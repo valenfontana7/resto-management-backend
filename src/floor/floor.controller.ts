@@ -59,10 +59,14 @@ import { RestaurantUsersService } from '../restaurants/services/restaurant-users
 import { SalonDeliveryOrderService } from './services/salon-delivery-order.service';
 import { FloorDesktopBootstrapService } from './services/floor-desktop-bootstrap.service';
 import { VerifyRestaurantAccess } from '../common/decorators/verify-restaurant-access.decorator';
+import { RestaurantOwnerGuard } from '../common/guards/restaurant-owner.guard';
+import { RestaurantIdParam } from '../common/guards/restaurant-owner.guard';
+import { EdgeSyncOutboxRecorder } from '../edge-sync/edge-sync-outbox.recorder';
 
 @ApiTags('floor')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RestaurantOwnerGuard)
+@RestaurantIdParam('restaurantId')
 @Controller('api/restaurants/:restaurantId/floor')
 export class FloorController {
   constructor(
@@ -76,7 +80,36 @@ export class FloorController {
     private readonly restaurantUsers: RestaurantUsersService,
     private readonly salonDeliveryOrders: SalonDeliveryOrderService,
     private readonly desktopBootstrap: FloorDesktopBootstrapService,
+    private readonly edgeRecorder: EdgeSyncOutboxRecorder,
   ) {}
+
+  private runSyncedFloorMutation<T>(input: {
+    restaurantId: string;
+    entityType: string;
+    clientMutationId?: string;
+    userId: string;
+    sessionId?: string;
+    body: Record<string, unknown>;
+    handler: () => Promise<T>;
+  }) {
+    return this.idempotency.run(
+      input.restaurantId,
+      input.clientMutationId,
+      input.entityType,
+      async () => {
+        const result = await input.handler();
+        await this.edgeRecorder.recordFloorMutation({
+          restaurantId: input.restaurantId,
+          entityType: input.entityType,
+          clientMutationId: input.clientMutationId,
+          userId: input.userId,
+          sessionId: input.sessionId,
+          body: input.body,
+        });
+        return result;
+      },
+    );
+  }
 
   // ─── Bootstrap desktop (un round-trip) ─────────────────────────────────────
 
@@ -120,12 +153,21 @@ export class FloorController {
     @Body() dto: OpenTableSessionDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.idempotency.run(
+    return this.runSyncedFloorMutation({
       restaurantId,
-      dto.clientMutationId,
-      'OPEN_SESSION',
-      () => this.tableSessions.open(restaurantId, user.userId, dto, user.email),
-    );
+      entityType: 'OPEN_SESSION',
+      clientMutationId: dto.clientMutationId,
+      userId: user.userId,
+      body: {
+        tableId: dto.tableId,
+        guestCount: dto.guestCount,
+        waiterName: dto.waiterName,
+        customerName: dto.customerName,
+        notes: dto.notes,
+      },
+      handler: () =>
+        this.tableSessions.open(restaurantId, user.userId, dto, user.email),
+    });
   }
 
   @Post('sessions/:sessionId/items')
@@ -136,13 +178,16 @@ export class FloorController {
     @Body() dto: AddSessionItemsDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.idempotency.run(
+    return this.runSyncedFloorMutation({
       restaurantId,
-      dto.clientMutationId,
-      'ADD_ITEMS',
-      () =>
+      entityType: 'ADD_ITEMS',
+      clientMutationId: dto.clientMutationId,
+      userId: user.userId,
+      sessionId,
+      body: { items: dto.items },
+      handler: () =>
         this.tableSessions.addItems(restaurantId, sessionId, user.userId, dto),
-    );
+    });
   }
 
   @Post('sessions/:sessionId/send-kitchen')
@@ -153,18 +198,21 @@ export class FloorController {
     @Body() dto: SendToKitchenDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.idempotency.run(
+    return this.runSyncedFloorMutation({
       restaurantId,
-      dto.clientMutationId,
-      'SEND_KITCHEN',
-      () =>
+      entityType: 'SEND_KITCHEN',
+      clientMutationId: dto.clientMutationId,
+      userId: user.userId,
+      sessionId,
+      body: { itemIds: dto.itemIds },
+      handler: () =>
         this.tableSessions.sendToKitchen(
           restaurantId,
           sessionId,
           user.userId,
           dto,
         ),
-    );
+    });
   }
 
   @Get('sessions/:sessionId/close-preview')
@@ -201,11 +249,26 @@ export class FloorController {
     @Body() dto: CloseTableSessionDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.idempotency.run(
+    return this.runSyncedFloorMutation({
       restaurantId,
-      dto.clientMutationId,
-      'CLOSE_SESSION',
-      () =>
+      entityType: 'CLOSE_SESSION',
+      clientMutationId: dto.clientMutationId,
+      userId: user.userId,
+      sessionId,
+      body: {
+        paymentMethod: dto.paymentMethod,
+        itemIds: dto.itemIds,
+        tip: dto.tip,
+        manualDiscount: dto.manualDiscount,
+        discountReason: dto.discountReason,
+        customerName: dto.customerName,
+        customerPhone: dto.customerPhone,
+        fiscalDocumentType: dto.fiscalDocumentType,
+        customerDocType: dto.customerDocType,
+        customerDocNumber: dto.customerDocNumber,
+        customerIvaCondition: dto.customerIvaCondition,
+      },
+      handler: () =>
         this.tableSessions.close(
           restaurantId,
           sessionId,
@@ -213,7 +276,7 @@ export class FloorController {
           dto,
           user.email,
         ),
-    );
+    });
   }
 
   @Delete('sessions/:sessionId')
@@ -237,18 +300,24 @@ export class FloorController {
     @Body() dto: VoidTableSessionDto,
     @CurrentUser() user: RequestUser,
   ) {
-    return this.idempotency.run(
+    return this.runSyncedFloorMutation({
       restaurantId,
-      dto.clientMutationId,
-      'VOID_SESSION',
-      () =>
+      entityType: 'VOID_SESSION',
+      clientMutationId: dto.clientMutationId,
+      userId: user.userId,
+      sessionId,
+      body: {
+        reason: dto.reason,
+        markTableCleaning: dto.markTableCleaning,
+      },
+      handler: () =>
         this.tableSessions.voidSession(
           restaurantId,
           sessionId,
           user.userId,
           dto,
         ),
-    );
+    });
   }
 
   // ─── Caja ──────────────────────────────────────────────────────────────────

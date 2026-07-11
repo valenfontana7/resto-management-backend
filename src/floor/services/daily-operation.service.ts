@@ -68,6 +68,17 @@ function isChecklistComplete(
   return ids.every((id) => checklist[id]);
 }
 
+function isOpeningComplete(
+  openingChecklist: Prisma.JsonValue | null | undefined,
+  openingCompletedAt: Date | null,
+): boolean {
+  const checklist = normalizeChecklist(OPENING_CHECKLIST_IDS, openingChecklist);
+  return (
+    isChecklistComplete(OPENING_CHECKLIST_IDS, checklist) ||
+    Boolean(openingCompletedAt)
+  );
+}
+
 type DailySummaryView = 'full' | 'dashboard';
 
 type SalesTodayAggregates = {
@@ -319,6 +330,7 @@ export class DailyOperationService {
       view?: DailySummaryView;
       operationRecord?: {
         openingChecklist: Prisma.JsonValue | null;
+        openingCompletedAt: Date | null;
         closingChecklist: Prisma.JsonValue | null;
         dailyClosedAt: Date | null;
         dailyClosedByName: string | null;
@@ -462,10 +474,6 @@ export class DailyOperationService {
       partialSessionsToday,
     );
 
-    const openingChecklist = normalizeChecklist(
-      OPENING_CHECKLIST_IDS,
-      operationRecord?.openingChecklist,
-    );
     const closingChecklist = normalizeChecklist(
       CLOSING_CHECKLIST_IDS,
       operationRecord?.closingChecklist,
@@ -477,9 +485,9 @@ export class DailyOperationService {
       todayRevenue: todayRevenue._sum.total ?? 0,
       yesterdayOrders,
       yesterdayRevenue: yesterdayRevenue._sum.total ?? 0,
-      openingComplete: isChecklistComplete(
-        OPENING_CHECKLIST_IDS,
-        openingChecklist,
+      openingComplete: isOpeningComplete(
+        operationRecord?.openingChecklist,
+        operationRecord?.openingCompletedAt ?? null,
       ),
       closingComplete: isChecklistComplete(
         CLOSING_CHECKLIST_IDS,
@@ -807,9 +815,9 @@ export class DailyOperationService {
       openingChecklist,
       openingCompletedAt: record.openingCompletedAt,
       openingNotes: record.openingNotes,
-      openingComplete: isChecklistComplete(
-        OPENING_CHECKLIST_IDS,
-        openingChecklist,
+      openingComplete: isOpeningComplete(
+        record.openingChecklist,
+        record.openingCompletedAt,
       ),
       closingChecklist,
       closingCompletedAt: record.closingCompletedAt,

@@ -173,6 +173,12 @@ export function validateEnvironment(config: Record<string, unknown>) {
     errors.push('GOOGLE_CLIENT_ID must be a valid Google OAuth client id');
   }
 
+  if (nodeEnv === 'production' && !env.REDIS_URL?.trim()) {
+    errors.push(
+      'REDIS_URL is required in production (realtime pub/sub, BullMQ queues, throttling)',
+    );
+  }
+
   if (errors.length > 0) {
     throw new Error(`Invalid environment configuration: ${errors.join('; ')}`);
   }

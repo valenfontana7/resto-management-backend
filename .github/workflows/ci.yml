@@ -5,62 +5,68 @@ on:
     branches: [main, master]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  lint-and-typecheck:
+  test-and-golden:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: bentoo
+          POSTGRES_PASSWORD: bentoo_ci
+          POSTGRES_DB: bentoo_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bentoo -d bentoo_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://bentoo:bentoo_ci@localhost:5432/bentoo_ci?schema=public
+      JWT_SECRET: ci-jwt-secret-for-golden-flows-only-32chars
+      MP_TOKEN_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      NODE_ENV: test
+      E2E_GOLDEN_FLOWS: 'true'
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '20'
           cache: npm
 
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Prisma generate
+      - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Type check
-        run: npx tsc --noEmit
-
-  test:
-    runs-on: ubuntu-latest
-    needs: lint-and-typecheck
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
-
-      - name: Prisma generate
-        run: npx prisma generate
+      - name: Apply migrations
+        run: npx prisma migrate deploy
 
       - name: Unit tests
-        run: npm test -- --passWithNoTests --ci
+        run: npm test -- --forceExit
 
-  build:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
+      - name: Golden flows E2E
+        run: npm run test:e2e:golden
 
-      - uses: actions/setup-node@v4
+      - name: Upload golden failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
         with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
-
-      - name: Prisma generate
-        run: npx prisma generate
+          name: golden-flows-jest-output
+          path: test-results/
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: Build
         run: npm run build

@@ -24,6 +24,7 @@ import { ShiftForecastService } from './services/shift-forecast.service';
 import { TacticBenchmarkService } from './services/tactic-benchmark.service';
 import { TacticSimulationService } from './services/tactic-simulation.service';
 import { OperationalRoutineService } from './services/operational-routine.service';
+import { EpisodeLoggingService } from './services/episode-logging.service';
 import { OperationShiftSegment } from '@prisma/client';
 import {
   AcceptHandoffDto,
@@ -61,6 +62,7 @@ export class OperationsController {
     private readonly tacticBenchmarks: TacticBenchmarkService,
     private readonly tacticSimulation: TacticSimulationService,
     private readonly routines: OperationalRoutineService,
+    private readonly episodes: EpisodeLoggingService,
   ) {}
 
   // --- Shift ---
@@ -116,6 +118,18 @@ export class OperationsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.resolutionMemory.listActivePatterns(restaurantId, user.userId);
+  }
+
+  @Get('memory/episodes/recent')
+  getRecentEpisodes(
+    @Param('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Query('limit') limit?: string,
+  ) {
+    const parsed = Number(limit);
+    const take =
+      Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 20) : 10;
+    return this.episodes.listRecent(restaurantId, user.userId, take);
   }
 
   @Get('memory/benchmarks')

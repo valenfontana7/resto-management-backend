@@ -101,6 +101,10 @@ model Restaurant {
   coordinations             Coordination[]
   handoffs                  Handoff[]
   operationalEpisodes       OperationalEpisode[]
+  operationalOutboxes       OperationalOutbox[]
+  teamInvites               TeamInvite[]
+  location                  Location?
+  syncOutboxEntries         SyncOutbox[]
 
   @@index([slug])
   @@index([status])
@@ -826,6 +830,7 @@ model User {
   passwordResetLinks AuthPasswordResetLink[]
   emailVerificationLinks AuthEmailVerificationLink[]
   memberships        RestaurantMembership[]
+  organizationMemberships OrganizationMembership[]
   deliveryDriverProfiles DeliveryDriver[]
   accountSubscription Subscription?
 
@@ -1873,6 +1878,39 @@ model EdgeSyncCursor {
 
   @@unique([restaurantId, localId, streamKey])
   @@index([restaurantId, streamKey])
+}
+
+enum SyncOutboxStatus {
+  PENDING
+  SYNCING
+  COMPLETED
+  FAILED
+}
+
+model SyncOutbox {
+  id               String           @id @default(cuid())
+  restaurantId     String
+  entityType       String
+  clientMutationId String
+  payload          Json
+  status           SyncOutboxStatus @default(PENDING)
+  lastError        String?
+  retryCount       Int              @default(0)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  restaurant       Restaurant       @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, clientMutationId])
+  @@index([restaurantId, status, createdAt])
+}
+
+model SyncLocalCursor {
+  restaurantId String
+  streamKey    String
+  cursorValue  String
+  updatedAt    DateTime @updatedAt
+
+  @@unique([restaurantId, streamKey])
 }
 
 enum LeadStatus {
@@ -2966,4 +3004,102 @@ model LifecycleTemplateOverride {
   updatedBy    String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// ─── Auditoría estratégica 2026-07: Event spine operativo ─────────────────────
+
+model OperationalOutbox {
+  id            String       @id @default(cuid())
+  restaurantId  String
+  eventType     String
+  aggregateType String
+  aggregateId   String
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  availableAt   DateTime     @default(now())
+  processedAt   DateTime?
+  lastError     String?
+  createdAt     DateTime     @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([status, availableAt])
+  @@index([restaurantId, createdAt])
+  @@index([eventType, createdAt])
+}
+
+model OperationalEventProcessed {
+  id          String   @id @default(cuid())
+  outboxId    String
+  handlerKey  String
+  processedAt DateTime @default(now())
+
+  @@unique([outboxId, handlerKey])
+  @@index([handlerKey])
+}
+
+// ─── Multi-sucursal: Organization → Location ──────────────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  locations   Location[]
+  memberships OrganizationMembership[]
+
+  @@index([slug])
+}
+
+model OrganizationMembership {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           String   @default("OWNER")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+model Location {
+  id             String   @id @default(cuid())
+  organizationId String
+  restaurantId   String   @unique
+  name           String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  restaurant   Restaurant   @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, isActive])
+}
+
+// ─── Onboarding acto 2: invitación de equipo ────────────────────────────────
+
+model TeamInvite {
+  id           String    @id @default(cuid())
+  restaurantId String
+  pinHash      String
+  roleCode     String    @default("WAITER")
+  label        String?
+  expiresAt    DateTime
+  usedAt       DateTime?
+  usedByUserId String?
+  createdById  String?
+  createdAt    DateTime  @default(now())
+
+  restaurant Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId, expiresAt])
 }

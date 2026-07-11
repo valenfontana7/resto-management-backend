@@ -1,4 +1,11 @@
-import { Controller, Get, Query, UseInterceptors } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  NotFoundException,
+  Query,
+  UseInterceptors,
+} from '@nestjs/common';
 import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
@@ -33,5 +40,21 @@ export class RestaurantsPublicController {
   })
   async checkSlugAvailable(@Query('slug') slug: string) {
     return this.restaurantsService.checkSlugAvailability(slug);
+  }
+
+  @Get('api/public/restaurants/resolve/:slug')
+  @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 60 } })
+  @ApiOperation({ summary: 'Resolver slug → id para invitaciones de equipo' })
+  async resolveRestaurantBySlug(@Param('slug') slug: string) {
+    const restaurant = await this.restaurantsService.findBySlug(slug);
+    if (!restaurant) {
+      throw new NotFoundException('Restaurante no encontrado');
+    }
+    return {
+      id: restaurant.id,
+      slug: restaurant.slug,
+      name: restaurant.name,
+    };
   }
 }

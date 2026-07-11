@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { OwnershipService } from '../../common/services/ownership.service';
 import type { CoordinationResult } from '../types/operations.types';
 import { ResolutionMemoryService } from './resolution-memory.service';
 
@@ -9,6 +10,7 @@ export class EpisodeLoggingService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly ownership: OwnershipService,
     private readonly resolutionMemory: ResolutionMemoryService,
   ) {}
 
@@ -108,5 +110,39 @@ export class EpisodeLoggingService {
         }`,
       );
     }
+  }
+
+  async listRecent(restaurantId: string, userId: string, limit = 10) {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+
+    const episodes = await this.prisma.operationalEpisode.findMany({
+      where: { restaurantId },
+      orderBy: { closedAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        coordinationId: true,
+        coordinationType: true,
+        situationId: true,
+        outcome: true,
+        closedAt: true,
+      },
+    });
+
+    return episodes.map((episode) => ({
+      id: episode.id,
+      coordinationId: episode.coordinationId,
+      coordinationType: episode.coordinationType,
+      situationType: episode.situationId,
+      outcome:
+        episode.outcome && typeof episode.outcome === 'object'
+          ? (episode.outcome as {
+              status?: string;
+              summary?: string | null;
+              timeToResolveSeconds?: number;
+            })
+          : null,
+      closedAt: episode.closedAt?.toISOString() ?? new Date().toISOString(),
+    }));
   }
 }

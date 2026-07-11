@@ -5,6 +5,8 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { isPrivilegedRole, normalizeRoleCode } from '../utils/role.utils';
+import { IS_PUBLIC_KEY } from '../../auth/decorators/public.decorator';
 
 export const RESTAURANT_ID_PARAM = 'restaurantIdParam';
 
@@ -32,6 +34,14 @@ export class RestaurantOwnerGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPublic) {
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest();
     const user = request.user;
 
@@ -49,6 +59,13 @@ export class RestaurantOwnerGuard implements CanActivate {
 
     if (!restaurantId) {
       // Si no hay parámetro de restaurantId, permitir (el controller lo manejará)
+      return true;
+    }
+
+    if (
+      isPrivilegedRole(user.role) &&
+      normalizeRoleCode(user.role) === 'SUPER_ADMIN'
+    ) {
       return true;
     }
 

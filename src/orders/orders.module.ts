@@ -19,6 +19,7 @@ import { LoyaltyModule } from '../loyalty/loyalty.module';
 import { CustomersModule } from '../customers/customers.module';
 import { BusinessHealthModule } from '../business-health/business-health.module';
 import { BusinessEventsModule } from '../business-events/business-events.module';
+import { EventSpineModule } from '../event-spine/event-spine.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { BusinessEventsModule } from '../business-events/business-events.module'
     CommonModule,
     forwardRef(() => BusinessHealthModule),
     BusinessEventsModule,
+    EventSpineModule,
     MercadoPagoModule,
     EmailModule,
     WebsocketModule,

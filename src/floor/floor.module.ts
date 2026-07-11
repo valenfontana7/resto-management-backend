@@ -25,6 +25,8 @@ import { StorageModule } from '../storage/storage.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { BusinessHealthModule } from '../business-health/business-health.module';
 import { BusinessEventsModule } from '../business-events/business-events.module';
+import { EventSpineModule } from '../event-spine/event-spine.module';
+import { EdgeSyncLocalModule } from '../edge-sync/edge-sync-local.module';
 
 @Module({
   imports: [
@@ -32,6 +34,8 @@ import { BusinessEventsModule } from '../business-events/business-events.module'
     CommonModule,
     BusinessHealthModule,
     BusinessEventsModule,
+    EventSpineModule,
+    EdgeSyncLocalModule,
     KitchenModule,
     FiscalModule,
     DeliveryModule,
@@ -40,7 +44,7 @@ import { BusinessEventsModule } from '../business-events/business-events.module'
     NotificationsModule,
     ScheduleModule.forRoot(),
     forwardRef(() => OrdersModule),
-    RestaurantsModule,
+    forwardRef(() => RestaurantsModule),
   ],
   controllers: [FloorController],
   providers: [
@@ -64,6 +68,7 @@ import { BusinessEventsModule } from '../business-events/business-events.module'
     TerminalService,
     DailyOperationService,
     MainCashRegisterService,
+    FloorIdempotencyService,
   ],
 })
 export class FloorModule {}

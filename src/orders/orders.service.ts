@@ -22,6 +22,8 @@ import { InventoryConsumptionService } from '../business-health/inventory-consum
 import { BusinessEventPublisherService } from '../business-events/business-event-publisher.service';
 import { PaymentBusinessEventsService } from '../business-events/publishers/payment-business-events.service';
 import { BentooBusinessEventType } from '../business-events/types/event-type.enum';
+import { OperationalEventEmitter } from '../event-spine/operational-event-emitter.service';
+import { OPERATIONAL_EVENT_TYPES } from '../event-spine/operational-event.types';
 import * as crypto from 'crypto';
 import { Prisma, OrderSource, ComandaItemStatus } from '@prisma/client';
 import {
@@ -56,6 +58,7 @@ export class OrdersService {
     private readonly inventoryConsumption: InventoryConsumptionService,
     private readonly businessEvents: BusinessEventPublisherService,
     private readonly paymentEvents: PaymentBusinessEventsService,
+    private readonly operationalEvents: OperationalEventEmitter,
   ) {}
 
   async create(
@@ -345,6 +348,20 @@ export class OrdersService {
       );
 
       void this.publishOrderCreatedEvent(restaurantId, order);
+      this.operationalEvents.emit({
+        restaurantId,
+        eventType: OPERATIONAL_EVENT_TYPES.ORDER_CREATED,
+        aggregateType: 'order',
+        aggregateId: order.id,
+        data: {
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          type: order.type,
+          total: Number(order.total),
+          customerName: order.customerName,
+          source: 'checkout',
+        },
+      });
       void this.publishCustomerReturnedIfApplicable(
         restaurantId,
         customerProfile?.id,
@@ -1223,6 +1240,19 @@ export class OrdersService {
     this.notifications.emitOrderUpdate(restaurantId, updatedOrder);
     void this.notifications.emitKitchenNotification(updatedOrder, finalStatus);
 
+    this.operationalEvents.emit({
+      restaurantId,
+      eventType: OPERATIONAL_EVENT_TYPES.ORDER_STATUS_CHANGED,
+      aggregateType: 'order',
+      aggregateId: id,
+      data: {
+        orderId: id,
+        fromStatus: order.status,
+        toStatus: finalStatus,
+        paymentStatus: updatedOrder.paymentStatus,
+      },
+    });
+
     if (finalStatus === OrderStatus.DELIVERED) {
       await this.awardLoyaltyPointsForDeliveredOrder(
         updatedOrder,
@@ -1286,6 +1316,20 @@ export class OrdersService {
 
     this.notifications.emitOrderUpdate(restaurantId, updated);
     void this.tryInventoryDeduction(id);
+    this.operationalEvents.emit({
+      restaurantId,
+      eventType: OPERATIONAL_EVENT_TYPES.ORDER_STATUS_CHANGED,
+      aggregateType: 'order',
+      aggregateId: id,
+      data: {
+        orderId: id,
+        fromStatus: order.status,
+        toStatus: order.status,
+        paymentStatus: PaymentStatus.PAID,
+        paymentMethod: normalizedMethod,
+        source: 'mark_payment_received',
+      },
+    });
     return updated;
   }
 

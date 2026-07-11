@@ -10,13 +10,17 @@ import {
   Post,
   Request,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../auth/decorators/public.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { BundleValidationError } from '../prospect-importer/prospect-importer.service';
+import type { ProspectBundle } from '../prospect-importer/types';
 import { CreateDemoExampleDto } from './dto/create-demo-example.dto';
+import { ImportProspectBundleDto } from './dto/import-prospect-bundle.dto';
 import { UpdateDemoExampleDto } from './dto/update-demo-example.dto';
 import { DemoExamplesService } from './demo-examples.service';
 import { DemoActivationService } from './demo-activation.service';
@@ -69,6 +73,33 @@ export class MasterDemoExamplesController {
   @Post()
   async create(@Body() dto: CreateDemoExampleDto, @Request() req) {
     return this.demoExamplesService.create(dto, req.user?.userId);
+  }
+
+  @Post('import-prospect-bundle')
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  async importProspectBundle(
+    @Body() dto: ImportProspectBundleDto,
+    @Request() req,
+  ) {
+    try {
+      this.demoExamplesService.assertProspectBundle(dto.bundle);
+      return await this.demoExamplesService.importProspectBundle(
+        dto.bundle as unknown as ProspectBundle,
+        {
+          dryRun: dto.dryRun ?? false,
+          importedBy: req.user?.userId,
+          leadId: dto.leadId,
+        },
+      );
+    } catch (error) {
+      if (error instanceof BundleValidationError) {
+        throw new BadRequestException({
+          message: 'El bundle no pasó la validación',
+          errors: error.validationErrors,
+        });
+      }
+      throw error;
+    }
   }
 
   @Patch(':id')
