@@ -1,5 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import request from 'supertest';
 import { App } from 'supertest/types';
 // Compilado con `nest build` antes de golden (CI y local).
 // eslint-disable-next-line @typescript-eslint/no-require-imports
