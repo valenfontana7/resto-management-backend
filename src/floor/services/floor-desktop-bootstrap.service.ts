@@ -6,6 +6,7 @@ import { TablesService } from '../../tables/tables.service';
 import { TableSessionService } from './table-session.service';
 import { CashRegisterService } from './cash-register.service';
 import { OrdersService } from '../../orders/orders.service';
+import { DailyOperationService } from './daily-operation.service';
 
 @Injectable()
 export class FloorDesktopBootstrapService {
@@ -17,6 +18,7 @@ export class FloorDesktopBootstrapService {
     private readonly tableSessions: TableSessionService,
     private readonly cashRegister: CashRegisterService,
     private readonly orders: OrdersService,
+    private readonly dailyOperations: DailyOperationService,
   ) {}
 
   async getBootstrap(restaurantId: string, userId: string, ordersLimit = 120) {
@@ -30,12 +32,19 @@ export class FloorDesktopBootstrapService {
       cashPayload,
       menuCategories,
       ordersPayload,
+      dailyPayload,
     ] = await Promise.all([
       this.tables.findAll(restaurantId, userId),
       this.tableSessions.listActive(restaurantId, userId),
       this.cashRegister.getOpenSession(restaurantId, userId),
       this.loadSalonMenuCategories(restaurantId),
       this.orders.findAll(restaurantId, userId, { limit: safeLimit }),
+      this.dailyOperations.getDailyOperation(
+        restaurantId,
+        userId,
+        undefined,
+        'dashboard',
+      ),
     ]);
 
     return {
@@ -45,6 +54,7 @@ export class FloorDesktopBootstrapService {
       cashRegister: cashPayload,
       menu: { categories: menuCategories },
       orders: ordersPayload.orders,
+      dailyOperation: dailyPayload.operation,
     };
   }
 
