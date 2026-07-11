@@ -24,23 +24,6 @@ import { RealtimeOperationalEventHandler } from './handlers/realtime-operational
     OperationalEventHandlerRegistry,
     KitchenOperationalEventHandler,
     RealtimeOperationalEventHandler,
-    {
-      provide: 'EVENT_SPINE_INIT',
-      useFactory: (
-        registry: OperationalEventHandlerRegistry,
-        kitchen: KitchenOperationalEventHandler,
-        realtime: RealtimeOperationalEventHandler,
-      ) => {
-        registry.register(kitchen);
-        registry.register(realtime);
-        return true;
-      },
-      inject: [
-        OperationalEventHandlerRegistry,
-        KitchenOperationalEventHandler,
-        RealtimeOperationalEventHandler,
-      ],
-    },
   ],
   exports: [
     OperationalOutboxPublisher,
@@ -49,7 +32,14 @@ import { RealtimeOperationalEventHandler } from './handlers/realtime-operational
   ],
 })
 export class EventSpineModule implements OnModuleInit {
+  constructor(
+    private readonly registry: OperationalEventHandlerRegistry,
+    private readonly kitchenHandler: KitchenOperationalEventHandler,
+    private readonly realtimeHandler: RealtimeOperationalEventHandler,
+  ) {}
+
   onModuleInit(): void {
-    // Handlers registered via EVENT_SPINE_INIT factory
+    this.registry.register(this.kitchenHandler);
+    this.registry.register(this.realtimeHandler);
   }
 }
