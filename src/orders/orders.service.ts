@@ -61,6 +61,7 @@ export class OrdersService {
     private readonly geocodeService: GeocodeService,
     private readonly loyaltyService: LoyaltyService,
     private readonly customersService: CustomersService,
+    @Inject(forwardRef(() => InventoryConsumptionService))
     private readonly inventoryConsumption: InventoryConsumptionService,
     private readonly businessEvents: BusinessEventPublisherService,
     private readonly paymentEvents: PaymentBusinessEventsService,

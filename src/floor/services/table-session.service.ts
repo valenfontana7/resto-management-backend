@@ -3,6 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import {
   ComandaItemStatus,
@@ -59,11 +61,13 @@ export class TableSessionService {
     private readonly ownership: OwnershipService,
     private readonly discounts: FloorDiscountService,
     private readonly kitchenNotifications: KitchenNotificationsService,
+    @Inject(forwardRef(() => OrderNotificationsService))
     private readonly orderNotifications: OrderNotificationsService,
     private readonly cashRegister: CashRegisterService,
     private readonly fiscalDocuments: FiscalDocumentService,
     private readonly inventoryConsumption: InventoryConsumptionService,
     private readonly floorAccess: FloorAccessService,
+    @Inject(forwardRef(() => OperationalEventEmitter))
     private readonly operationalEvents: OperationalEventEmitter,
   ) {}
 
