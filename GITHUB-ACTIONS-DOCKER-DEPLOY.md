@@ -38,14 +38,47 @@ Enable it in the GitHub repo:
    - `VPS_DEPLOY_ENABLED` = `true`
    - `VPS_APP_PATH` = `/var/www/resto-management-backend` (optional; this is the default)
 
-2. **Repository secrets** (Settings → Secrets and variables → Actions → Secrets):
-   - `VPS_HOST` — IP or hostname of the VPS
-   - `VPS_USER` — SSH user (e.g. `ubuntu`, `deploy`)
-   - `VPS_SSH_KEY` — private key (PEM) with access to that user
+2. **Secrets** — el job usa `environment: production`, así que conviene cargarlos ahí:
+   - Repo → Settings → Environments → **production** → Environment secrets
+   - (También funcionan a nivel repo si no hay override en el environment)
 
-3. **GitHub Environment** `production` (optional but recommended):
-   - Settings → Environments → `production`
-   - Use it for approval gates or environment-scoped secrets
+   Secrets requeridos:
+   - `VPS_HOST` — IP o hostname del VPS
+   - `VPS_USER` — usuario SSH (ej. `ubuntu`, `deploy`)
+   - `VPS_SSH_KEY` — **clave privada completa**, incluyendo las líneas `BEGIN`/`END`
+
+3. **Formato de `VPS_SSH_KEY`** (causa más común del error `ssh: no key found`):
+
+   Generá un par dedicado para deploy:
+
+   ```bash
+   ssh-keygen -t ed25519 -C "github-actions-bentoo-deploy" -f bentoo_deploy -N ""
+   ```
+
+   En la VPS, agregá la **pública** al usuario que usa `VPS_USER`:
+
+   ```bash
+   mkdir -p ~/.ssh && chmod 700 ~/.ssh
+   cat bentoo_deploy.pub >> ~/.ssh/authorized_keys
+   chmod 600 ~/.ssh/authorized_keys
+   ```
+
+   En GitHub, pegá el contenido **completo** de `bentoo_deploy` (la privada):
+
+   ```
+   -----BEGIN OPENSSH PRIVATE KEY-----
+   ...
+   -----END OPENSSH PRIVATE KEY-----
+   ```
+
+   No pegues la `.pub`, ni la ruta del archivo, ni una clave `.ppk` de PuTTY.
+
+   Verificá localmente antes de subir el secret:
+
+   ```bash
+   ssh-keygen -y -f bentoo_deploy
+   # Si imprime la clave pública, el formato es válido
+   ```
 
 ### Pipeline
 
@@ -72,9 +105,10 @@ docker compose -f docker-compose.prod.yml up -d
 Generate a deploy key for GitHub Actions:
 
 ```bash
-ssh-keygen -t ed25519 -C "github-actions-bentoo-deploy" -f ~/.ssh/bentoo_deploy -N ""
-cat ~/.ssh/bentoo_deploy.pub >> ~/.ssh/authorized_keys   # en la VPS, para el usuario deploy
-# Pegá el contenido de bentoo_deploy (privada) en el secret VPS_SSH_KEY
+ssh-keygen -t ed25519 -C "github-actions-bentoo-deploy" -f bentoo_deploy -N ""
+# bentoo_deploy.pub → authorized_keys del VPS_USER en la VPS
+# bentoo_deploy (privada) → secret VPS_SSH_KEY en GitHub (environment production)
+ssh-keygen -y -f bentoo_deploy   # validar formato antes de pegar en GitHub
 ```
 
 ### Manual VPS deploy
