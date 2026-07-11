@@ -173,10 +173,16 @@ export function validateEnvironment(config: Record<string, unknown>) {
     errors.push('GOOGLE_CLIENT_ID must be a valid Google OAuth client id');
   }
 
-  if (nodeEnv === 'production' && !env.REDIS_URL?.trim()) {
-    errors.push(
-      'REDIS_URL is required in production (realtime pub/sub, BullMQ queues, throttling)',
-    );
+  const redisUrl = env.REDIS_URL?.trim();
+  if (redisUrl) {
+    try {
+      const parsed = new URL(redisUrl);
+      if (parsed.protocol !== 'redis:' && parsed.protocol !== 'rediss:') {
+        errors.push('REDIS_URL must use redis:// or rediss://');
+      }
+    } catch {
+      errors.push('REDIS_URL must be a valid URL');
+    }
   }
 
   if (errors.length > 0) {

@@ -76,6 +76,7 @@ import { TeamOnboardingModule } from './team-onboarding/team-onboarding.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { createKeyv } from '@keyv/redis';
 import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage';
+import { parseRedisUrl } from './common/redis/redis-connection.util';
 
 @Module({
   imports: [
@@ -89,14 +90,9 @@ import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage';
           BullModule.forRootAsync({
             imports: [ConfigModule],
             useFactory: (config: ConfigService) => {
-              const url = new URL(config.get<string>('REDIS_URL')!);
+              const redisUrl = config.get<string>('REDIS_URL')!.trim();
               return {
-                connection: {
-                  host: url.hostname,
-                  port: parseInt(url.port || '6379', 10),
-                  password: url.password || undefined,
-                  maxRetriesPerRequest: null,
-                },
+                connection: parseRedisUrl(redisUrl, { bullmq: true }),
               };
             },
             inject: [ConfigService],

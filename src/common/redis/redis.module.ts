@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from './redis.constants';
 import { RedisThrottlerStorage } from './redis-throttler.storage';
+import { parseRedisUrl } from './redis-connection.util';
 
 const logger = new Logger('RedisModule');
 
@@ -17,8 +18,8 @@ const logger = new Logger('RedisModule');
         const redisUrl = config.get<string>('REDIS_URL')?.trim();
         if (!redisUrl) return null;
 
-        const client = new Redis(redisUrl, {
-          maxRetriesPerRequest: 3,
+        const client = new Redis({
+          ...parseRedisUrl(redisUrl),
           lazyConnect: true,
         });
 

@@ -21,6 +21,13 @@ async function bootstrap() {
     logger: new WinstonNestLogger(winstonLogger),
   });
 
+  if (process.env.NODE_ENV === 'production' && !process.env.REDIS_URL?.trim()) {
+    winstonLogger.warn(
+      'REDIS_URL no configurado: modo single-instance (emails síncronos, throttle/cache/cocina en memoria). ' +
+        'Configurá Redis antes de escalar a múltiples réplicas.',
+    );
+  }
+
   // Trust proxy for accurate IP addresses behind load balancers
   app.set('trust proxy', 1);
 
