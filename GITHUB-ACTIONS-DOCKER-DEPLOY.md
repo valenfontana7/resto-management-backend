@@ -83,7 +83,7 @@ Enable it in the GitHub repo:
 ### Pipeline
 
 ```
-push main → build Docker image → push to Docker Hub → SSH to VPS → pull + up
+push main → build Docker image → push to Docker Hub → SSH nativo al VPS → pull + up
 ```
 
 Prisma migrations run automatically on container start via `scripts/docker-entrypoint.sh`.

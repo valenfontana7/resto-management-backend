@@ -74,8 +74,6 @@ jobs:
     environment: production
 
     steps:
-      - uses: actions/checkout@v4
-
       - name: Validate deploy secrets
         run: |
           missing=""
@@ -88,34 +86,33 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare SSH key
-        run: |
-          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > "$GITHUB_WORKSPACE/deploy_key"
-          chmod 600 "$GITHUB_WORKSPACE/deploy_key"
-          if ! ssh-keygen -y -f "$GITHUB_WORKSPACE/deploy_key" >/dev/null 2>&1; then
-            echo "::error::VPS_SSH_KEY no es una clave privada valida (revisa saltos de linea y formato PEM/OpenSSH)."
-            exit 1
-          fi
-
       - name: Deploy to VPS
-        uses: appleboy/ssh-action@v1.2.0
         env:
           DOCKERHUB_IMAGE: ${{ needs.build-and-push.outputs.image_tag }}
           VPS_APP_PATH: ${{ vars.VPS_APP_PATH }}
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key_path: /github/workspace/deploy_key
-          envs: DOCKERHUB_IMAGE,VPS_APP_PATH
-          script_stop: true
-          script: |
-            set -eu
-            APP_DIR="${VPS_APP_PATH:-/var/www/resto-management-backend}"
-            cd "$APP_DIR"
-            export DOCKERHUB_IMAGE
-            echo "==> Pull ${DOCKERHUB_IMAGE}"
-            docker compose -f docker-compose.prod.yml pull app
-            echo "==> Up app"
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans app
-            docker image prune -f
-            echo "Deploy listo: ${DOCKERHUB_IMAGE}"
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -eu
+          printf '%s\n' "$VPS_SSH_KEY" > "$RUNNER_TEMP/deploy_key"
+          chmod 600 "$RUNNER_TEMP/deploy_key"
+          if ! ssh-keygen -y -f "$RUNNER_TEMP/deploy_key" >/dev/null 2>&1; then
+            echo "::error::VPS_SSH_KEY no es una clave privada valida."
+            exit 1
+          fi
+
+          APP_DIR="${VPS_APP_PATH:-/var/www/resto-management-backend}"
+          ssh -i "$RUNNER_TEMP/deploy_key" \
+            -o StrictHostKeyChecking=accept-new \
+            -o BatchMode=yes \
+            "${VPS_USER}@${VPS_HOST}" \
+            "set -eu
+             cd '${APP_DIR}'
+             export DOCKERHUB_IMAGE='${DOCKERHUB_IMAGE}'
+             echo '==> Pull '${DOCKERHUB_IMAGE}
+             docker compose -f docker-compose.prod.yml pull app
+             echo '==> Up app'
+             docker compose -f docker-compose.prod.yml up -d --remove-orphans app
+             docker image prune -f
+             echo 'Deploy listo: '${DOCKERHUB_IMAGE}"
