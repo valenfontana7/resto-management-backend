@@ -7,6 +7,10 @@ on:
       - master
   workflow_dispatch:
 
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   IMAGE_NAME: valenfontana7/resto-management-backend
   BUILD_DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/resto_db?schema=public
@@ -16,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      image_tag: ${{ steps.image.outputs.tag }}
 
     steps:
       - name: Checkout
@@ -56,3 +62,37 @@ jobs:
             DATABASE_URL=${{ secrets.DATABASE_URL != '' && secrets.DATABASE_URL || env.BUILD_DATABASE_URL }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Set deploy image tag
+        id: image
+        run: echo "tag=${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+  deploy-vps:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: vars.VPS_DEPLOY_ENABLED == 'true'
+    environment: production
+
+    steps:
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DOCKERHUB_IMAGE: ${{ needs.build-and-push.outputs.image_tag }}
+          VPS_APP_PATH: ${{ vars.VPS_APP_PATH }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          envs: DOCKERHUB_IMAGE,VPS_APP_PATH
+          script_stop: true
+          script: |
+            set -eu
+            APP_DIR="${VPS_APP_PATH:-/var/www/resto-management-backend}"
+            cd "$APP_DIR"
+            export DOCKERHUB_IMAGE
+            echo "==> Pull ${DOCKERHUB_IMAGE}"
+            docker compose -f docker-compose.prod.yml pull app
+            echo "==> Up app"
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans app
+            docker image prune -f
+            echo "Deploy listo: ${DOCKERHUB_IMAGE}"
