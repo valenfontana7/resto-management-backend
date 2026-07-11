@@ -16,6 +16,10 @@ process.env.MP_TOKEN_ENCRYPTION_KEY ??=
   '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 process.env.DATABASE_URL ??=
   'postgresql://bentoo:bentoo_ci@localhost:5432/bentoo_ci?schema=public';
+process.env.S3_BUCKET ??= 'bentoo-ci-test';
+process.env.S3_REGION ??= 'us-east-1';
+process.env.S3_KEY ??= 'ci-dummy-key';
+process.env.S3_SECRET ??= 'ci-dummy-secret';
 
 const tokenPaths = [
   'dist/app.module',

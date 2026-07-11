@@ -35,6 +35,10 @@ jobs:
       MP_TOKEN_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       NODE_ENV: test
       E2E_GOLDEN_FLOWS: 'true'
+      S3_BUCKET: bentoo-ci-test
+      S3_REGION: us-east-1
+      S3_KEY: ci-dummy-key
+      S3_SECRET: ci-dummy-secret
 
     steps:
       - uses: actions/checkout@v4
