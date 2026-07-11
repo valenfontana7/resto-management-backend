@@ -10,6 +10,9 @@ import { CallMeBotService } from '../notifications/callmebot.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
 import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { GoLiveReadinessService } from './services/go-live-readiness.service';
+import { DemoActivationService } from '../demo-examples/demo-activation.service';
 
 describe('RestaurantsController', () => {
   let controller: RestaurantsController;
@@ -24,12 +27,15 @@ describe('RestaurantsController', () => {
         { provide: RestaurantSettingsService, useValue: {} },
         { provide: AuthService, useValue: {} },
         { provide: OwnerEmailVerificationService, useValue: {} },
+        { provide: SubscriptionsService, useValue: {} },
         { provide: CallMeBotService, useValue: {} },
         { provide: PrismaService, useValue: {} },
         {
           provide: PublicWriteAbuseService,
           useValue: { assertPublicWriteAllowed: jest.fn() },
         },
+        { provide: GoLiveReadinessService, useValue: {} },
+        { provide: DemoActivationService, useValue: {} },
         { provide: AdminAlertsService, useValue: {} },
       ],
     }).compile();

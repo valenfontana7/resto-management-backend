@@ -25,6 +25,10 @@ import { LoyaltyService } from '../loyalty/loyalty.service';
 import { CustomersService } from '../customers/customers.service';
 import { BotDefenseService } from '../common/services/bot-defense.service';
 import { PublicWriteAbuseService } from '../common/services/public-write-abuse.service';
+import { InventoryConsumptionService } from '../business-health/inventory-consumption.service';
+import { BusinessEventPublisherService } from '../business-events/business-event-publisher.service';
+import { PaymentBusinessEventsService } from '../business-events/publishers/payment-business-events.service';
+import { OperationalEventEmitter } from '../event-spine/operational-event-emitter.service';
 
 class InMemoryPrisma {
   restaurant = {
@@ -299,6 +303,22 @@ describe('Orders public tracking', () => {
         {
           provide: PublicWriteAbuseService,
           useValue: { assertPublicWriteAllowed: jest.fn() },
+        },
+        {
+          provide: InventoryConsumptionService,
+          useValue: { deductForOrder: jest.fn() },
+        },
+        {
+          provide: BusinessEventPublisherService,
+          useValue: { publish: jest.fn() },
+        },
+        {
+          provide: PaymentBusinessEventsService,
+          useValue: { publishPaymentConfirmed: jest.fn() },
+        },
+        {
+          provide: OperationalEventEmitter,
+          useValue: { emit: jest.fn().mockResolvedValue('outbox-1') },
         },
       ],
     }).compile();
