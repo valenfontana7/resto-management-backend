@@ -3,6 +3,8 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { TableSessionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -28,7 +30,9 @@ export class EdgeSyncPushApplyService {
 
   constructor(
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => TableSessionService))
     private readonly tableSessions: TableSessionService,
+    @Inject(forwardRef(() => FloorIdempotencyService))
     private readonly idempotency: FloorIdempotencyService,
   ) {}
 

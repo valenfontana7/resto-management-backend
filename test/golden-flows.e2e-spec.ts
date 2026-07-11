@@ -2,8 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { AppModule } from '../src/app.module';
-import { PrismaService } from '../src/prisma/prisma.service';
+import { AppModule } from '../dist/app.module';
+import { PrismaService } from '../dist/prisma/prisma.service';
 import {
   GOLDEN_FLOWS_ENABLED,
   E2E_INVENTORY_RECIPE_QTY_PER_DISH,
@@ -15,7 +15,7 @@ import {
   waitForOrderInventoryDeduction,
   type E2EGoldenFixture,
 } from './helpers/e2e-seed.helper';
-import { InventoryConsumptionService } from '../src/business-health/inventory-consumption.service';
+import { InventoryConsumptionService } from '../dist/business-health/inventory-consumption.service';
 
 /**
  * Flujos dorados — auth boundaries siempre; flujos reales con DB cuando

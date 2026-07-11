@@ -4,6 +4,7 @@
   "testEnvironment": "node",
   "testMatch": ["<rootDir>/test/golden-flows.e2e-spec.ts"],
   "setupFiles": ["reflect-metadata", "<rootDir>/test/jest-e2e-golden.setup.ts"],
+  "transformIgnorePatterns": ["<rootDir>/dist/"],
   "transform": {
     "^.+\\.(t|j)s$": [
       "ts-jest",
