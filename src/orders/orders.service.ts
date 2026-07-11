@@ -51,9 +51,13 @@ export class OrdersService {
     private readonly analytics: OrderAnalyticsService,
     private readonly couponsService: CouponsService,
     private readonly paymentProviderFactory: PaymentProviderFactory,
+    @Inject(forwardRef(() => DeliveryPricingService))
     private readonly deliveryPricingService: DeliveryPricingService,
+    @Inject(forwardRef(() => DeliveryDispatchService))
     private readonly deliveryDispatchService: DeliveryDispatchService,
+    @Inject(forwardRef(() => DeliveryService))
     private readonly deliveryService: DeliveryService,
+    @Inject(forwardRef(() => GeocodeService))
     private readonly geocodeService: GeocodeService,
     private readonly loyaltyService: LoyaltyService,
     private readonly customersService: CustomersService,
