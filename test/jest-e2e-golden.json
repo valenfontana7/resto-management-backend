@@ -1,10 +1,15 @@
 {
   "moduleFileExtensions": ["js", "json", "ts"],
-  "rootDir": ".",
+  "rootDir": "..",
   "testEnvironment": "node",
-  "testRegex": "golden-flows.e2e-spec.ts$",
-  "setupFiles": ["<rootDir>/jest-e2e-golden.setup.ts"],
+  "testMatch": ["<rootDir>/test/golden-flows.e2e-spec.ts"],
+  "setupFiles": ["<rootDir>/test/jest-e2e-golden.setup.ts"],
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "tsconfig": "<rootDir>/tsconfig.json"
+      }
+    ]
   }
 }
