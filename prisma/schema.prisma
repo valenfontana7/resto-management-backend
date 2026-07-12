@@ -105,6 +105,7 @@ model Restaurant {
   teamInvites               TeamInvite[]
   location                  Location?
   syncOutboxEntries         SyncOutbox[]
+  operationalProfile        RestaurantOperationalProfile?
 
   @@index([slug])
   @@index([status])
@@ -3083,6 +3084,33 @@ model Location {
 
   @@index([organizationId])
   @@index([organizationId, isActive])
+}
+
+// ─── Perfil operativo del restaurante ───────────────────────────────────────
+
+model RestaurantOperationalProfile {
+  id                     String   @id @default(cuid())
+  restaurantId           String   @unique
+  schemaVersion          Int      @default(1)
+  operationalModel       String   @default("mixed")
+  maturityLevel          String   @default("basic")
+  focusAreas             Json     @default("[]")
+  businessPriorities     Json     @default("{}")
+  capabilitySnapshot     Json?
+  profileStatus          String   @default("pending")
+  completedWizardVersion Int?
+  completedStepIds       Json     @default("[]")
+  completedAt            DateTime?
+  completedByUserId      String?
+  migratedFromLegacy     Boolean  @default(false)
+  migrationSource        String?
+  dismissedHints         Json     @default("[]")
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  restaurant             Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([profileStatus])
+  @@index([operationalModel])
 }
 
 // ─── Onboarding acto 2: invitación de equipo ────────────────────────────────

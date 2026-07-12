@@ -9,6 +9,11 @@ export const OPERATIONAL_EVENT_TYPES = {
   CASH_REGISTER_OPENED: 'operational.cash_register.opened',
   CASH_REGISTER_CLOSED: 'operational.cash_register.closed',
   FISCAL_DOCUMENT_ISSUED: 'operational.fiscal.document_issued',
+  OPERATIONAL_PROFILE_STARTED: 'operational.profile.started',
+  OPERATIONAL_PROFILE_STEP_COMPLETED: 'operational.profile.step_completed',
+  OPERATIONAL_PROFILE_COMPLETED: 'operational.profile.completed',
+  OPERATIONAL_PROFILE_UPDATED: 'operational.profile.updated',
+  OPERATIONAL_PROFILE_RESET: 'operational.profile.reset',
 } as const;
 
 export type OperationalEventType =

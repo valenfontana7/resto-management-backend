@@ -521,6 +521,17 @@ export class RestaurantsService {
       // 2. Roles de sistema (catálogo canónico)
       await this.rolesCatalog.ensureSystemRoles(restaurant.id, tx);
 
+      await tx.restaurantOperationalProfile.create({
+        data: {
+          restaurantId: restaurant.id,
+          profileStatus: 'pending',
+          operationalModel: 'mixed',
+          focusAreas: [],
+          businessPriorities: {},
+          completedStepIds: [],
+        },
+      });
+
       const now = new Date();
       const selectedSubscriptionPlan = await tx.subscriptionPlan.findUnique({
         where: { id: selectedPlan },

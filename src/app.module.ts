@@ -73,6 +73,7 @@ import { EventSpineModule } from './event-spine/event-spine.module';
 import { OperationalBrainModule } from './operational-brain/operational-brain.module';
 import { TenantHealthModule } from './tenant-health/tenant-health.module';
 import { TeamOnboardingModule } from './team-onboarding/team-onboarding.module';
+import { OperationalProfileModule } from './operational-profile/operational-profile.module';
 import { OrganizationsModule } from './organizations/organizations.module';
 import { createKeyv } from '@keyv/redis';
 import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage';
@@ -189,6 +190,7 @@ import { parseRedisUrl } from './common/redis/redis-connection.util';
     OperationalBrainModule,
     TenantHealthModule,
     TeamOnboardingModule,
+    OperationalProfileModule,
     OrganizationsModule,
     ...(isLocalMode() ? [LocalDiscoveryModule] : []),
   ],
