@@ -26,6 +26,8 @@ export interface KitchenNotification {
 }
 
 const KITCHEN_CHANNEL_PREFIX = 'bentoo:kitchen:';
+/** Keep-alive para proxies (Vercel/nginx) que cierran SSE idle. */
+const SSE_HEARTBEAT_MS = 25_000;
 
 /**
  * Notificaciones cocina con fallback in-memory y pub/sub Redis en producción.
@@ -96,7 +98,17 @@ export class KitchenNotificationsService
         });
       });
 
-      return () => subscription.unsubscribe();
+      const heartbeat = setInterval(() => {
+        observer.next({
+          type: 'heartbeat',
+          data: JSON.stringify({ type: 'heartbeat', ts: Date.now() }),
+        });
+      }, SSE_HEARTBEAT_MS);
+
+      return () => {
+        clearInterval(heartbeat);
+        subscription.unsubscribe();
+      };
     });
   }
 

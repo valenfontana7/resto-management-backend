@@ -127,12 +127,9 @@ export class CategoriesController {
   async getMenuById(
     @Param('restaurantId') restaurantId: string,
     @Req() req: Request,
+    @CurrentUser() user?: RequestUser,
   ) {
-    await this.publicWriteAbuse.assertPublicWriteAllowed({
-      ip: getClientIp(req),
-      scope: 'public_read',
-      restaurantId,
-    });
+    await this.assertAnonymousPublicRead(req, user, restaurantId);
 
     const restaurant = await this.prisma.restaurant.findUnique({
       where: { id: restaurantId },
@@ -194,12 +191,9 @@ export class CategoriesController {
   async getCategoriesPublic(
     @Param('restaurantId') restaurantId: string,
     @Req() req: Request,
+    @CurrentUser() user?: RequestUser,
   ) {
-    await this.publicWriteAbuse.assertPublicWriteAllowed({
-      ip: getClientIp(req),
-      scope: 'public_read',
-      restaurantId,
-    });
+    await this.assertAnonymousPublicRead(req, user, restaurantId);
 
     const categories = await this.prisma.category.findMany({
       where: {
@@ -292,5 +286,22 @@ export class CategoriesController {
       user.userId,
       dto.categoryOrders,
     );
+  }
+
+  /** Rate limit solo para clientes anónimos (web pública). Staff autenticado queda exento. */
+  private async assertAnonymousPublicRead(
+    req: Request,
+    user: RequestUser | undefined,
+    restaurantId: string,
+  ): Promise<void> {
+    if (user?.userId) {
+      return;
+    }
+
+    await this.publicWriteAbuse.assertPublicWriteAllowed({
+      ip: getClientIp(req),
+      scope: 'public_read',
+      restaurantId,
+    });
   }
 }

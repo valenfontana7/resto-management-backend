@@ -15,6 +15,7 @@ import {
   ApiBearerAuth,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
+import { E2eAwareAuthThrottle } from '../common/decorators/e2e-aware-auth-throttle.decorator';
 import { AuthService } from './auth.service';
 import { OwnerEmailVerificationService } from './services/owner-email-verification.service';
 import { AuthEmailAbuseService } from './services/auth-email-abuse.service';
@@ -98,7 +99,7 @@ export class AuthController {
 
   @Public()
   @Post('register')
-  @Throttle({ default: { ttl: 60000, limit: 5 } })
+  @E2eAwareAuthThrottle(5)
   @ApiOperation({ summary: 'Register new user' })
   @ApiResponse({ status: 201, description: 'User registered successfully' })
   @ApiResponse({ status: 409, description: 'Email already exists' })
