@@ -1,22 +1,74 @@
 /**
  * Migra restaurantes existentes a RestaurantOperationalProfile.
  *
- * Uso:
- *   npx ts-node prisma/scripts/migrate-operational-profiles.ts
- *   npx ts-node prisma/scripts/migrate-operational-profiles.ts --dry-run
+ * Uso (dev):
+ *   npm run migrate:operational-profiles -- --dry-run
+ *
+ * Uso (producción / Docker — requiere `dist/` del build):
+ *   docker compose exec app npm run migrate:operational-profiles -- --dry-run
+ *   docker compose exec app npm run migrate:operational-profiles
  */
 import 'dotenv/config';
+import { existsSync } from 'fs';
+import { join } from 'path';
+import { pathToFileURL } from 'url';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
-import { inferProfileFromLegacy } from '../../src/operational-profile/operational-profile-inference';
+
+type InferProfileFromLegacyFn = (snapshot: {
+  id: string;
+  businessRules: unknown;
+  features: unknown;
+  onboardingIncomplete: boolean;
+  createdAt: Date;
+  _count?: { orders?: number; tableSessions?: number };
+}) => {
+  schemaVersion: number;
+  operationalModel: string;
+  maturityLevel: string;
+  focusAreas: string[];
+  businessPriorities: Record<string, unknown>;
+  capabilitySnapshot: Record<string, unknown> | null;
+  profileStatus: string;
+  completedWizardVersion: number | null;
+  completedStepIds: string[];
+  completedAt: Date | null;
+  completedByUserId: string | null;
+  migratedFromLegacy: boolean;
+  migrationSource: string | null;
+};
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 const dryRun = process.argv.includes('--dry-run');
 
+async function loadInferProfileFromLegacy(): Promise<InferProfileFromLegacyFn> {
+  const distPath = join(
+    __dirname,
+    '../../dist/operational-profile/operational-profile-inference.js',
+  );
+  const srcPath = join(
+    __dirname,
+    '../../src/operational-profile/operational-profile-inference.ts',
+  );
+
+  const modulePath = existsSync(distPath) ? distPath : srcPath;
+
+  if (!existsSync(modulePath)) {
+    throw new Error(
+      'No se encontró el módulo de inferencia. En producción ejecutá `npm run build` antes de migrar.',
+    );
+  }
+
+  const mod = await import(pathToFileURL(modulePath).href);
+  return mod.inferProfileFromLegacy as InferProfileFromLegacyFn;
+}
+
 async function main() {
+  const inferProfileFromLegacy = await loadInferProfileFromLegacy();
+
   const restaurants = await prisma.restaurant.findMany({
     select: {
       id: true,
@@ -63,7 +115,8 @@ async function main() {
         operationalModel: inferred.operationalModel,
         maturityLevel: inferred.maturityLevel,
         focusAreas: inferred.focusAreas,
-        businessPriorities: inferred.businessPriorities as unknown as Prisma.InputJsonValue,
+        businessPriorities:
+          inferred.businessPriorities as unknown as Prisma.InputJsonValue,
         capabilitySnapshot: (inferred.capabilitySnapshot ??
           Prisma.JsonNull) as unknown as Prisma.InputJsonValue,
         profileStatus: inferred.profileStatus,
