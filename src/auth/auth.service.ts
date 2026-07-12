@@ -28,6 +28,7 @@ import {
 import { Prisma, User } from '@prisma/client';
 import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
 import { EmailService } from '../email/email.service';
+import { normalizeRestaurantFeatures } from '../common/utils/restaurant-features.util';
 import {
   renderMagicLinkEmail,
   renderPasswordResetEmail,
@@ -1700,6 +1701,7 @@ export class AuthService {
             name: true,
             status: true,
             logo: true,
+            features: true,
           },
         },
         role: { select: { id: true, name: true } },
@@ -1725,6 +1727,7 @@ export class AuthService {
         roleName: m.role?.name ?? null,
         isActive: m.restaurantId === activeRestaurantId,
         isDefault: m.isDefault,
+        features: normalizeRestaurantFeatures(m.restaurant.features),
       })),
     };
   }
