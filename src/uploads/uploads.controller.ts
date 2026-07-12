@@ -77,7 +77,7 @@ export class UploadsController {
   }
 
   @Public()
-  @Get('*')
+  @Get('*path')
   @Throttle({ default: { ttl: 60_000, limit: 120 } })
   async proxyGet(@Req() req, @Res() res: Response) {
     // El parámetro wildcard puede tener slashes reemplazados por comas, obtener la URL real
@@ -193,7 +193,7 @@ export class UploadsController {
   }
 
   @Public()
-  @Head('*')
+  @Head('*path')
   @Throttle({ default: { ttl: 60_000, limit: 120 } })
   async proxyHead(@Req() req, @Res() res: Response) {
     try {
