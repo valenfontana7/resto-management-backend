@@ -5,16 +5,18 @@
  *   npm run migrate:operational-profiles -- --dry-run
  *
  * Uso (producción / Docker — requiere `dist/` del build):
- *   docker compose exec app npm run migrate:operational-profiles -- --dry-run
- *   docker compose exec app npm run migrate:operational-profiles
+ *   docker compose exec app npm run migrate:operational-profiles:prod -- --dry-run
+ *   docker compose exec app npm run migrate:operational-profiles:prod
  */
 import 'dotenv/config';
 import { existsSync } from 'fs';
 import { join } from 'path';
-import { pathToFileURL } from 'url';
+import { createRequire } from 'module';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
+
+const requireModule = createRequire(__filename);
 
 type InferProfileFromLegacyFn = (snapshot: {
   id: string;
@@ -44,7 +46,7 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 const dryRun = process.argv.includes('--dry-run');
 
-async function loadInferProfileFromLegacy(): Promise<InferProfileFromLegacyFn> {
+function loadInferProfileFromLegacy(): InferProfileFromLegacyFn {
   const distPath = join(
     __dirname,
     '../../dist/operational-profile/operational-profile-inference.js',
@@ -54,20 +56,27 @@ async function loadInferProfileFromLegacy(): Promise<InferProfileFromLegacyFn> {
     '../../src/operational-profile/operational-profile-inference.ts',
   );
 
-  const modulePath = existsSync(distPath) ? distPath : srcPath;
-
-  if (!existsSync(modulePath)) {
-    throw new Error(
-      'No se encontró el módulo de inferencia. En producción ejecutá `npm run build` antes de migrar.',
-    );
+  if (existsSync(distPath)) {
+    const mod = requireModule(distPath) as {
+      inferProfileFromLegacy: InferProfileFromLegacyFn;
+    };
+    return mod.inferProfileFromLegacy;
   }
 
-  const mod = await import(pathToFileURL(modulePath).href);
-  return mod.inferProfileFromLegacy as InferProfileFromLegacyFn;
+  if (existsSync(srcPath)) {
+    const mod = requireModule(srcPath) as {
+      inferProfileFromLegacy: InferProfileFromLegacyFn;
+    };
+    return mod.inferProfileFromLegacy;
+  }
+
+  throw new Error(
+    'No se encontró el módulo de inferencia. En producción ejecutá `npm run build` antes de migrar.',
+  );
 }
 
 async function main() {
-  const inferProfileFromLegacy = await loadInferProfileFromLegacy();
+  const inferProfileFromLegacy = loadInferProfileFromLegacy();
 
   const restaurants = await prisma.restaurant.findMany({
     select: {
