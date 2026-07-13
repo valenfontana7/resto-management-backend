@@ -241,10 +241,11 @@ export const PROSPECT_CONTENT_BLOCK_SCHEMA = {
   properties: {
     sections: {
       type: 'object',
+      // `menu` lo arma el assembler con defaults; no pedirlo a Gemini
+      // (required sin properties → INVALID_ARGUMENT de responseJsonSchema).
       required: [
         'hero',
         'featuredProducts',
-        'menu',
         'about',
         'testimonials',
         'faq',
