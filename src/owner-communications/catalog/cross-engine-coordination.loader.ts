@@ -1,5 +1,4 @@
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import crossEngineCoordinationJson from './cross-engine-coordination.v1.json';
 
 export type OwnerCommunicationEngine =
   | 'lifecycle_marketing'
@@ -20,16 +19,10 @@ export interface CrossEngineCoordinationDocument {
   recommendationOwnership: RecommendationOwnershipRule[];
 }
 
-let cached: CrossEngineCoordinationDocument | null = null;
+const catalog = crossEngineCoordinationJson as CrossEngineCoordinationDocument;
 
 export function loadCrossEngineCoordination(): CrossEngineCoordinationDocument {
-  if (cached) return cached;
-  const raw = readFileSync(
-    join(__dirname, 'cross-engine-coordination.v1.json'),
-    'utf-8',
-  );
-  cached = JSON.parse(raw) as CrossEngineCoordinationDocument;
-  return cached;
+  return catalog;
 }
 
 export function getCrossEngineGlobalCap(): {
@@ -37,25 +30,23 @@ export function getCrossEngineGlobalCap(): {
   maxMessages: number;
   minDaysBetweenSameRecommendation: number;
 } {
-  const doc = loadCrossEngineCoordination();
   return {
-    days: doc.globalFrequencyCapDays,
-    maxMessages: doc.globalMaxMessagesPerWindow,
-    minDaysBetweenSameRecommendation: doc.minDaysBetweenSameRecommendation,
+    days: catalog.globalFrequencyCapDays,
+    maxMessages: catalog.globalMaxMessagesPerWindow,
+    minDaysBetweenSameRecommendation: catalog.minDaysBetweenSameRecommendation,
   };
 }
 
 export function getRecommendationOwnership(
   recommendationCode: string,
 ): RecommendationOwnershipRule | null {
-  const doc = loadCrossEngineCoordination();
   return (
-    doc.recommendationOwnership.find(
+    catalog.recommendationOwnership.find(
       (r) => r.recommendationCode === recommendationCode,
     ) ?? null
   );
 }
 
 export function getCountableDeliveryStatuses(): string[] {
-  return loadCrossEngineCoordination().countableDeliveryStatuses;
+  return catalog.countableDeliveryStatuses;
 }
