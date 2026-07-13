@@ -109,8 +109,18 @@ function validateMenu(
   const categories = bundle.menu?.categories ?? [];
   const products = bundle.menu?.products ?? [];
 
-  if (!categories.length) errors.push('menu.categories no puede estar vacío.');
-  if (!products.length) errors.push('menu.products no puede estar vacío.');
+  if (!categories.length)
+    warnings.push(
+      'menu.categories vacío (carta omitida o pendiente de completar).',
+    );
+  if (!products.length)
+    warnings.push(
+      'menu.products vacío (carta omitida o pendiente de completar).',
+    );
+
+  if (!categories.length && !products.length) {
+    return;
+  }
 
   const categoryIds = new Set(categories.map((c) => c.id));
   const mediaIds = new Set((bundle.media?.images ?? []).map((m) => m.id));

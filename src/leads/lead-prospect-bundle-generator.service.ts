@@ -14,8 +14,17 @@ import {
   buildProspectBusinessStructurePrompt,
   buildProspectContentStructurePrompt,
   buildProspectMenuStructurePrompt,
+  buildProspectResearchAssessmentPrompt,
   buildProspectResearchPrompt,
 } from './prompts/prospect-bundle.prompts';
+import {
+  buildEmptyMenuBlock,
+  InsufficientResearchError,
+  mergeAssessmentWithHeuristics,
+  parseVerdictBlockFromResearch,
+  RESEARCH_ASSESSMENT_SCHEMA,
+  type ResearchAssessment,
+} from './prospect-research-gate';
 import {
   PROSPECT_BUSINESS_BLOCK_SCHEMA,
   PROSPECT_CONTENT_BLOCK_SCHEMA,
@@ -25,10 +34,17 @@ import {
   type ProspectMenuBlock,
 } from './types/prospect-bundle-ai.types';
 
+export interface ProspectResearchResult {
+  research: string;
+  assessment: ResearchAssessment;
+  model: string;
+}
+
 export interface ProspectBundleGenerationResult {
   bundle: ProspectBundle;
   validation: ValidationResult;
   researchSummary: string;
+  assessment: ResearchAssessment;
   model: string;
 }
 
@@ -50,9 +66,7 @@ export class LeadProspectBundleGeneratorService {
     );
   }
 
-  async generateForLead(
-    leadId: string,
-  ): Promise<ProspectBundleGenerationResult> {
+  async researchForLead(leadId: string): Promise<ProspectResearchResult> {
     const lead = await this.prisma.lead.findUniqueOrThrow({
       where: { id: leadId },
     });
@@ -64,8 +78,52 @@ export class LeadProspectBundleGeneratorService {
     }
 
     const research = await this.runResearchPass(lead);
+    const assessment = await this.assessResearch(lead, research);
+
+    if (assessment.verdict !== 'SUFICIENTE' || !assessment.identityVerified) {
+      throw new InsufficientResearchError(assessment, research.slice(0, 4000));
+    }
+
+    return {
+      research,
+      assessment,
+      model: this.defaultModel,
+    };
+  }
+
+  async generateForLead(
+    leadId: string,
+    prefetched?: ProspectResearchResult,
+  ): Promise<ProspectBundleGenerationResult> {
+    const lead = await this.prisma.lead.findUniqueOrThrow({
+      where: { id: leadId },
+    });
+
+    if (!this.providerRouter.isAvailable(AiProvider.GEMINI)) {
+      throw new Error(
+        'Gemini no está configurado (GEMINI_API_KEY). No se puede generar el paquete.',
+      );
+    }
+
+    const researchResult = prefetched ?? (await this.researchForLead(leadId));
+    const { research, assessment } = researchResult;
+
+    const generationWarnings: string[] = [];
     const businessBlock = await this.runBusinessStructurePass(lead, research);
-    const menuBlock = await this.runMenuStructurePass(lead, research);
+
+    let menuBlock;
+    if (assessment.menuSkipped || !assessment.menuVerified) {
+      menuBlock = buildEmptyMenuBlock();
+      generationWarnings.push(
+        'Menú omitido: sin carta/precios públicos verificables. Completar a mano o reintentar con fuente de menú.',
+      );
+      this.logger.log(
+        `Skipping menu generation for lead ${leadId} (menuSkipped=${assessment.menuSkipped})`,
+      );
+    } else {
+      menuBlock = await this.runMenuStructurePass(lead, research);
+    }
+
     const productIds = menuBlock.menu.products.map((p) => String(p.id));
     const contentBlock = await this.runContentStructurePass(
       lead,
@@ -80,6 +138,28 @@ export class LeadProspectBundleGeneratorService {
       contentBlock,
     });
 
+    if (assessment.menuSkipped || !assessment.menuVerified) {
+      if (bundle.sections.featuredProducts) {
+        bundle.sections.featuredProducts.enabled = false;
+        bundle.sections.featuredProducts.reason =
+          'Sin productos verificables; sección omitida hasta cargar carta.';
+      }
+      if (bundle.sections.menu) {
+        bundle.sections.menu.content = {
+          ...bundle.sections.menu.content,
+          title: 'La carta',
+          subtitle: 'Carta en carga — pedí por WhatsApp o consultá en el local',
+        };
+      }
+      const priorWarnings = Array.isArray(bundle.metadata?.warnings)
+        ? (bundle.metadata.warnings as string[])
+        : [];
+      bundle.metadata = {
+        ...bundle.metadata,
+        warnings: [...priorWarnings, ...generationWarnings],
+      };
+    }
+
     let validation = validateBundle(bundle);
     if (validation.errors.length > 0) {
       this.logger.warn(
@@ -89,10 +169,16 @@ export class LeadProspectBundleGeneratorService {
       validation = validateBundle(bundle);
     }
 
+    validation = {
+      ...validation,
+      warnings: [...generationWarnings, ...validation.warnings],
+    };
+
     return {
       bundle,
       validation,
       researchSummary: research.slice(0, 4000),
+      assessment,
       model: this.defaultModel,
     };
   }
@@ -103,7 +189,7 @@ export class LeadProspectBundleGeneratorService {
       model: this.defaultModel,
       prompt: buildProspectResearchPrompt(lead),
       systemInstruction:
-        'Sos un investigador comercial de Bentoo (SaaS restaurantes Argentina). Usá Google Search. Solo datos verificables. Español rioplatense.',
+        'Sos un investigador comercial de Bentoo (SaaS restaurantes Argentina). Usá Google Search. Solo datos verificables. Si no hay evidencia, declaralo. Español rioplatense.',
       temperature: 0.2,
       maxOutputTokens: 8192,
       thinkingBudget: 0,
@@ -115,6 +201,80 @@ export class LeadProspectBundleGeneratorService {
       throw new Error('La investigación comercial no devolvió resultados.');
     }
     return text;
+  }
+
+  private async assessResearch(
+    lead: Lead,
+    research: string,
+  ): Promise<ResearchAssessment> {
+    try {
+      const response = await this.providerRouter.complete({
+        provider: AiProvider.GEMINI,
+        model: this.defaultModel,
+        prompt: buildProspectResearchAssessmentPrompt(lead, research),
+        systemInstruction:
+          'Evaluá evidencia comercial. Preferí INSUFICIENTE ante la duda. No inventes fuentes.',
+        temperature: 0,
+        maxOutputTokens: 1024,
+        thinkingBudget: 0,
+        responseJsonSchema: RESEARCH_ASSESSMENT_SCHEMA as Record<
+          string,
+          unknown
+        >,
+      });
+
+      const raw = response.text?.trim();
+      if (!raw) {
+        throw new Error('Assessment vacío');
+      }
+
+      const parsed = parseAiJsonResponse<{
+        verdict: 'SUFICIENTE' | 'INSUFICIENTE';
+        reason: string;
+        identityVerified: boolean;
+        menuVerified: boolean;
+        sourcesFound: string[];
+        blockers: string[];
+      }>(raw);
+
+      return mergeAssessmentWithHeuristics(
+        {
+          verdict:
+            parsed.verdict === 'SUFICIENTE' ? 'SUFICIENTE' : 'INSUFICIENTE',
+          reason: String(parsed.reason ?? ''),
+          identityVerified: Boolean(parsed.identityVerified),
+          menuVerified: Boolean(parsed.menuVerified),
+          sourcesFound: Array.isArray(parsed.sourcesFound)
+            ? parsed.sourcesFound.map(String)
+            : [],
+          blockers: Array.isArray(parsed.blockers)
+            ? parsed.blockers.map(String)
+            : [],
+        },
+        research,
+        lead,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Assessment JSON falló; usando veredicto del texto/heurística: ${error instanceof Error ? error.message : error}`,
+      );
+
+      const fromText = parseVerdictBlockFromResearch(research);
+      return mergeAssessmentWithHeuristics(
+        {
+          verdict: fromText.verdict ?? 'INSUFICIENTE',
+          reason:
+            fromText.reason ||
+            'Evaluación estructurada no disponible; se usó el veredicto de la investigación.',
+          identityVerified: fromText.identityVerified ?? false,
+          menuVerified: fromText.menuVerified ?? false,
+          sourcesFound: [],
+          blockers: ['assessment_json_fallback'],
+        },
+        research,
+        lead,
+      );
+    }
   }
 
   private async runBusinessStructurePass(lead: Lead, research: string) {

@@ -74,7 +74,8 @@ export class GenerateProspectBundleTask
           autoImport: input.autoImport ?? false,
         },
         confidence:
-          result.validation.errors.length === 0
+          result.validation.errors.length === 0 &&
+          result.assessment.verdict === 'SUFICIENTE'
             ? Math.min(0.85, 0.5 + result.bundle.menu.products.length * 0.01)
             : 0.4,
         provider: AiProvider.GEMINI,

@@ -6,6 +6,7 @@ import { LeadProspectBundleGeneratorService } from './lead-prospect-bundle-gener
 import { LeadProspectImageService } from './lead-prospect-image.service';
 import { LeadProspectPackageService } from './lead-prospect-package.service';
 import { LeadSalesPackageGeneratorService } from './lead-sales-package-generator.service';
+import { InsufficientResearchError } from './prospect-research-gate';
 import type { ProspectBundle } from '../prospect-importer/types';
 import type {
   PipelineStageId,
@@ -31,6 +32,15 @@ const STAGE_LABELS: Record<PipelineStageId, string> = {
   'sales-package': 'Paquete comercial',
   report: 'Reporte final',
 };
+
+const POST_RESEARCH_STAGES: PipelineStageId[] = [
+  'bundle',
+  'validate',
+  'assets',
+  'import',
+  'qa',
+  'sales-package',
+];
 
 @Injectable()
 export class LeadProspectPipelineService {
@@ -58,6 +68,18 @@ export class LeadProspectPipelineService {
     let demoUrl: string | undefined;
     let salesPackage: SalesPackageContent | null | undefined = null;
     let success = true;
+
+    const markSkipped = (ids: PipelineStageId[], message: string) => {
+      for (const id of ids) {
+        if (stages.some((s) => s.id === id)) continue;
+        stages.push({
+          id,
+          label: STAGE_LABELS[id],
+          status: 'skipped',
+          message,
+        });
+      }
+    };
 
     const runStage = async <T>(
       id: PipelineStageId,
@@ -95,6 +117,19 @@ export class LeadProspectPipelineService {
         stage.completedAt = new Date().toISOString();
         stage.durationMs = Date.now() - stageStart;
         stage.message = message;
+        if (error instanceof InsufficientResearchError) {
+          stage.details = {
+            verdict: error.assessment.verdict,
+            blockers: error.assessment.blockers,
+            menuVerified: error.assessment.menuVerified,
+            identityVerified: error.assessment.identityVerified,
+            sourcesFound: error.assessment.sourcesFound,
+            researchPreview: error.researchSummary.slice(0, 500),
+          };
+          stage.warnings = [
+            'No se crea demo automática sin datos verificables.',
+          ];
+        }
         errors.push(`${STAGE_LABELS[id]}: ${message}`);
         success = false;
         throw error;
@@ -102,13 +137,33 @@ export class LeadProspectPipelineService {
     };
 
     try {
-      await runStage('research', async () => ({
-        message: 'Investigación incluida en generación del bundle',
-        details: { note: 'Google Search + contexto del lead' },
-      }));
+      const researchResult = await runStage('research', async () => {
+        const result = await this.bundleGenerator.researchForLead(leadId);
+        return {
+          message: result.assessment.summaryMessage,
+          warnings: result.assessment.menuSkipped
+            ? [
+                'Menú omitido en esta corrida: la demo se arma sin carta inventada.',
+              ]
+            : undefined,
+          details: {
+            verdict: result.assessment.verdict,
+            menuVerified: result.assessment.menuVerified,
+            menuSkipped: result.assessment.menuSkipped,
+            identityVerified: result.assessment.identityVerified,
+            sourcesFound: result.assessment.sourcesFound,
+            blockers: result.assessment.blockers,
+            researchPreview: result.research.slice(0, 500),
+          },
+          result,
+        };
+      });
 
       const generation = await runStage('bundle', async () => {
-        const result = await this.bundleGenerator.generateForLead(leadId);
+        const result = await this.bundleGenerator.generateForLead(
+          leadId,
+          researchResult,
+        );
         bundle = result.bundle;
         slug =
           result.bundle.builder?.bentooImport?.demoSlug ??
@@ -122,11 +177,14 @@ export class LeadProspectPipelineService {
           );
         }
         return {
-          message: `${result.bundle.menu.products.length} platos · ${result.researchSummary.slice(0, 120)}…`,
+          message: result.assessment.menuSkipped
+            ? `Demo sin carta · ${result.bundle.menu.products.length} platos · branding OK`
+            : `${result.bundle.menu.products.length} platos · ${result.researchSummary.slice(0, 120)}…`,
           warnings: result.validation.warnings,
           details: {
             dishCount: result.bundle.menu.products.length,
             categoryCount: result.bundle.menu.categories.length,
+            menuSkipped: result.assessment.menuSkipped,
             model: result.model,
           },
           result: result,
@@ -248,8 +306,18 @@ export class LeadProspectPipelineService {
           message: 'Omitido por opción skipSalesPackage',
         });
       }
-    } catch {
-      // stages already marked failed; continue to report
+    } catch (error) {
+      if (error instanceof InsufficientResearchError) {
+        markSkipped(
+          POST_RESEARCH_STAGES,
+          'Omitido: investigación insuficiente — no se crea demo inventada',
+        );
+      } else {
+        const pending = POST_RESEARCH_STAGES.filter(
+          (id) => !stages.some((s) => s.id === id),
+        );
+        markSkipped(pending, 'Omitido tras fallo anterior');
+      }
     }
 
     await runStage('report', async () => {
@@ -335,7 +403,11 @@ export class LeadProspectPipelineService {
     const failures: string[] = [];
 
     if (bundle.menu.products.length < 5) {
-      failures.push('Menú con menos de 5 platos');
+      if (bundle.menu.products.length === 0) {
+        warnings.push('Demo sin carta (menú omitido a propósito)');
+      } else {
+        warnings.push('Menú con menos de 5 platos');
+      }
     } else {
       checks.push(`Menú: ${bundle.menu.products.length} platos`);
     }
