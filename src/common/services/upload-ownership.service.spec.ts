@@ -32,6 +32,19 @@ describe('UploadOwnershipService', () => {
       ).not.toThrow();
     });
 
+    it('allows prospect demo assets under leads-demos/', () => {
+      expect(() =>
+        service.assertPublicProxyKeyAllowed(
+          'leads-demos/mi-resto/abc-logo.jpg',
+        ),
+      ).not.toThrow();
+      expect(() =>
+        service.assertPublicProxyKeyAllowed(
+          'leads-demos/mi-resto/abc-hero.jpg',
+        ),
+      ).not.toThrow();
+    });
+
     it('rejects keys outside public namespaces', () => {
       expect(() =>
         service.assertPublicProxyKeyAllowed('private/secrets/file.png'),

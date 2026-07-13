@@ -2,7 +2,13 @@ import { ForbiddenException, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { normalizeRoleCode } from '../utils/role.utils';
 
-const PUBLIC_PROXY_PREFIXES = ['images/', 'branding/', 'logos/', 'categories/'];
+const PUBLIC_PROXY_PREFIXES = [
+  'images/',
+  'branding/',
+  'logos/',
+  'categories/',
+  'leads-demos/',
+];
 
 /** Assets de marca del restaurante (logo, portada, favicon) bajo S3. */
 const PUBLIC_RESTAURANT_ASSET_PREFIX = /^restaurants\/[^/]+\//;
