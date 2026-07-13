@@ -12,7 +12,9 @@ import { withRevenueRelationId } from './lead-serializer';
 import { getLeadPriority } from './lead-scoring.rules';
 import {
   findLeadDuplicateMatch,
+  isOnlineMenuPlatformUrl,
   normalizeInstagramHandle,
+  normalizeWebsiteUrl,
 } from './leads-discovery.helpers';
 import type {
   ImportLeadsResult,
@@ -95,11 +97,13 @@ export class LeadsService {
         phone: dto.phone?.trim() || null,
         whatsapp: dto.whatsapp?.trim() || null,
         instagram: normalizeInstagramHandle(dto.instagram) ?? null,
-        website: dto.website?.trim() || null,
+        website: normalizeWebsiteUrl(dto.website) ?? null,
         city: dto.city?.trim() || null,
         notes: dto.notes?.trim() || null,
-        hasWebsite: dto.hasWebsite ?? false,
-        hasOnlineMenu: dto.hasOnlineMenu ?? false,
+        hasWebsite: dto.hasWebsite ?? Boolean(normalizeWebsiteUrl(dto.website)),
+        hasOnlineMenu:
+          dto.hasOnlineMenu ??
+          isOnlineMenuPlatformUrl(normalizeWebsiteUrl(dto.website)),
         hasReservations: dto.hasReservations ?? false,
         hasWhatsapp: dto.hasWhatsapp ?? false,
         hasEcommerce: dto.hasEcommerce ?? false,
@@ -163,14 +167,21 @@ export class LeadsService {
           instagram: normalizeInstagramHandle(dto.instagram) ?? null,
         }),
         ...(dto.website !== undefined && {
-          website: dto.website?.trim() || null,
+          website: normalizeWebsiteUrl(dto.website) ?? null,
+          hasWebsite:
+            dto.hasWebsite ?? Boolean(normalizeWebsiteUrl(dto.website)),
+          hasOnlineMenu:
+            dto.hasOnlineMenu ??
+            isOnlineMenuPlatformUrl(normalizeWebsiteUrl(dto.website)),
         }),
         ...(dto.city !== undefined && { city: dto.city?.trim() || null }),
         ...(dto.notes !== undefined && { notes: dto.notes?.trim() || null }),
-        ...(dto.hasWebsite !== undefined && { hasWebsite: dto.hasWebsite }),
-        ...(dto.hasOnlineMenu !== undefined && {
-          hasOnlineMenu: dto.hasOnlineMenu,
-        }),
+        ...(dto.hasWebsite !== undefined &&
+          dto.website === undefined && { hasWebsite: dto.hasWebsite }),
+        ...(dto.hasOnlineMenu !== undefined &&
+          dto.website === undefined && {
+            hasOnlineMenu: dto.hasOnlineMenu,
+          }),
         ...(dto.hasReservations !== undefined && {
           hasReservations: dto.hasReservations,
         }),

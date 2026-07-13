@@ -16,6 +16,12 @@ import { LeadImportOrchestratorService } from './lead-import-orchestrator.servic
 import type { ImportLeadsExtendedResult } from './lead-import-orchestrator.service';
 import { LeadProspectPackageService } from './lead-prospect-package.service';
 import { LeadsService } from './leads.service';
+import {
+  buildInitialPipelineReport,
+  getPipelineProgress,
+  isPipelineInFlight,
+  setPipelineProgress,
+} from './pipeline-progress.store';
 import type {
   LeadBusinessDiagnosis,
   LeadMessageContent,
@@ -228,6 +234,14 @@ export class LeadsAiExecutionService {
       skipSalesPackage?: boolean;
     },
   ) {
+    const inFlight = getPipelineProgress(leadId);
+    if (inFlight && isPipelineInFlight(leadId)) {
+      return {
+        status: 'running' as const,
+        pipelineReport: inFlight,
+      };
+    }
+
     const input = {
       leadId,
       skipImport: options?.skipImport ?? false,
@@ -235,21 +249,72 @@ export class LeadsAiExecutionService {
       skipSalesPackage: options?.skipSalesPackage ?? false,
     };
 
-    const inline = await this.runner.runInline<
-      typeof input,
-      ProspectPipelineReport
-    >('leads.run_prospect_pipeline', input, { userId, leadId });
+    const seeded = buildInitialPipelineReport(leadId);
+    setPipelineProgress(leadId, seeded);
+
+    void this.runner
+      .runInline<
+        typeof input,
+        ProspectPipelineReport
+      >('leads.run_prospect_pipeline', input, { userId, leadId })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(
+          `Prospect pipeline background run failed for ${leadId}: ${message}`,
+        );
+        const current = getPipelineProgress(leadId) ?? seeded;
+        setPipelineProgress(leadId, {
+          ...current,
+          success: false,
+          completedAt: new Date().toISOString(),
+          durationMs: Date.now() - Date.parse(current.startedAt),
+          errors: [...current.errors, message],
+          stages: current.stages.map((stage) => {
+            if (stage.id === 'report') {
+              return {
+                ...stage,
+                status: 'failed',
+                message,
+                completedAt: new Date().toISOString(),
+              };
+            }
+            if (stage.status === 'running' || stage.status === 'pending') {
+              return {
+                ...stage,
+                status: 'skipped',
+                message: 'Omitido tras fallo del runner',
+              };
+            }
+            return stage;
+          }),
+        });
+      });
 
     return {
-      status: 'completed' as const,
-      pipelineReport: inline.output,
-      totalCostUsd: inline.totalCostUsd,
-      durationMs: inline.durationMs,
+      status: 'running' as const,
+      pipelineReport: getPipelineProgress(leadId) ?? seeded,
     };
   }
 
   async getProspectPipeline(leadId: string) {
-    return this.leadProspectPackage.getPipelineArtifacts(leadId);
+    const memory = getPipelineProgress(leadId);
+    const artifacts =
+      await this.leadProspectPackage.getPipelineArtifacts(leadId);
+    if (memory) {
+      return {
+        ...artifacts,
+        pipelineReport: memory,
+        status: isPipelineInFlight(leadId)
+          ? ('running' as const)
+          : ('completed' as const),
+      };
+    }
+    return {
+      ...artifacts,
+      status: artifacts.pipelineReport
+        ? ('completed' as const)
+        : ('idle' as const),
+    };
   }
 
   async importWithAutoAnalyze(

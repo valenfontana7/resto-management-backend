@@ -3,6 +3,8 @@ import {
   mergeDiscoveryCandidatePatch,
   normalizeConfidence,
   normalizeInstagramHandle,
+  normalizeWebsiteUrl,
+  isOnlineMenuPlatformUrl,
   parseDiscoveryResponse,
   nameSimilarity,
   findLeadDuplicateMatch,
@@ -12,6 +14,14 @@ describe('leads-discovery.helpers', () => {
   it('builds dedup key from name and city', () => {
     expect(buildLeadDedupKey('La Nonna', 'Palermo')).toBe('la nonna::palermo');
     expect(buildLeadDedupKey('  La   Nonna  ', '  ')).toBe('la nonna::');
+  });
+
+  it('normalizes website URLs and FU.DO paths', () => {
+    expect(normalizeWebsiteUrl('fu.do/miresto')).toBe('https://fu.do/miresto');
+    expect(normalizeWebsiteUrl('https://fu.do/miresto/')).toBe(
+      'https://fu.do/miresto',
+    );
+    expect(isOnlineMenuPlatformUrl('https://fu.do/miresto')).toBe(true);
   });
 
   it('normalizes confidence values', () => {

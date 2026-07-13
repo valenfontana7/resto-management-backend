@@ -112,6 +112,41 @@ export function findLeadDuplicateMatch(
   return best;
 }
 
+export function normalizeWebsiteUrl(value?: string | null): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    try {
+      const url = new URL(trimmed);
+      return url.toString().replace(/\/$/, '') || trimmed;
+    } catch {
+      return trimmed;
+    }
+  }
+
+  // fu.do/xxx, queresto.com/xxx, dominio sin esquema
+  if (/^[a-z0-9.-]+\.[a-z]{2,}([/?#].*)?$/i.test(trimmed)) {
+    return `https://${trimmed.replace(/\/$/, '')}`;
+  }
+
+  return trimmed;
+}
+
+/** Menú online / carta digital típica AR (FU.DO, QueResto, etc.). */
+export function isOnlineMenuPlatformUrl(url?: string | null): boolean {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  return (
+    lower.includes('fu.do') ||
+    lower.includes('fudo.') ||
+    lower.includes('queresto') ||
+    lower.includes('cardapio') ||
+    lower.includes('menu.') ||
+    lower.includes('/menu')
+  );
+}
+
 /** Handle limpio para guardar y mostrar (sin URL ni @). */
 export function normalizeInstagramHandle(
   value?: string | null,

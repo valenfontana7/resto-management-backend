@@ -25,7 +25,7 @@ export class RunProspectPipelineTask
 {
   readonly key = 'leads.run_prospect_pipeline';
   readonly category = 'ai' as const;
-  readonly requiresApproval = true;
+  readonly requiresApproval = false;
   readonly cacheTtlSeconds = 0;
 
   private readonly logger = new Logger(RunProspectPipelineTask.name);

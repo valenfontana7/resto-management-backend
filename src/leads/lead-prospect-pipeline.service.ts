@@ -7,6 +7,11 @@ import { LeadProspectImageService } from './lead-prospect-image.service';
 import { LeadProspectPackageService } from './lead-prospect-package.service';
 import { LeadSalesPackageGeneratorService } from './lead-sales-package-generator.service';
 import { InsufficientResearchError } from './prospect-research-gate';
+import {
+  buildInitialPipelineReport,
+  PIPELINE_STAGE_LABELS,
+  setPipelineProgress,
+} from './pipeline-progress.store';
 import type { ProspectBundle } from '../prospect-importer/types';
 import type {
   PipelineStageId,
@@ -22,16 +27,7 @@ export interface RunProspectPipelineOptions {
   skipSalesPackage?: boolean;
 }
 
-const STAGE_LABELS: Record<PipelineStageId, string> = {
-  research: 'Investigación web',
-  bundle: 'Bundle (menú + branding)',
-  validate: 'Validación de integridad',
-  assets: 'Generación de imágenes',
-  import: 'Import a demo Bentoo',
-  qa: 'QA automático',
-  'sales-package': 'Paquete comercial',
-  report: 'Reporte final',
-};
+const STAGE_LABELS = PIPELINE_STAGE_LABELS;
 
 const POST_RESEARCH_STAGES: PipelineStageId[] = [
   'bundle',
@@ -60,7 +56,8 @@ export class LeadProspectPipelineService {
   ): Promise<ProspectPipelineReport> {
     const pipelineStarted = Date.now();
     const startedAt = new Date().toISOString();
-    const stages: PipelineStageResult[] = [];
+    const initial = buildInitialPipelineReport(leadId, startedAt);
+    const stages: PipelineStageResult[] = initial.stages.map((s) => ({ ...s }));
     const warnings: string[] = [];
     const errors: string[] = [];
     let bundle: ProspectBundle | null = null;
@@ -69,16 +66,54 @@ export class LeadProspectPipelineService {
     let salesPackage: SalesPackageContent | null | undefined = null;
     let success = true;
 
+    const publishProgress = (partial?: Partial<ProspectPipelineReport>) => {
+      const reportStage = stages.find((s) => s.id === 'report');
+      const finished =
+        reportStage?.status === 'passed' || reportStage?.status === 'failed';
+      const snapshot: ProspectPipelineReport = {
+        leadId,
+        slug,
+        success: Boolean(finished && success && errors.length === 0),
+        startedAt,
+        completedAt: new Date().toISOString(),
+        durationMs: Date.now() - pipelineStarted,
+        stages: stages.map((s) => ({ ...s })),
+        demoUrl,
+        warnings: [...warnings],
+        errors: [...errors],
+        ...partial,
+      };
+      setPipelineProgress(leadId, snapshot);
+      void this.packageService
+        .persistPipelineReport(leadId, snapshot, salesPackage)
+        .catch((err) =>
+          this.logger.debug(
+            `persistPipelineReport skipped: ${err instanceof Error ? err.message : err}`,
+          ),
+        );
+    };
+
+    setPipelineProgress(leadId, {
+      ...initial,
+      stages: stages.map((s) => ({ ...s })),
+    });
+
     const markSkipped = (ids: PipelineStageId[], message: string) => {
       for (const id of ids) {
-        if (stages.some((s) => s.id === id)) continue;
-        stages.push({
+        const existingIdx = stages.findIndex((s) => s.id === id);
+        const stage: PipelineStageResult = {
           id,
           label: STAGE_LABELS[id],
           status: 'skipped',
           message,
-        });
+        };
+        if (existingIdx >= 0) {
+          stages[existingIdx] = stage;
+        } else {
+          stages.push(stage);
+        }
       }
+      publishProgress();
     };
 
     const runStage = async <T>(
@@ -91,13 +126,20 @@ export class LeadProspectPipelineService {
       }>,
     ): Promise<T | undefined> => {
       const stageStart = Date.now();
+      const existingIdx = stages.findIndex((s) => s.id === id);
       const stage: PipelineStageResult = {
         id,
         label: STAGE_LABELS[id],
         status: 'running',
         startedAt: new Date(stageStart).toISOString(),
       };
-      stages.push(stage);
+      if (existingIdx >= 0) {
+        stages[existingIdx] = stage;
+      } else {
+        stages.push(stage);
+      }
+      // Quitar placeholders pending del initial report para este id
+      publishProgress();
 
       try {
         const output = await fn();
@@ -110,6 +152,7 @@ export class LeadProspectPipelineService {
         if (output.warnings?.length) {
           warnings.push(...output.warnings);
         }
+        publishProgress();
         return output.result;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -132,6 +175,7 @@ export class LeadProspectPipelineService {
         }
         errors.push(`${STAGE_LABELS[id]}: ${message}`);
         success = false;
+        publishProgress();
         throw error;
       }
     };
@@ -226,12 +270,16 @@ export class LeadProspectPipelineService {
           };
         });
       } else {
-        stages.push({
+        const existingIdx = stages.findIndex((s) => s.id === 'assets');
+        const stage: PipelineStageResult = {
           id: 'assets',
           label: STAGE_LABELS.assets,
           status: 'skipped',
           message: 'Omitido por opción skipImages',
-        });
+        };
+        if (existingIdx >= 0) stages[existingIdx] = stage;
+        else stages.push(stage);
+        publishProgress();
       }
 
       if (!options?.skipImport) {
@@ -261,13 +309,17 @@ export class LeadProspectPipelineService {
           demoUrl = importReport.urls.demo;
         }
       } else {
-        stages.push({
+        const existingIdx = stages.findIndex((s) => s.id === 'import');
+        const stage: PipelineStageResult = {
           id: 'import',
           label: STAGE_LABELS.import,
           status: 'skipped',
           message: 'Omitido por opción skipImport',
-        });
+        };
+        if (existingIdx >= 0) stages[existingIdx] = stage;
+        else stages.push(stage);
         demoUrl = this.resolveDemoUrl(slug);
+        publishProgress();
       }
 
       await runStage('qa', async () => {
@@ -299,12 +351,16 @@ export class LeadProspectPipelineService {
           };
         });
       } else {
-        stages.push({
+        const existingIdx = stages.findIndex((s) => s.id === 'sales-package');
+        const stage: PipelineStageResult = {
           id: 'sales-package',
           label: STAGE_LABELS['sales-package'],
           status: 'skipped',
           message: 'Omitido por opción skipSalesPackage',
-        });
+        };
+        if (existingIdx >= 0) stages[existingIdx] = stage;
+        else stages.push(stage);
+        publishProgress();
       }
     } catch (error) {
       if (error instanceof InsufficientResearchError) {
@@ -364,6 +420,8 @@ export class LeadProspectPipelineService {
       warnings,
       errors,
     };
+
+    setPipelineProgress(leadId, report);
 
     this.logger.log(
       `Pipeline ${report.success ? 'OK' : 'FAIL'} for lead ${leadId} (${report.durationMs}ms)`,

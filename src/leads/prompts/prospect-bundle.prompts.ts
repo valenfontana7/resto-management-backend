@@ -1,11 +1,17 @@
 import type { Lead } from '@prisma/client';
-import { normalizeInstagramHandle } from '../leads-discovery.helpers';
+import {
+  isOnlineMenuPlatformUrl,
+  normalizeInstagramHandle,
+  normalizeWebsiteUrl,
+} from '../leads-discovery.helpers';
 
 export function buildProspectResearchPrompt(lead: Lead): string {
   const igHandle = normalizeInstagramHandle(lead.instagram);
   const igUrl = igHandle
     ? `https://www.instagram.com/${igHandle}/`
     : lead.instagram?.trim() || null;
+  const websiteUrl = normalizeWebsiteUrl(lead.website);
+  const websiteIsMenuPlatform = isOnlineMenuPlatformUrl(websiteUrl);
 
   const lines = [
     `Investigá en profundidad el restaurante "${lead.businessName}" para armar un paquete comercial Bentoo.`,
@@ -13,7 +19,7 @@ export function buildProspectResearchPrompt(lead: Lead): string {
     'Datos conocidos del prospecto:',
     `- Ciudad: ${lead.city ?? 'Buenos Aires, Argentina'}`,
     `- Categoría: ${lead.category ?? 'restaurant'}`,
-    lead.website ? `- Web: ${lead.website}` : null,
+    websiteUrl ? `- Web (PRIORIDAD #1 — abrir sí o sí): ${websiteUrl}` : null,
     igUrl ? `- Instagram: ${igUrl}${igHandle ? ` (@${igHandle})` : ''}` : null,
     lead.phone ? `- Teléfono: ${lead.phone}` : null,
     lead.email ? `- Email: ${lead.email}` : null,
@@ -23,23 +29,40 @@ export function buildProspectResearchPrompt(lead: Lead): string {
       : null,
     lead.notes ? `- Notas internas: ${lead.notes}` : null,
     '',
+    websiteUrl
+      ? [
+          'FUENTE PRINCIPAL = sitio web del lead:',
+          `- Abrí y leé ${websiteUrl} con Google Search / browsing.`,
+          websiteIsMenuPlatform
+            ? '- Es una carta digital (FU.DO / QueResto / similar): EXTRAÉ categorías, platos y precios tal cual aparecen. MENU_VERIFICADO si hay platos con precio.'
+            : '- Extraé menú, horarios, dirección, servicios y textos de marca desde esa URL.',
+          '- Si la URL no carga o está vacía, declaralo; no ignores la URL del lead.',
+          `- Buscá también: "${lead.businessName}" site:${(() => {
+            try {
+              return new URL(websiteUrl).hostname;
+            } catch {
+              return 'fu.do';
+            }
+          })()}`,
+        ].join('\n')
+      : null,
+    '',
     'Buscá y consolidá información REAL de:',
-    '- Menú/carta con precios actuales (QueResto, Rappi, PedidosYa, web propia, Google Maps, posts indexados)',
+    '- Menú/carta con precios actuales (web del lead, FU.DO, QueResto, Rappi, PedidosYa, Google Maps)',
     '- Horarios de apertura',
     '- Dirección exacta y barrio',
     '- Rating y cantidad de reviews',
     '- Diferenciadores del local (qué lo hace único)',
-    '- Debilidades digitales (sin web, solo Instagram, etc.)',
+    '- Debilidades digitales (sin web propia, solo carta digital, etc.)',
     '- Reviews reales de clientes (3 testimonios si existen)',
     '- Servicios: delivery, take away, reservas, retail',
     '',
     igUrl
       ? [
-          'Instagram (prioridad porque es la fuente declarada del lead):',
+          'Instagram (complementario):',
           `- Buscá "${lead.businessName}" site:instagram.com y abrí ${igUrl}`,
-          '- Extraé lo que Google indexe del perfil/bio/posts (tipo de comida, ubicación, highlights de carta).',
+          '- Extraé lo que Google indexe del perfil/bio/posts.',
           '- NO inventes platos desde fotos sin precio/texto verificable.',
-          '- Si Instagram existe pero no hay carta/precios públicos indexados, declaralo explícitamente.',
         ].join('\n')
       : null,
     '',
@@ -54,8 +77,9 @@ export function buildProspectResearchPrompt(lead: Lead): string {
     '',
     'Reglas duras:',
     '- No inventes platos, precios, dirección ni reviews.',
-    '- Si hay identidad (Maps/web/IG) pero NO menú/precios → VEREDICTO: SUFICIENTE y MENU_VERIFICADO: no (demo sin carta).',
-    '- Si no confirmás que el local exista (ni con IG/web del lead) → IDENTIDAD_VERIFICADA: no e INSUFICIENTE.',
+    '- Si el lead trae web/carta digital, IDENTIDAD_VERIFICADA: si (salvo 404 evidente).',
+    '- Si hay identidad pero NO menú/precios → VEREDICTO: SUFICIENTE y MENU_VERIFICADO: no (demo sin carta).',
+    '- Si no confirmás que el local exista (ni web/IG del lead) → IDENTIDAD_VERIFICADA: no e INSUFICIENTE.',
     '- Precios en ARS enteros solo si los encontraste.',
     '- Español rioplatense.',
   ].filter(Boolean);
@@ -68,22 +92,23 @@ export function buildProspectResearchAssessmentPrompt(
   research: string,
 ): string {
   const ig = normalizeInstagramHandle(lead.instagram);
+  const websiteUrl = normalizeWebsiteUrl(lead.website);
   return [
-    'Evaluá si la investigación alcanza para armar una DEMO Fiel de Bentoo (menú real + identidad real).',
+    'Evaluá si la investigación alcanza para armar una DEMO de Bentoo.',
     '',
-    `Lead: ${lead.businessName} · ciudad: ${lead.city ?? 'n/d'} · IG: ${ig ? `@${ig}` : 'n/d'}`,
+    `Lead: ${lead.businessName} · ciudad: ${lead.city ?? 'n/d'} · web: ${websiteUrl ?? 'n/d'} · IG: ${ig ? `@${ig}` : 'n/d'}`,
     '',
     'Investigación:',
     research,
     '',
     'Criterio SUFICIENTE:',
-    '- identityVerified=true: se confirma que el local existe (Google/Maps/web/IG/directorio) o hay señal fuerte de perfil real.',
-    '- menuVerified=true: hay platos con precios reales o carta verificable.',
+    '- identityVerified=true si existe el local O el lead trae web/IG usable.',
+    '- Si el lead tiene website (FU.DO u otra carta) → identityVerified=true salvo evidencia de URL muerta.',
+    '- menuVerified=true solo si hay platos con precios reales extraídos.',
     '',
-    'Sin carta/precios pero con identidad → SUFICIENTE + menuVerified=false (demo sin menú).',
-    'Si solo hay Instagram sin carta → SUFICIENTE + menuVerified=false (no scrapamos Instagram).',
-    'Si el texto dice que el restaurante no existe / no se encuentra en absoluto → INSUFICIENTE.',
-    'blockers: códigos cortos p.ej. identity_not_found, menu_not_found, instagram_only_no_menu, name_mismatch.',
+    'Sin carta/precios pero con identidad/web → SUFICIENTE + menuVerified=false.',
+    'Si el texto dice que el restaurante no existe / no se encuentra en absoluto Y no hay web del lead → INSUFICIENTE.',
+    'blockers: identity_not_found, menu_not_found, website_unreachable, instagram_only_no_menu, name_mismatch.',
   ].join('\n');
 }
 
@@ -119,12 +144,15 @@ export function buildProspectMenuStructurePrompt(
     'Extraé el menú REAL del restaurante como JSON estricto.',
     '',
     `Restaurante: ${lead.businessName}`,
+    lead.website
+      ? `Web/carta del lead: ${normalizeWebsiteUrl(lead.website)}`
+      : null,
     '',
     'Investigación:',
     research,
     '',
     'Reglas:',
-    '- SOLO platos/precios que aparezcan en la investigación. Prohibido inventar.',
+    '- SOLO platos/precios que aparezcan en la investigación o en la web/carta del lead. Prohibido inventar.',
     '- Mínimo 8 productos con precio numérico > 0 en ARS (si la investigación no los tiene, este paso no debería haberse ejecutado).',
     '- Mínimo 3 categorías con id kebab-case (cat-xxx).',
     '- Product id: p-{slug} únicos.',
@@ -151,11 +179,11 @@ export function buildProspectContentStructurePrompt(
     'Investigación:',
     research,
     '',
-    `Product IDs disponibles para destacados: ${productIds.slice(0, 12).join(', ')}`,
+    `Product IDs disponibles para destacados: ${productIds.slice(0, 12).join(', ') || '(sin productos — omitir destacados)'}`,
     '',
     'Reglas:',
     '- hero: headline orientado a pedir online / take away si aplica al negocio.',
-    '- featuredProducts.productIds: 3-4 IDs reales del menú.',
+    '- featuredProducts.productIds: 3-4 IDs reales del menú (o [] si no hay).',
     '- testimonials: solo reviews reales encontradas; si no hay, array vacío.',
     '- faq: 4-5 preguntas útiles para clientes nuevos.',
     '- seo: title ≤ 70 chars, metaDescription ≤ 160 chars, keywords locales.',
