@@ -55,6 +55,7 @@ export function buildProspectBusinessStructurePrompt(
     '- social.* debe usar { value, confidence, source[] } por red.',
     '- Si no hay email verificado, omitir o marcar confidence 0.',
     '- openingHours: usar [] para días cerrados; formato HH:MM.',
+    '- cuisine: array con al menos 1 tipo de cocina real (nunca []).',
     '- businessIntelligence: strengths, weaknesses, commercialOpportunities, salesObservations (arrays).',
     '- colorPalette: colores hex válidos acordes al tipo de cocina.',
   ].join('\n');

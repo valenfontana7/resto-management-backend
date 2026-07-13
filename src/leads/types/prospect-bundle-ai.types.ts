@@ -51,7 +51,11 @@ export const PROSPECT_BUSINESS_BLOCK_SCHEMA = {
       ],
       properties: {
         description: { type: 'string' },
-        cuisine: { type: 'array', items: { type: 'string' } },
+        cuisine: {
+          type: 'array',
+          minItems: 1,
+          items: { type: 'string' },
+        },
         category: { type: 'string' },
         positioning: { type: 'string' },
         targetAudience: { type: 'array', items: { type: 'string' } },

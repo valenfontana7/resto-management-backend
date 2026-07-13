@@ -232,6 +232,14 @@ export class LeadProspectBundleGeneratorService {
           : next.menu.products.slice(0, 4).map((p) => p.id);
     }
 
+    if (!next.business.cuisine?.length) {
+      const category =
+        typeof next.business.category === 'string'
+          ? next.business.category.trim()
+          : '';
+      next.business.cuisine = category ? [category] : ['Restaurante'];
+    }
+
     return next;
   }
 }

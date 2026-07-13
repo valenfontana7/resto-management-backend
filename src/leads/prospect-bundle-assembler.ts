@@ -102,6 +102,21 @@ function ensureOpeningHours(
   return base;
 }
 
+/** Gemini a veces devuelve cuisine: [] aunque el campo sea required. */
+function normalizeCuisine(raw: unknown, category: unknown): string[] {
+  const fromAi = Array.isArray(raw)
+    ? raw
+        .map((item) => (typeof item === 'string' ? item.trim() : ''))
+        .filter(Boolean)
+    : [];
+  if (fromAi.length > 0) return fromAi;
+
+  const fromCategory = typeof category === 'string' ? category.trim() : '';
+  if (fromCategory) return [fromCategory];
+
+  return ['Restaurante'];
+}
+
 function filePrefix(slug: string): string {
   const compact = slug.replace(/-/g, '').slice(0, 6);
   return compact || 'lead';
@@ -475,9 +490,10 @@ export function assembleProspectBundle(input: {
   );
   const slug = normalizeSlug(businessName);
   const prospectId = slug;
-  const cuisine = Array.isArray(businessBlock.business.cuisine)
-    ? (businessBlock.business.cuisine as string[])
-    : ['Restaurante'];
+  const cuisine = normalizeCuisine(
+    businessBlock.business.cuisine,
+    businessBlock.business.category,
+  );
 
   const palette = {
     primary: '#a31621',
