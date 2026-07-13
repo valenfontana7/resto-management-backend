@@ -162,7 +162,7 @@ export class LeadProspectPipelineService {
             bundle!,
           );
           return {
-            message: `${imageReport.generated} generadas · ${imageReport.skipped} existentes · ${imageReport.failed} fallidas`,
+            message: `${imageReport.generated} generadas (${imageReport.storage}) · ${imageReport.skipped} existentes · ${imageReport.failed} fallidas`,
             warnings: imageReport.warnings,
             details: imageReport as unknown as Record<string, unknown>,
           };
@@ -350,20 +350,41 @@ export class LeadProspectPipelineService {
       (i) => i.source === 'GENERATED',
     );
     if (generatedImages.length > 0 && slug) {
-      const basePath = bundle.media.basePath.replace(/^\//, '');
-      const publicRoot = this.imageService.resolvePublicRoot();
-      let missing = 0;
-      for (const img of generatedImages.slice(0, 8)) {
-        try {
-          await access(path.join(publicRoot, basePath, img.filename));
-        } catch {
-          missing++;
-        }
-      }
-      if (missing > 0) {
-        warnings.push(`${missing} imágenes aún no están en disco`);
+      const remoteReady = generatedImages.filter(
+        (img) =>
+          /^https?:\/\//i.test(img.filename) ||
+          img.filename.startsWith('/api/uploads/'),
+      );
+      if (remoteReady.length >= Math.min(8, generatedImages.length)) {
+        checks.push(`Assets remotos: ${remoteReady.length} en S3/proxy`);
       } else {
-        checks.push('Assets de imágenes presentes');
+        const publicRoot = this.imageService.resolvePublicRoot();
+        if (!publicRoot) {
+          warnings.push(
+            'Sin public root local; assets deberían estar en S3 (/api/uploads)',
+          );
+        } else {
+          const basePath = bundle.media.basePath.replace(/^\//, '');
+          let missing = 0;
+          for (const img of generatedImages.slice(0, 8)) {
+            if (
+              /^https?:\/\//i.test(img.filename) ||
+              img.filename.startsWith('/api/uploads/')
+            ) {
+              continue;
+            }
+            try {
+              await access(path.join(publicRoot, basePath, img.filename));
+            } catch {
+              missing++;
+            }
+          }
+          if (missing > 0) {
+            warnings.push(`${missing} imágenes aún no están en disco`);
+          } else {
+            checks.push('Assets de imágenes presentes');
+          }
+        }
       }
     }
 

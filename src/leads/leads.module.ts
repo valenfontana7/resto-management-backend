@@ -6,6 +6,7 @@ import { RevenueModule } from '../revenue/revenue.module';
 import { ProspectImporterModule } from '../prospect-importer/prospect-importer.module';
 import { CommonModule } from '../common/common.module';
 import { PrismaModule } from '../prisma/prisma.module';
+import { StorageModule } from '../storage/storage.module';
 import { LeadDemoProvisionService } from './lead-demo-provision.service';
 import { LeadProspectPackageService } from './lead-prospect-package.service';
 import { LeadProspectBundleGeneratorService } from './lead-prospect-bundle-generator.service';
@@ -55,6 +56,7 @@ import { RunProspectPipelineTask } from './tasks/leads-prospect-pipeline.tasks';
     CommercialIntelligenceModule,
     RevenueModule,
     ProspectImporterModule,
+    StorageModule,
     ScheduleModule.forRoot(),
   ],
   controllers: [LeadsController, PublicLeadsController],

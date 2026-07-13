@@ -61,6 +61,15 @@ function resolveStatus(image: BundleMediaImage): MediaManifestEntry['status'] {
 }
 
 export function resolveMediaUrl(basePath: string, filename: string): string {
+  const trimmed = filename.trim();
+  if (
+    /^https?:\/\//i.test(trimmed) ||
+    trimmed.startsWith('/api/uploads/') ||
+    trimmed.startsWith('/demo/')
+  ) {
+    return trimmed;
+  }
+
   const joined = posix.normalize(posix.join(basePath, filename));
   return joined.startsWith('/') ? joined : `/${joined}`;
 }

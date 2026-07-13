@@ -32,6 +32,12 @@ describe('prospect-importer mapper', () => {
     expect(
       resolveMediaUrl('/demo/photos/leads/x/', '../../dishes/agua.jpg'),
     ).toBe('/demo/photos/dishes/agua.jpg');
+    expect(
+      resolveMediaUrl(
+        '/demo/photos/leads/x/',
+        '/api/uploads/leads-demos/x/a.jpg',
+      ),
+    ).toBe('/api/uploads/leads-demos/x/a.jpg');
   });
 
   it('convierte openingHours al formato de horarios demo', () => {

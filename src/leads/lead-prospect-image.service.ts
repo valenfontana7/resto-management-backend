@@ -2,13 +2,16 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
 import { access, mkdir, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
+import { S3Service } from '../storage/s3.service';
 import type { ProspectBundle } from '../prospect-importer/types';
 
 export interface ImageGenerationReport {
   slug: string;
   outputDir: string;
+  storage: 'local' | 's3';
   generated: number;
   skipped: number;
   failed: number;
@@ -23,19 +26,49 @@ export class LeadProspectImageService {
   private readonly logger = new Logger(LeadProspectImageService.name);
   private readonly client: GoogleGenAI | null;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly s3: S3Service,
+  ) {
     const apiKey =
       this.configService.get<string>('GEMINI_API_KEY')?.trim() ||
       this.configService.get<string>('GOOGLE_API_KEY')?.trim();
     this.client = apiKey ? new GoogleGenAI({ apiKey }) : null;
   }
 
-  resolvePublicRoot(): string {
+  /**
+   * Root local del frontend (`.../public`) solo si es usable.
+   * En Docker (`cwd=/app`) el sibling resuelve a `/resto-management-system/public`
+   * y no es escribible — devolvemos null para forzar S3.
+   */
+  resolvePublicRoot(): string | null {
     const configured = this.configService
       .get<string>('LEADS_ASSETS_PUBLIC_ROOT')
       ?.trim();
-    if (configured) return path.resolve(configured);
-    return path.resolve(process.cwd(), '../resto-management-system/public');
+    if (configured) {
+      return path.resolve(configured);
+    }
+
+    const candidates = [
+      path.resolve(process.cwd(), '../resto-management-system/public'),
+      path.resolve(process.cwd(), '../../resto-management-system/public'),
+    ];
+
+    for (const candidate of candidates) {
+      if (this.isUnusableFilesystemRoot(candidate)) continue;
+      if (!existsSync(candidate)) continue;
+      return candidate;
+    }
+
+    return null;
+  }
+
+  private isUnusableFilesystemRoot(resolved: string): boolean {
+    const normalized = path.normalize(resolved);
+    return (
+      normalized === path.normalize('/resto-management-system/public') ||
+      /^[A-Za-z]:\\resto-management-system\\public$/i.test(normalized)
+    );
   }
 
   async generateAssetsForBundle(
@@ -47,8 +80,17 @@ export class LeadProspectImageService {
     const basePath = bundle.media.basePath
       .replace(/^\//, '')
       .replace(/\/$/, '');
-    const outputDir = path.join(this.resolvePublicRoot(), basePath);
-    await mkdir(outputDir, { recursive: true });
+
+    const localRoot = this.resolvePublicRoot();
+    const useLocal = Boolean(localRoot);
+
+    const outputDir = useLocal
+      ? path.join(localRoot!, basePath)
+      : `s3://leads-demos/${slug}`;
+
+    if (useLocal) {
+      await mkdir(outputDir, { recursive: true });
+    }
 
     const images = bundle.media.images.filter(
       (img) => img.source === 'GENERATED',
@@ -61,12 +103,19 @@ export class LeadProspectImageService {
     const report: ImageGenerationReport = {
       slug,
       outputDir,
+      storage: useLocal ? 'local' : 's3',
       generated: 0,
       skipped: 0,
       failed: 0,
       files: [],
       warnings: [],
     };
+
+    if (!useLocal) {
+      report.warnings.push(
+        'Sin carpeta public local (prod/Docker): subiendo assets a S3.',
+      );
+    }
 
     if (images.length > MAX_GENERATED_IMAGES) {
       report.warnings.push(
@@ -77,29 +126,45 @@ export class LeadProspectImageService {
     const primaryColor = bundle.branding?.colorPalette?.primary ?? '#a31621';
 
     for (const image of toProcess) {
-      const target = path.join(outputDir, image.filename);
       try {
-        await access(target);
-        report.skipped++;
-        report.files.push(image.filename);
-        continue;
-      } catch {
-        // file missing — generate
-      }
+        if (useLocal) {
+          const target = path.join(outputDir, image.filename);
+          try {
+            await access(target);
+            report.skipped++;
+            report.files.push(image.filename);
+            continue;
+          } catch {
+            // missing — generate
+          }
 
-      try {
-        const buffer = await this.generateOneImage(
-          image.prompt ?? image.alt ?? bundle.prospect.businessName,
-          primaryColor,
-        );
-        const compressed = await sharp(buffer)
-          .resize(1200, 900, { fit: 'cover', withoutEnlargement: true })
-          .jpeg({ quality: 82, mozjpeg: true })
-          .toBuffer();
+          const buffer = await this.generateOneImage(
+            image.prompt ?? image.alt ?? bundle.prospect.businessName,
+            primaryColor,
+          );
+          const compressed = await this.compressJpeg(buffer);
+          await writeFile(target, compressed);
+          report.generated++;
+          report.files.push(image.filename);
+        } else {
+          const s3Key = `leads-demos/${slug}/${image.filename}`;
+          const buffer = await this.generateOneImage(
+            image.prompt ?? image.alt ?? bundle.prospect.businessName,
+            primaryColor,
+          );
+          const compressed = await this.compressJpeg(buffer);
+          const uploaded = await this.s3.uploadObject({
+            key: s3Key,
+            body: compressed,
+            contentType: 'image/jpeg',
+            cacheControl: 'public, max-age=31536000',
+          });
 
-        await writeFile(target, compressed);
-        report.generated++;
-        report.files.push(image.filename);
+          // El import resuelve URL por filename; usamos path proxy absoluto.
+          image.filename = uploaded.url || this.s3.buildProxyUrl(s3Key);
+          report.generated++;
+          report.files.push(image.filename);
+        }
       } catch (error) {
         report.failed++;
         const message = error instanceof Error ? error.message : String(error);
@@ -110,7 +175,20 @@ export class LeadProspectImageService {
       }
     }
 
+    if (!useLocal && report.generated === 0 && report.failed > 0) {
+      throw new Error(
+        `No se pudieron guardar imágenes (S3). ${report.warnings.slice(0, 2).join('; ')}`,
+      );
+    }
+
     return report;
+  }
+
+  private async compressJpeg(buffer: Buffer): Promise<Buffer> {
+    return sharp(buffer)
+      .resize(1200, 900, { fit: 'cover', withoutEnlargement: true })
+      .jpeg({ quality: 82, mozjpeg: true })
+      .toBuffer();
   }
 
   private dedupeByFilename<T extends { filename: string }>(items: T[]): T[] {
