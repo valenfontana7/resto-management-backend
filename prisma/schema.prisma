@@ -3105,12 +3105,16 @@ model RestaurantOperationalProfile {
   migratedFromLegacy     Boolean  @default(false)
   migrationSource        String?
   dismissedHints         Json     @default("[]")
+  experienceProfileId              String?
+  experienceProfileInferredAt      DateTime?
+  experienceProfileOverrideByUserId String?
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
   restaurant             Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
 
   @@index([profileStatus])
   @@index([operationalModel])
+  @@index([experienceProfileId])
 }
 
 // ─── Onboarding acto 2: invitación de equipo ────────────────────────────────

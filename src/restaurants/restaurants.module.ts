@@ -52,6 +52,7 @@ import { DemoExamplesModule } from '../demo-examples/demo-examples.module';
     RestaurantSettingsService,
     BranchesService,
     GoLiveEnforcementModule,
+    GoLiveReadinessService,
   ],
 })
 export class RestaurantsModule {}
