@@ -139,25 +139,7 @@ export class LeadProspectBundleGeneratorService {
     });
 
     if (assessment.menuSkipped || !assessment.menuVerified) {
-      if (bundle.sections.featuredProducts) {
-        bundle.sections.featuredProducts.enabled = false;
-        bundle.sections.featuredProducts.reason =
-          'Sin productos verificables; sección omitida hasta cargar carta.';
-      }
-      if (bundle.sections.menu) {
-        bundle.sections.menu.content = {
-          ...bundle.sections.menu.content,
-          title: 'La carta',
-          subtitle: 'Carta en carga — pedí por WhatsApp o consultá en el local',
-        };
-      }
-      const priorWarnings = Array.isArray(bundle.metadata?.warnings)
-        ? (bundle.metadata.warnings as string[])
-        : [];
-      bundle.metadata = {
-        ...bundle.metadata,
-        warnings: [...priorWarnings, ...generationWarnings],
-      };
+      this.applyMenuSkippedAdjustments(bundle, generationWarnings);
     }
 
     let validation = validateBundle(bundle);
@@ -354,6 +336,58 @@ export class LeadProspectBundleGeneratorService {
     return parsed;
   }
 
+  private applyMenuSkippedAdjustments(
+    bundle: ProspectBundle,
+    generationWarnings: string[],
+  ): void {
+    if (bundle.sections.featuredProducts) {
+      bundle.sections.featuredProducts.enabled = false;
+      bundle.sections.featuredProducts.reason =
+        'Sin productos verificables; sección omitida hasta cargar carta.';
+    }
+    if (bundle.sections.menu) {
+      bundle.sections.menu.content = {
+        ...bundle.sections.menu.content,
+        title: 'La carta',
+        subtitle: 'Carta en carga — pedí por WhatsApp o consultá en el local',
+      };
+    }
+
+    this.syncBuilderToEnabledSections(bundle);
+
+    const priorWarnings = Array.isArray(bundle.metadata?.warnings)
+      ? (bundle.metadata.warnings as string[])
+      : [];
+    bundle.metadata = {
+      ...bundle.metadata,
+      warnings: [...priorWarnings, ...generationWarnings],
+    };
+  }
+
+  /** Quita anchors de secciones deshabilitadas del builder (order + home route). */
+  private syncBuilderToEnabledSections(bundle: ProspectBundle): void {
+    const enabledAnchors = new Set(
+      Object.values(bundle.sections ?? {})
+        .filter((s) => s.enabled)
+        .map((s) => s.anchor)
+        .filter(Boolean),
+    );
+
+    if (bundle.builder?.homepageSectionOrder) {
+      bundle.builder.homepageSectionOrder =
+        bundle.builder.homepageSectionOrder.filter((anchor) =>
+          enabledAnchors.has(anchor),
+        );
+    }
+
+    for (const route of bundle.builder?.routes ?? []) {
+      if (!Array.isArray(route.sections)) continue;
+      route.sections = route.sections.filter((anchor) =>
+        enabledAnchors.has(String(anchor)),
+      );
+    }
+  }
+
   private applyHeuristicFixes(
     bundle: ProspectBundle,
     errors: string[],
@@ -398,6 +432,13 @@ export class LeadProspectBundleGeneratorService {
           ? next.business.category.trim()
           : '';
       next.business.cuisine = category ? [category] : ['Restaurante'];
+    }
+
+    if (
+      errors.some((e) => e.includes('homepageSectionOrder')) ||
+      next.sections.featuredProducts?.enabled === false
+    ) {
+      this.syncBuilderToEnabledSections(next);
     }
 
     return next;
