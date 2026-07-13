@@ -100,4 +100,50 @@ describe('lead-demo-outreach', () => {
 
     expect(body.split(adminDemoUrl)).toHaveLength(2);
   });
+
+  it('offers operating system demo only when lead already has website', () => {
+    const leadWithWebsite = {
+      ...baseLead,
+      hasWebsite: true,
+      website: 'https://arenacafe.com',
+      instagram: '@arenacafe',
+      whatsapp: null,
+    } as Lead;
+
+    const result = buildHeuristicDemoOutreach(
+      leadWithWebsite,
+      demoUrl,
+      adminDemoUrl,
+      'Demo del sistema operativo.',
+      'instagram',
+    );
+
+    expect(result.body).toContain(adminDemoUrl);
+    expect(result.body).toContain('Sistema operativo');
+    expect(result.body).not.toContain(demoUrl);
+    expect(result.body).not.toMatch(/sitio\s*:/i);
+  });
+
+  it('strips public demo url from ai output when lead already has website', () => {
+    const leadWithWebsite = {
+      ...baseLead,
+      hasWebsite: true,
+      website: 'https://arenacafe.com',
+    } as Lead;
+
+    const result = normalizeDemoOutreachOutput(
+      leadWithWebsite,
+      demoUrl,
+      adminDemoUrl,
+      {
+        summary: 'OS demo',
+        body: `Hola! Mirá el sitio: ${demoUrl}`,
+        channel: 'instagram',
+      },
+    );
+
+    expect(result.body).not.toContain(demoUrl);
+    expect(result.body).toContain(adminDemoUrl);
+    expect(result.body).toContain('Sistema operativo');
+  });
 });

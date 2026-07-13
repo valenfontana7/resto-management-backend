@@ -94,16 +94,22 @@ export class DailyOperationService {
     private readonly businessEvents: BusinessEventPublisherService,
   ) {}
 
+  private async scopeRestaurant(ref: string, userId: string): Promise<string> {
+    const restaurantId = await this.ownership.resolveRestaurantId(ref);
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+    return restaurantId;
+  }
+
   async getDailyOperation(
     restaurantId: string,
     userId: string,
     dateStr?: string,
     view: DailySummaryView = 'full',
   ) {
-    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+    const scopedRestaurantId = await this.scopeRestaurant(restaurantId, userId);
     const businessDate = parseBusinessDate(dateStr);
-    const record = await this.ensureRecord(restaurantId, businessDate);
-    const summary = await this.buildSummary(restaurantId, businessDate, {
+    const record = await this.ensureRecord(scopedRestaurantId, businessDate);
+    const summary = await this.buildSummary(scopedRestaurantId, businessDate, {
       view,
       operationRecord: record,
     });
@@ -120,9 +126,9 @@ export class DailyOperationService {
     dto: UpdateDailyOperationDto,
     dateStr?: string,
   ) {
-    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+    const scopedRestaurantId = await this.scopeRestaurant(restaurantId, userId);
     const businessDate = parseBusinessDate(dateStr);
-    const existing = await this.ensureRecord(restaurantId, businessDate);
+    const existing = await this.ensureRecord(scopedRestaurantId, businessDate);
 
     const openingChecklist = dto.openingChecklist
       ? normalizeChecklist(OPENING_CHECKLIST_IDS, dto.openingChecklist)
@@ -161,7 +167,7 @@ export class DailyOperationService {
     if (openingComplete && !wasOpeningComplete) {
       void this.businessEvents.publish({
         eventType: BentooBusinessEventType.RestaurantOpened,
-        restaurantId,
+        restaurantId: scopedRestaurantId,
         source: 'daily-operation.service',
         correlationId: `restaurant-opened:${formatBusinessDate(businessDate)}`,
         payload: {
@@ -171,7 +177,7 @@ export class DailyOperationService {
       });
     }
 
-    const summary = await this.buildSummary(restaurantId, businessDate);
+    const summary = await this.buildSummary(scopedRestaurantId, businessDate);
 
     return {
       operation: this.formatOperation(updated),
@@ -186,10 +192,13 @@ export class DailyOperationService {
     dto: CloseDailyOperationDto,
     dateStr?: string,
   ) {
-    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+    const scopedRestaurantId = await this.scopeRestaurant(restaurantId, userId);
     const businessDate = parseBusinessDate(dateStr);
-    const record = await this.ensureRecord(restaurantId, businessDate);
-    const blockers = await this.collectCloseBlockers(restaurantId, record);
+    const record = await this.ensureRecord(scopedRestaurantId, businessDate);
+    const blockers = await this.collectCloseBlockers(
+      scopedRestaurantId,
+      record,
+    );
 
     if (blockers.length > 0) {
       throw new BadRequestException({
@@ -200,7 +209,7 @@ export class DailyOperationService {
 
     const closedAt = new Date();
     const dailyCloseReport = await buildDailyCloseReport(this.prisma, {
-      restaurantId,
+      restaurantId: scopedRestaurantId,
       businessDate,
       closedAt,
       closedByName: userName,
@@ -225,7 +234,7 @@ export class DailyOperationService {
 
     void this.businessEvents.publish({
       eventType: BentooBusinessEventType.DailyClosingCompleted,
-      restaurantId,
+      restaurantId: scopedRestaurantId,
       source: 'daily-operation.service',
       correlationId: `daily-closing-completed:${formatBusinessDate(businessDate)}`,
       payload: {
@@ -236,7 +245,7 @@ export class DailyOperationService {
 
     void this.businessEvents.publish({
       eventType: BentooBusinessEventType.RestaurantClosed,
-      restaurantId,
+      restaurantId: scopedRestaurantId,
       source: 'daily-operation.service',
       correlationId: `restaurant-closed:${formatBusinessDate(businessDate)}`,
       payload: {
@@ -245,7 +254,7 @@ export class DailyOperationService {
       },
     });
 
-    const summary = await this.buildSummary(restaurantId, businessDate);
+    const summary = await this.buildSummary(scopedRestaurantId, businessDate);
 
     return {
       operation: this.formatOperation(updated),
@@ -259,11 +268,14 @@ export class DailyOperationService {
     userId: string,
     dateStr?: string,
   ): Promise<{ dailyCloseReport: DailyCloseReport }> {
-    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+    const scopedRestaurantId = await this.scopeRestaurant(restaurantId, userId);
     const businessDate = parseBusinessDate(dateStr);
     const record = await this.prisma.dailyOperation.findUnique({
       where: {
-        restaurantId_businessDate: { restaurantId, businessDate },
+        restaurantId_businessDate: {
+          restaurantId: scopedRestaurantId,
+          businessDate,
+        },
       },
     });
 
@@ -287,7 +299,7 @@ export class DailyOperationService {
     }
 
     const dailyCloseReport = await buildDailyCloseReport(this.prisma, {
-      restaurantId,
+      restaurantId: scopedRestaurantId,
       businessDate,
       closedAt: record.dailyClosedAt,
       closedByName: record.dailyClosedByName ?? '—',
