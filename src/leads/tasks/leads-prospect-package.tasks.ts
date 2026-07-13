@@ -49,11 +49,16 @@ export class GenerateProspectBundleTask
   }
 
   async execute(
-    _ctx: AiTaskContext,
+    ctx: AiTaskContext,
     input: GenerateProspectBundleInput,
   ): Promise<AiTaskResult<GenerateProspectBundleOutput>> {
+    const leadId = input.leadId ?? ctx.leadId;
+    if (!leadId) {
+      throw new Error('leadId requerido para generar paquete prospecto');
+    }
+
     try {
-      const result = await this.generator.generateForLead(input.leadId);
+      const result = await this.generator.generateForLead(leadId);
 
       if (result.validation.errors.length > 0) {
         this.logger.warn(

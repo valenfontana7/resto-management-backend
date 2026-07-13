@@ -46,6 +46,11 @@ export class RunProspectPipelineTask
     ctx: AiTaskContext,
     input: RunProspectPipelineInput,
   ): Promise<AiTaskResult<ProspectPipelineReport>> {
+    const leadId = input.leadId ?? ctx.leadId;
+    if (!leadId) {
+      throw new Error('leadId requerido para ejecutar pipeline prospecto');
+    }
+
     const options: RunProspectPipelineOptions = {
       importedBy: ctx.userId,
       skipImport: input.skipImport,
@@ -54,7 +59,7 @@ export class RunProspectPipelineTask
     };
 
     try {
-      const report = await this.pipeline.run(input.leadId, options);
+      const report = await this.pipeline.run(leadId, options);
       return {
         output: report,
         confidence: report.success ? 0.88 : 0.35,

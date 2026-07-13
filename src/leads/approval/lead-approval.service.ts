@@ -228,6 +228,7 @@ export class LeadApprovalService {
           in: [
             LeadAnalysisApprovalStatus.DRAFT,
             LeadAnalysisApprovalStatus.PENDING_REVIEW,
+            LeadAnalysisApprovalStatus.APPROVED,
           ],
         },
         OR: [

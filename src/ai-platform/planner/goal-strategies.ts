@@ -72,12 +72,16 @@ export class AcquireLeadsStrategy implements GoalPlanningStrategy {
       });
     }
 
+    const messageDependsOn = context.constraints.skipDemo
+      ? ['score']
+      : ['score', 'demo'];
+
     stages.push(
       {
         stageKey: 'message',
         taskKey: 'leads.draft_message_whatsapp',
         label: 'Redactar mensaje',
-        dependsOnStages: ['score'],
+        dependsOnStages: messageDependsOn,
         scope: 'per_entity',
         requiresApproval: true,
       },

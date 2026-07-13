@@ -10,6 +10,10 @@ export interface LeadMessageContent {
   subject?: string;
   body: string;
   callToAction?: string;
+  demoUrl?: string;
+  adminDemoUrl?: string;
+  channel?: LeadOutreachChannel;
+  summary?: string;
 }
 
 export type LeadOutreachChannel = 'instagram' | 'whatsapp' | 'email';

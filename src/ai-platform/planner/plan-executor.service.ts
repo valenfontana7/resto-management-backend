@@ -16,6 +16,12 @@ import { getTaskCapability } from './task-capabilities.registry';
 
 const ENTITY_REF_PATTERN = /^entity-\d+$/;
 
+/** Pasos demo opcionales: si fallan, el plan sigue con outreach. */
+const OPTIONAL_DEMO_TASK_KEYS = new Set([
+  'leads.generate_prospect_bundle',
+  'leads.run_prospect_pipeline',
+]);
+
 @Injectable()
 export class PlanExecutorService {
   private readonly logger = new Logger(PlanExecutorService.name);
@@ -136,6 +142,40 @@ export class PlanExecutorService {
     const cost = Number(task.execution?.totalCostUsd ?? 0);
 
     if (task.status === AiTaskStatus.FAILED) {
+      const errorMessage =
+        typeof task.error === 'object' &&
+        task.error !== null &&
+        'message' in task.error &&
+        typeof (task.error as { message?: unknown }).message === 'string'
+          ? (task.error as { message: string }).message
+          : 'Error desconocido';
+
+      if (OPTIONAL_DEMO_TASK_KEYS.has(task.taskKey)) {
+        await this.prisma.executionPlanStep.update({
+          where: { id: task.planStepId },
+          data: {
+            status: PlanStepStatus.SKIPPED,
+            actualCostUsd: cost,
+            skipReason: `Demo opcional no completada: ${errorMessage}`,
+            output: task.error as Prisma.InputJsonValue,
+          },
+        });
+        await this.timeline.record({
+          planId: task.planId,
+          stepId: task.planStepId,
+          taskId,
+          eventType: PlannerEventType.STEP_SKIPPED,
+          title: `Demo opcional omitida: ${task.taskKey}`,
+          detail: { error: errorMessage },
+        });
+        await this.syncPlanProgress(task.planId);
+        await this.advancePlan(task.planId);
+        if (task.goalId) {
+          await this.insights.generateForGoal(task.goalId);
+        }
+        return;
+      }
+
       await this.prisma.executionPlanStep.update({
         where: { id: task.planStepId },
         data: { status: PlanStepStatus.FAILED, actualCostUsd: cost },
@@ -274,7 +314,12 @@ export class PlanExecutorService {
 
   /** Reintenta pasos de código que fallaron por bugs de input (ej. calculate_score sin leadId). */
   private async retryFixableFailedSteps(planId: string) {
-    const retryableTaskKeys = ['leads.calculate_score', 'leads.generate_demo'];
+    const retryableTaskKeys = [
+      'leads.calculate_score',
+      'leads.generate_demo',
+      'leads.generate_prospect_bundle',
+      'leads.run_prospect_pipeline',
+    ];
     const failedSteps = await this.prisma.executionPlanStep.findMany({
       where: {
         planId,

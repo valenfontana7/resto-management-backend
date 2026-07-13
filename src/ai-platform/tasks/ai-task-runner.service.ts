@@ -57,6 +57,8 @@ export class AiTaskRunnerService {
       parentTaskId: task.parentTaskId ?? undefined,
     };
 
+    const taskInput = this.enrichTaskInput(task.input, task.leadId);
+
     let result: AiTaskResult;
     let success = true;
     let errorMessage: string | undefined;
@@ -67,7 +69,7 @@ export class AiTaskRunnerService {
       handler.cacheTtlSeconds && handler.cacheTtlSeconds > 0
         ? this.memory.buildKey(
             handler.key,
-            task.input,
+            taskInput,
             task.selectedModel ?? handler.defaultModel,
           )
         : null;
@@ -80,13 +82,13 @@ export class AiTaskRunnerService {
           cacheHit = true;
           cacheSavedUsd = cached.cacheSavedUsd;
         } else {
-          result = await handler.execute(ctx, task.input);
+          result = await handler.execute(ctx, taskInput);
           if (handler.cacheTtlSeconds) {
             await this.memory.set(cacheKey, result, handler.cacheTtlSeconds);
           }
         }
       } else {
-        result = await handler.execute(ctx, task.input);
+        result = await handler.execute(ctx, taskInput);
       }
     } catch (error) {
       success = false;
@@ -175,9 +177,16 @@ export class AiTaskRunnerService {
         : undefined,
     });
 
-    const finalStatus = handler.requiresApproval
-      ? AiTaskStatus.AWAITING_APPROVAL
-      : AiTaskStatus.COMPLETED;
+    const pipelineFailed =
+      handler.key === 'leads.run_prospect_pipeline' &&
+      typeof result.output === 'object' &&
+      result.output !== null &&
+      (result.output as { success?: boolean }).success === false;
+
+    const finalStatus =
+      handler.requiresApproval && !pipelineFailed
+        ? AiTaskStatus.AWAITING_APPROVAL
+        : AiTaskStatus.COMPLETED;
 
     const updated = await this.prisma.aiTask.update({
       where: { id: taskId },
@@ -411,4 +420,27 @@ export class AiTaskRunnerService {
       },
     });
   }
+
+  private enrichTaskInput(
+    input: Prisma.JsonValue | null,
+    leadId: string | null,
+  ): Record<string, unknown> {
+    const record =
+      input && typeof input === 'object' && !Array.isArray(input)
+        ? { ...(input as Record<string, unknown>) }
+        : {};
+
+    if (
+      leadId &&
+      (typeof record.leadId !== 'string' ||
+        record.leadId.length === 0 ||
+        ENTITY_REF_PATTERN.test(record.leadId))
+    ) {
+      record.leadId = leadId;
+    }
+
+    return record;
+  }
 }
+
+const ENTITY_REF_PATTERN = /^entity-\d+$/;

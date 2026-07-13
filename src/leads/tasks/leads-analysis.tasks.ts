@@ -25,6 +25,7 @@ import {
 } from '../lead-demo-outreach';
 import { parseAiJsonResponse } from '../leads-ai.helpers';
 import { LeadDemoProvisionService } from '../lead-demo-provision.service';
+import { LeadProspectPackageService } from '../lead-prospect-package.service';
 import {
   buildDiagnosisPrompt,
   buildHeuristicDiagnosis,
@@ -258,23 +259,102 @@ export class SuggestNextActionTask
 
 type MessageChannel = 'instagram' | 'whatsapp' | 'email';
 
+function resolveTaskLeadId(
+  ctx: AiTaskContext,
+  input: { leadId?: string },
+): string {
+  const leadId = input.leadId ?? ctx.leadId;
+  if (!leadId) {
+    throw new Error('leadId requerido para redactar el mensaje');
+  }
+  return leadId;
+}
+
 async function executeDraftMessage(
   prisma: PrismaService,
   configService: ConfigService,
   providerRouter: AiProviderRouterService,
-  leadId: string,
+  packageService: LeadProspectPackageService,
+  ctx: AiTaskContext,
+  input: { leadId?: string },
   channel: MessageChannel,
 ): Promise<AiTaskResult<LeadMessageContent>> {
+  const leadId = resolveTaskLeadId(ctx, input);
   const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
   const defaultModel =
     configService.get<string>('LEADS_AI_MODEL')?.trim() ||
     'gemini-2.5-flash-lite';
 
+  const packageStatus = await packageService.getPackageStatus(leadId);
+  const demoUrl = packageStatus.urls?.demo?.trim();
+  const adminDemoUrl = packageStatus.urls?.demoAdmin?.trim();
+  const hasDemoUrls = Boolean(demoUrl && adminDemoUrl);
+
   if (!providerRouter.isAvailable(AiProvider.GEMINI)) {
+    if (hasDemoUrls) {
+      const outreach = buildHeuristicDemoOutreach(
+        lead,
+        demoUrl!,
+        adminDemoUrl!,
+        `Demo lista para ${lead.businessName}`,
+        channel,
+      );
+      return {
+        output: {
+          body: outreach.body,
+          subject: outreach.subject,
+          callToAction: outreach.callToAction,
+        },
+        confidence: 0.65,
+        model: 'heuristic',
+      };
+    }
     return {
       output: buildHeuristicMessage(lead, channel),
       confidence: 0.6,
       model: 'heuristic',
+    };
+  }
+
+  if (hasDemoUrls) {
+    const response = await providerRouter.complete({
+      provider: AiProvider.GEMINI,
+      model: defaultModel,
+      prompt: buildDemoOutreachPrompt(lead, demoUrl!, adminDemoUrl!, channel),
+      systemInstruction:
+        'Sos un vendedor de Bentoo (SaaS para restaurantes). Generá mensajes comerciales personalizados con URLs de demo incluidas, en español rioplatense. Devolvé solo JSON válido según el esquema.',
+      temperature: 0.5,
+      maxOutputTokens: 1024,
+      responseJsonSchema: LEAD_DEMO_OUTREACH_JSON_SCHEMA as Record<
+        string,
+        unknown
+      >,
+    });
+
+    const raw = response.text?.trim();
+    if (!raw) throw new Error('Empty Gemini response');
+
+    const parsed = normalizeDemoOutreachOutput(
+      lead,
+      demoUrl!,
+      adminDemoUrl!,
+      JSON.parse(raw) as Parameters<typeof normalizeDemoOutreachOutput>[3],
+    );
+
+    return {
+      output: {
+        body: parsed.body,
+        subject: parsed.subject,
+        callToAction: parsed.callToAction,
+        demoUrl,
+        adminDemoUrl,
+        channel,
+        summary: `Demo lista para ${lead.businessName}`,
+      },
+      confidence: 0.85,
+      usage: response.usage,
+      provider: AiProvider.GEMINI,
+      model: defaultModel,
     };
   }
 
@@ -313,14 +393,17 @@ export class DraftMessageInstagramTask
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly providerRouter: AiProviderRouterService,
+    private readonly packageService: LeadProspectPackageService,
   ) {}
 
-  execute(ctx: AiTaskContext, input: { leadId: string }) {
+  execute(ctx: AiTaskContext, input: { leadId?: string }) {
     return executeDraftMessage(
       this.prisma,
       this.configService,
       this.providerRouter,
-      input.leadId,
+      this.packageService,
+      ctx,
+      input,
       'instagram',
     );
   }
@@ -338,14 +421,17 @@ export class DraftMessageWhatsappTask
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly providerRouter: AiProviderRouterService,
+    private readonly packageService: LeadProspectPackageService,
   ) {}
 
-  execute(ctx: AiTaskContext, input: { leadId: string }) {
+  execute(ctx: AiTaskContext, input: { leadId?: string }) {
     return executeDraftMessage(
       this.prisma,
       this.configService,
       this.providerRouter,
-      input.leadId,
+      this.packageService,
+      ctx,
+      input,
       'whatsapp',
     );
   }
@@ -363,14 +449,17 @@ export class DraftMessageEmailTask
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly providerRouter: AiProviderRouterService,
+    private readonly packageService: LeadProspectPackageService,
   ) {}
 
-  execute(ctx: AiTaskContext, input: { leadId: string }) {
+  execute(ctx: AiTaskContext, input: { leadId?: string }) {
     return executeDraftMessage(
       this.prisma,
       this.configService,
       this.providerRouter,
-      input.leadId,
+      this.packageService,
+      ctx,
+      input,
       'email',
     );
   }
