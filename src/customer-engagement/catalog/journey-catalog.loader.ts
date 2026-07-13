@@ -1,5 +1,4 @@
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import journeysCatalogJson from './journeys.v1.json';
 import type { JourneyDefinition } from '../types/journey.types';
 
 interface JourneyCatalogFile {
@@ -7,23 +6,19 @@ interface JourneyCatalogFile {
   journeys: Record<string, JourneyDefinition>;
 }
 
-let cached: JourneyCatalogFile | null = null;
+const catalog = journeysCatalogJson as JourneyCatalogFile;
 
 export function loadJourneyCatalog(): JourneyCatalogFile {
-  if (cached) return cached;
-  const path = join(__dirname, 'journeys.v1.json');
-  cached = JSON.parse(readFileSync(path, 'utf-8')) as JourneyCatalogFile;
-  return cached;
+  return catalog;
 }
 
 export function getJourneyById(id: string): JourneyDefinition | null {
-  return loadJourneyCatalog().journeys[id] ?? null;
+  return catalog.journeys[id] ?? null;
 }
 
 export function findJourneyByRecommendationCode(
   code: string,
 ): JourneyDefinition | null {
-  const catalog = loadJourneyCatalog();
   return (
     Object.values(catalog.journeys).find((j) =>
       j.linkedRecommendationCodes.includes(code),
@@ -32,5 +27,5 @@ export function findJourneyByRecommendationCode(
 }
 
 export function listJourneys(): JourneyDefinition[] {
-  return Object.values(loadJourneyCatalog().journeys);
+  return Object.values(catalog.journeys);
 }

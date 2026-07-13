@@ -1,5 +1,4 @@
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import templatesCatalogJson from './templates.v1.json';
 import type { EngagementChannelType } from '../types/channel.types';
 import type { TemplateDefinition } from '../types/template.types';
 
@@ -8,17 +7,14 @@ interface TemplateCatalogFile {
   templates: Record<string, TemplateDefinition>;
 }
 
-let cached: TemplateCatalogFile | null = null;
+const catalog = templatesCatalogJson as TemplateCatalogFile;
 
 export function loadTemplateCatalog(): TemplateCatalogFile {
-  if (cached) return cached;
-  const path = join(__dirname, 'templates.v1.json');
-  cached = JSON.parse(readFileSync(path, 'utf-8')) as TemplateCatalogFile;
-  return cached;
+  return catalog;
 }
 
 export function getTemplateById(id: string): TemplateDefinition | null {
-  return loadTemplateCatalog().templates[id] ?? null;
+  return catalog.templates[id] ?? null;
 }
 
 export function findTemplate(input: {
@@ -26,7 +22,7 @@ export function findTemplate(input: {
   recommendationCode?: string;
   channel?: EngagementChannelType;
 }): TemplateDefinition | null {
-  const templates = Object.values(loadTemplateCatalog().templates);
+  const templates = Object.values(catalog.templates);
   return (
     templates.find((t) => {
       if (input.trigger && t.trigger !== input.trigger) return false;
@@ -45,5 +41,5 @@ export function findTemplate(input: {
 }
 
 export function listTemplates(): TemplateDefinition[] {
-  return Object.values(loadTemplateCatalog().templates);
+  return Object.values(catalog.templates);
 }
