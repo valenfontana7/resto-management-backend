@@ -26,9 +26,9 @@ FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Prisma needs OpenSSL available to detect libssl (bookworm-slim ships without it).
+# Prisma needs OpenSSL; fonts for Sharp/librsvg SVG text (placeholders/assets).
 RUN apt-get update -y \
-    && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && apt-get install -y --no-install-recommends openssl ca-certificates fontconfig fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=prod-deps /app/package.json /app/package-lock.json ./

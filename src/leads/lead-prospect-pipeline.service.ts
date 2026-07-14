@@ -264,7 +264,7 @@ export class LeadProspectPipelineService {
             bundle!,
           );
           return {
-            message: `${imageReport.generated} generadas (${imageReport.storage}) · ${imageReport.skipped} existentes · ${imageReport.failed} fallidas`,
+            message: `${imageReport.generated} generadas (${imageReport.storage}) · ${imageReport.skipped} existentes · ${imageReport.placeholders} placeholders · ${imageReport.failed} fallidas`,
             warnings: imageReport.warnings,
             details: imageReport as unknown as Record<string, unknown>,
           };

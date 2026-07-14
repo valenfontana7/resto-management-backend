@@ -7,6 +7,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { S3Service } from '../storage/s3.service';
 import type { ProspectBundle } from '../prospect-importer/types';
+import { buildProspectImagePlaceholder } from './lead-prospect-image-placeholder';
 
 export interface ImageGenerationReport {
   slug: string;
@@ -15,11 +16,19 @@ export interface ImageGenerationReport {
   generated: number;
   skipped: number;
   failed: number;
+  placeholders: number;
   files: string[];
   warnings: string[];
 }
 
 const MAX_GENERATED_IMAGES = 12;
+const DEFAULT_IMAGEN_MODEL = 'imagen-4.0-generate-001';
+const DEFAULT_GEMINI_IMAGE_MODEL = 'gemini-2.5-flash-image';
+
+type GeneratedImageResult = {
+  buffer: Buffer;
+  source: 'imagen' | 'gemini-flash-image' | 'placeholder';
+};
 
 @Injectable()
 export class LeadProspectImageService {
@@ -107,9 +116,16 @@ export class LeadProspectImageService {
       generated: 0,
       skipped: 0,
       failed: 0,
+      placeholders: 0,
       files: [],
       warnings: [],
     };
+
+    if (!this.client) {
+      report.warnings.push(
+        'Sin GEMINI_API_KEY/GOOGLE_API_KEY: las imágenes serán placeholders geométricos.',
+      );
+    }
 
     if (!useLocal) {
       report.warnings.push(
@@ -138,21 +154,23 @@ export class LeadProspectImageService {
             // missing — generate
           }
 
-          const buffer = await this.generateOneImage(
+          const result = await this.generateOneImage(
             image.prompt ?? image.alt ?? bundle.prospect.businessName,
             primaryColor,
           );
-          const compressed = await this.compressJpeg(buffer);
+          if (result.source === 'placeholder') report.placeholders++;
+          const compressed = await this.compressJpeg(result.buffer);
           await writeFile(target, compressed);
           report.generated++;
           report.files.push(image.filename);
         } else {
           const s3Key = `leads-demos/${slug}/${image.filename}`;
-          const buffer = await this.generateOneImage(
+          const result = await this.generateOneImage(
             image.prompt ?? image.alt ?? bundle.prospect.businessName,
             primaryColor,
           );
-          const compressed = await this.compressJpeg(buffer);
+          if (result.source === 'placeholder') report.placeholders++;
+          const compressed = await this.compressJpeg(result.buffer);
           const uploaded = await this.s3.uploadObject({
             key: s3Key,
             body: compressed,
@@ -173,6 +191,12 @@ export class LeadProspectImageService {
         );
         this.logger.warn(`Image gen failed for ${image.filename}: ${message}`);
       }
+    }
+
+    if (report.placeholders > 0) {
+      report.warnings.push(
+        `${report.placeholders} imagen(es) usaron placeholder (Imagen/Gemini image gen no devolvió bytes). Revisar API key, modelo y cuota.`,
+      );
     }
 
     if (!useLocal && report.generated === 0 && report.failed > 0) {
@@ -203,56 +227,96 @@ export class LeadProspectImageService {
   private async generateOneImage(
     prompt: string,
     brandColor: string,
-  ): Promise<Buffer> {
+  ): Promise<GeneratedImageResult> {
     if (this.client) {
-      try {
-        const model =
-          this.configService
-            .get<string>('LEADS_PROSPECT_IMAGE_MODEL')
-            ?.trim() || 'imagen-3.0-generate-002';
-        const response = await this.client.models.generateImages({
-          model,
-          prompt: `${prompt}. Editorial food photography, appetizing, soft natural light, no text, no watermark.`,
-          config: {
-            numberOfImages: 1,
-            aspectRatio: '4:3',
-          },
-        });
+      const fromImagen = await this.tryImagen(prompt);
+      if (fromImagen) {
+        return { buffer: fromImagen, source: 'imagen' };
+      }
 
-        const imageBytes = response.generatedImages?.[0]?.image?.imageBytes;
-
-        if (imageBytes) {
-          return Buffer.from(imageBytes, 'base64');
-        }
-      } catch (error) {
-        this.logger.warn(
-          `Gemini Imagen falló, usando placeholder: ${error instanceof Error ? error.message : error}`,
-        );
+      const fromGemini = await this.tryGeminiFlashImage(prompt);
+      if (fromGemini) {
+        return { buffer: fromGemini, source: 'gemini-flash-image' };
       }
     }
 
-    return this.buildPlaceholder(prompt, brandColor);
+    return {
+      buffer: await buildProspectImagePlaceholder(brandColor),
+      source: 'placeholder',
+    };
   }
 
-  private async buildPlaceholder(
-    label: string,
-    brandColor: string,
-  ): Promise<Buffer> {
-    const safeLabel = label.slice(0, 80).replace(/[<>&"]/g, '');
-    const svg = `
-      <svg width="1200" height="900" xmlns="http://www.w3.org/2000/svg">
-        <defs>
-          <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stop-color="${brandColor}" stop-opacity="0.95"/>
-            <stop offset="100%" stop-color="#1c1917" stop-opacity="0.9"/>
-          </linearGradient>
-        </defs>
-        <rect width="1200" height="900" fill="url(#g)"/>
-        <text x="600" y="430" text-anchor="middle" fill="#faf6f0" font-family="Arial,sans-serif" font-size="42" font-weight="700">Bentoo Demo</text>
-        <text x="600" y="490" text-anchor="middle" fill="#faf6f0" font-family="Arial,sans-serif" font-size="24" opacity="0.9">${safeLabel}</text>
-        <text x="600" y="540" text-anchor="middle" fill="#faf6f0" font-family="Arial,sans-serif" font-size="16" opacity="0.7">Reemplazar con foto real antes de presentar</text>
-      </svg>`;
+  private async tryImagen(prompt: string): Promise<Buffer | null> {
+    if (!this.client) return null;
 
-    return sharp(Buffer.from(svg)).jpeg({ quality: 85 }).toBuffer();
+    try {
+      const model =
+        this.configService.get<string>('LEADS_PROSPECT_IMAGE_MODEL')?.trim() ||
+        DEFAULT_IMAGEN_MODEL;
+      const response = await this.client.models.generateImages({
+        model,
+        prompt: `${prompt}. Editorial food photography, appetizing, soft natural light, no text, no watermark.`,
+        config: {
+          numberOfImages: 1,
+          aspectRatio: '4:3',
+        },
+      });
+
+      const imageBytes = response.generatedImages?.[0]?.image?.imageBytes;
+      if (imageBytes) {
+        return Buffer.from(imageBytes, 'base64');
+      }
+
+      this.logger.warn(
+        `Imagen (${model}) respondió sin imageBytes; se intenta Gemini Flash Image.`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Gemini Imagen falló, se intenta Gemini Flash Image: ${
+          error instanceof Error ? error.message : error
+        }`,
+      );
+    }
+
+    return null;
+  }
+
+  private async tryGeminiFlashImage(prompt: string): Promise<Buffer | null> {
+    if (!this.client) return null;
+
+    try {
+      const model =
+        this.configService
+          .get<string>('LEADS_PROSPECT_GEMINI_IMAGE_MODEL')
+          ?.trim() || DEFAULT_GEMINI_IMAGE_MODEL;
+
+      const response = await this.client.models.generateContent({
+        model,
+        contents: `${prompt}. Editorial food photography, appetizing, soft natural light, no text, no watermark.`,
+        config: {
+          responseModalities: ['TEXT', 'IMAGE'],
+        },
+      });
+
+      const parts = response.candidates?.[0]?.content?.parts ?? [];
+      for (const part of parts) {
+        const data = part.inlineData?.data;
+        if (data) {
+          return Buffer.from(data, 'base64');
+        }
+      }
+
+      this.logger.warn(
+        `Gemini Flash Image (${model}) respondió sin inlineData; se usa placeholder.`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Gemini Flash Image falló, usando placeholder: ${
+          error instanceof Error ? error.message : error
+        }`,
+      );
+    }
+
+    return null;
   }
 }
