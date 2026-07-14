@@ -590,6 +590,10 @@ model TableArea {
   id           String     @id @default(cuid())
   restaurantId String
   name         String
+  /// Matiz HSL opcional para tintar el lienzo del área (0–360); null = canvas default.
+  canvasHue    Int?
+  /// Elementos estructurales del plano (paredes/bloques), JSON FloorStructureElement[].
+  structureElements Json?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   tables       Table[]
@@ -602,6 +606,8 @@ model Table {
   id                   String            @id @default(cuid())
   restaurantId         String
   number               String
+  /// Etiqueta amigable opcional (VIP, Ventana, etc.).
+  label                String?
   capacity             Int
   status               TableStatus       @default(AVAILABLE)
   createdAt            DateTime          @default(now())
@@ -613,6 +619,14 @@ model Table {
   occupiedSince        DateTime?
   positionX            Float             @default(0)
   positionY            Float             @default(0)
+  /// Ancho relativo al lienzo del plano (0–100).
+  widthPct             Float             @default(10)
+  /// Alto relativo al lienzo del plano (0–100).
+  heightPct            Float             @default(10)
+  /// Rotación en grados (0–359).
+  rotationDeg          Int               @default(0)
+  /// Matiz HSL opcional para acento visual (0–360); null = teal por defecto.
+  accentHue            Int?
   shape                TableShape        @default(SQUARE)
   waiter               String?
   checkoutSessions     CheckoutSession[]

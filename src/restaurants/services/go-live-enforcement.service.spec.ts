@@ -1,4 +1,3 @@
-import { BadRequestException } from '@nestjs/common';
 import { GoLiveEnforcementService } from './go-live-enforcement.service';
 
 describe('GoLiveEnforcementService', () => {
@@ -22,7 +21,7 @@ describe('GoLiveEnforcementService', () => {
     prisma.order.count.mockResolvedValue(0);
   });
 
-  it('bloquea publicar si faltan datos básicos del gate', async () => {
+  it('permite publicar aunque falten menú u otros pasos de activación', async () => {
     prisma.restaurant.findUnique.mockResolvedValue({
       id: 'r1',
       name: 'Demo',
@@ -36,23 +35,21 @@ describe('GoLiveEnforcementService', () => {
       _count: { dishes: 0 },
     });
 
-    await expect(service.assertCanPublish('r1')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
+    await expect(service.assertCanPublish('r1')).resolves.toBeUndefined();
   });
 
-  it('permite publicar con nombre, contacto y carta aunque falten cobros', async () => {
+  it('permite publicar con datos incompletos si el gate de publicación está vacío', async () => {
     prisma.restaurant.findUnique.mockResolvedValue({
       id: 'r1',
       name: 'Demo',
       type: 'restaurant',
-      phone: '111',
-      address: 'Calle 1',
+      phone: null,
+      address: null,
       logo: null,
       isPublished: false,
       branding: null,
       businessRules: { payment: { methods: [] } },
-      _count: { dishes: 2 },
+      _count: { dishes: 0 },
     });
 
     await expect(service.assertCanPublish('r1')).resolves.toBeUndefined();

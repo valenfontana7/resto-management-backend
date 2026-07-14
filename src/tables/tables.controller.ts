@@ -127,6 +127,7 @@ export class TablesController {
         tableId: p.tableId,
         x: p.position.x,
         y: p.position.y,
+        layout: p.layout,
       })),
     );
   }

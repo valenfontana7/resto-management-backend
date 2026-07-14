@@ -471,11 +471,7 @@ export class BuilderService {
     const draftBase = normalizeRestaurantDraftPayload(
       config.metadata?.restaurantDraftBase,
     ) as RestaurantDraft | undefined;
-    const publishIssues = this.getPublishReadinessIssues(
-      config,
-      restaurant,
-      draftData,
-    );
+    const publishIssues = this.getPublishReadinessIssues(config);
 
     if (publishIssues.length > 0) {
       throw new BadRequestException(
@@ -1038,49 +1034,14 @@ export class BuilderService {
     });
   }
 
-  private getPublishReadinessIssues(
-    config: BuilderConfiguration,
-    restaurant: RestaurantInfo,
-    draft: RestaurantDraft | undefined,
-  ): string[] {
+  private getPublishReadinessIssues(config: BuilderConfiguration): string[] {
+    // Solo errores estructurales del draft: nombre/contacto/menú no bloquean publicar.
     const validation = validateBuilderConfig(config);
-    const issues = validation.errors.map(
-      (error) => `${error.path}: ${error.message}`,
-    );
-
-    const effectiveName = this.normalizeScalarValue(
-      draft?.name ?? restaurant.name,
-    );
-    if (typeof effectiveName !== 'string' || effectiveName.length === 0) {
-      issues.push('Completá el nombre del restaurante');
-    }
-
-    const draftSocialWebsite = this.extractWebsiteFromSocialMedia(
-      draft?.socialMedia,
-    );
-    const liveSocialWebsite = this.extractWebsiteFromSocialMedia(
-      restaurant.socialMedia,
-    );
-
-    const hasContactChannel =
-      typeof this.normalizeScalarValue(draft?.phone ?? restaurant.phone) ===
-        'string' ||
-      typeof this.normalizeScalarValue(draft?.email ?? restaurant.email) ===
-        'string' ||
-      typeof this.normalizeScalarValue(
-        draft?.website ??
-          draftSocialWebsite ??
-          restaurant.website ??
-          liveSocialWebsite,
-      ) === 'string';
-
-    if (config.sections?.nav?.showContactButton && !hasContactChannel) {
-      issues.push(
-        'Activaste el botón de contacto del header pero no hay teléfono, email o web configurados',
-      );
-    }
-
-    return [...new Set(issues)];
+    return [
+      ...new Set(
+        validation.errors.map((error) => `${error.path}: ${error.message}`),
+      ),
+    ];
   }
 
   private pruneRestaurantDraft(

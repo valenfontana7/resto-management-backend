@@ -3,6 +3,7 @@ import {
   IsInt,
   Min,
   Max,
+  MaxLength,
   IsOptional,
   IsEnum,
   IsNotEmpty,
@@ -12,6 +13,8 @@ import {
   ArrayMinSize,
   ArrayMaxSize,
   IsBoolean,
+  ValidateIf,
+  Allow,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -40,6 +43,35 @@ export class PositionDto {
   y: number;
 }
 
+/** Layout espacial opcional (plano sofisticado). */
+export class TableLayoutDto {
+  @IsOptional()
+  @IsNumber()
+  @Min(6)
+  @Max(24)
+  widthPct?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(6)
+  @Max(24)
+  heightPct?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(359)
+  rotationDeg?: number;
+
+  /** null limpia el acento (teal por defecto). */
+  @Allow()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsInt()
+  @Min(0)
+  @Max(360)
+  accentHue?: number | null;
+}
+
 export class CreateTableDto {
   @IsString()
   @IsNotEmpty()
@@ -53,6 +85,13 @@ export class CreateTableDto {
   @IsEnum(TableShape)
   shape?: TableShape;
 
+  /** Etiqueta amigable (VIP, Ventana…). null/empty limpia. */
+  @Allow()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsString()
+  @MaxLength(24)
+  label?: string | null;
+
   @IsOptional()
   @IsString()
   areaId?: string;
@@ -61,6 +100,11 @@ export class CreateTableDto {
   @ValidateNested()
   @Type(() => PositionDto)
   position?: PositionDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TableLayoutDto)
+  layout?: TableLayoutDto;
 }
 
 export class UpdateTableDto {
@@ -77,6 +121,12 @@ export class UpdateTableDto {
   @IsEnum(TableShape)
   shape?: TableShape;
 
+  @Allow()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsString()
+  @MaxLength(24)
+  label?: string | null;
+
   @IsOptional()
   @IsString()
   areaId?: string;
@@ -85,6 +135,11 @@ export class UpdateTableDto {
   @ValidateNested()
   @Type(() => PositionDto)
   position?: PositionDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TableLayoutDto)
+  layout?: TableLayoutDto;
 }
 
 export class UpdateTableStatusDto {
@@ -105,16 +160,95 @@ export class UpdateTableStatusDto {
   customerName?: string;
 }
 
+export enum FloorStructureKind {
+  WALL = 'wall',
+  BLOCK = 'block',
+}
+
+/** Elemento estructural del plano (pared / bloque etiquetado). */
+export class FloorStructureElementDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(64)
+  id: string;
+
+  @IsEnum(FloorStructureKind)
+  kind: FloorStructureKind;
+
+  @Allow()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsString()
+  @MaxLength(24)
+  label?: string | null;
+
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  x: number;
+
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  y: number;
+
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  widthPct: number;
+
+  @IsNumber()
+  @Min(1)
+  @Max(100)
+  heightPct: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(359)
+  rotationDeg?: number;
+}
+
 export class CreateTableAreaDto {
   @IsString()
   @IsNotEmpty()
   name: string;
+
+  /** null limpia el tono del lienzo. */
+  @Allow()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsInt()
+  @Min(0)
+  @Max(360)
+  canvasHue?: number | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(40)
+  @ValidateNested({ each: true })
+  @Type(() => FloorStructureElementDto)
+  structureElements?: FloorStructureElementDto[];
 }
 
 export class UpdateTableAreaDto {
   @IsOptional()
   @IsString()
   name?: string;
+
+  @Allow()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsInt()
+  @Min(0)
+  @Max(360)
+  canvasHue?: number | null;
+
+  /** null limpia estructuras; array reemplaza el set completo. */
+  @Allow()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsArray()
+  @ArrayMaxSize(40)
+  @ValidateNested({ each: true })
+  @Type(() => FloorStructureElementDto)
+  structureElements?: FloorStructureElementDto[] | null;
 }
 
 export class BulkCreateTableItemDto {
@@ -131,10 +265,21 @@ export class BulkCreateTableItemDto {
   @IsEnum(TableShape)
   shape?: TableShape;
 
+  @Allow()
+  @ValidateIf((_, value) => value !== null && value !== undefined)
+  @IsString()
+  @MaxLength(24)
+  label?: string | null;
+
   @IsOptional()
   @ValidateNested()
   @Type(() => PositionDto)
   position?: PositionDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TableLayoutDto)
+  layout?: TableLayoutDto;
 }
 
 export class BulkCreateTablesDto {
@@ -173,6 +318,11 @@ export class BulkUpdateTablePositionItemDto {
   @ValidateNested()
   @Type(() => PositionDto)
   position: PositionDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TableLayoutDto)
+  layout?: TableLayoutDto;
 }
 
 export class BulkUpdateTablePositionsDto {

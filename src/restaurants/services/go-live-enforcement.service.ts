@@ -22,9 +22,9 @@ export type GoLiveGateStep = {
 
 /**
  * Pasos mínimos antes de la primera publicación del sitio.
- * Pagos, logo, contraste y pedido de prueba siguen en el checklist de activación.
+ * Vacío a propósito: el checklist de activación guía, no bloquea publicar.
  */
-const PUBLISH_GATE_STEP_IDS: GoLiveGateStepId[] = ['name', 'contact', 'menu'];
+const PUBLISH_GATE_STEP_IDS: GoLiveGateStepId[] = [];
 
 const MP_ENABLE_GATE_STEP_IDS: GoLiveGateStepId[] = ['name', 'contact', 'menu'];
 

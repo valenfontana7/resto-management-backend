@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
 import {
+  Prisma,
   TableStatus as PrismaTableStatus,
   TableSessionStatus,
   OrderStatus,
@@ -20,13 +21,61 @@ import {
   UpdateTableAreaDto,
   BulkCreateTablesDto,
   BulkDeleteTablesDto,
+  TableLayoutDto,
+  TableShape,
 } from './dto/table.dto';
+import {
+  normalizeStructureElements,
+  parseStructureElements,
+} from './floor-structures.util';
 
 type TableDeleteBlockReason = 'not_found' | 'busy' | 'open_session';
 
 type TableDeletableCheck =
   | { ok: true }
   | { ok: false; reason: TableDeleteBlockReason };
+
+type TableLayoutFields = {
+  widthPct: number;
+  heightPct: number;
+  rotationDeg: number;
+  accentHue: number | null;
+};
+
+function defaultLayoutForShape(shape: string, capacity = 4): TableLayoutFields {
+  const isRect = shape === 'RECTANGLE';
+  const baseW = isRect ? 14 : 10;
+  const baseH = isRect ? 9 : 10;
+  const scale = capacity >= 8 ? 1.15 : capacity <= 2 ? 0.85 : 1;
+  return {
+    widthPct: Math.min(24, Math.max(6, Math.round(baseW * scale * 10) / 10)),
+    heightPct: Math.min(24, Math.max(6, Math.round(baseH * scale * 10) / 10)),
+    rotationDeg: 0,
+    accentHue: null,
+  };
+}
+
+function applyLayoutPatch(
+  target: Record<string, unknown>,
+  layout: TableLayoutDto | undefined,
+  shape: string,
+  capacity: number,
+  fillDefaults = false,
+) {
+  if (fillDefaults && !layout) {
+    const defaults = defaultLayoutForShape(shape, capacity);
+    target.widthPct = defaults.widthPct;
+    target.heightPct = defaults.heightPct;
+    target.rotationDeg = defaults.rotationDeg;
+    target.accentHue = defaults.accentHue;
+    return;
+  }
+  if (!layout) return;
+  if (layout.widthPct !== undefined) target.widthPct = layout.widthPct;
+  if (layout.heightPct !== undefined) target.heightPct = layout.heightPct;
+  if (layout.rotationDeg !== undefined) target.rotationDeg = layout.rotationDeg;
+  if (layout.accentHue !== undefined) target.accentHue = layout.accentHue;
+}
 
 @Injectable()
 export class TablesService {
@@ -101,6 +150,19 @@ export class TablesService {
       tableData.positionY = createDto.position.y;
     }
 
+    if (createDto.label !== undefined) {
+      const trimmed = createDto.label?.trim() ?? '';
+      tableData.label = trimmed.length > 0 ? trimmed.slice(0, 24) : null;
+    }
+
+    applyLayoutPatch(
+      tableData,
+      createDto.layout,
+      shapeValue,
+      createDto.capacity,
+      true,
+    );
+
     return this.prisma.table.create({
       data: tableData,
       include: {
@@ -171,14 +233,36 @@ export class TablesService {
         }
       }
 
-      return {
+      const label =
+        table.label !== undefined
+          ? (table.label?.trim() ?? '').length > 0
+            ? (table.label?.trim() ?? '').slice(0, 24)
+            : null
+          : undefined;
+      const row: Record<string, unknown> = {
         restaurantId,
         areaId: createDto.areaId,
         number: table.number,
         capacity: table.capacity,
-        shape: shapeValue as 'SQUARE' | 'ROUND' | 'RECTANGLE',
+        shape: shapeValue as TableShape,
         positionX: table.position?.x ?? 0,
         positionY: table.position?.y ?? 0,
+        ...(label !== undefined ? { label } : {}),
+      };
+      applyLayoutPatch(row, table.layout, shapeValue, table.capacity, true);
+      return row as {
+        restaurantId: string;
+        areaId: string;
+        number: string;
+        capacity: number;
+        shape: 'SQUARE' | 'ROUND' | 'RECTANGLE';
+        positionX: number;
+        positionY: number;
+        widthPct: number;
+        heightPct: number;
+        rotationDeg: number;
+        accentHue: number | null;
+        label?: string | null;
       };
     });
 
@@ -250,6 +334,8 @@ export class TablesService {
     const formattedAreas = areas.map((area) => ({
       id: area.id,
       name: area.name,
+      canvasHue: area.canvasHue ?? null,
+      structureElements: parseStructureElements(area.structureElements),
       tables: area.tables.map((table) => this.formatTableResponse(table)),
     }));
 
@@ -258,6 +344,8 @@ export class TablesService {
       formattedAreas.push({
         id: 'no-area',
         name: 'Sin Área',
+        canvasHue: null as number | null,
+        structureElements: [],
         tables: tablesWithoutArea.map((table) =>
           this.formatTableResponse(table),
         ),
@@ -366,11 +454,22 @@ export class TablesService {
       }
       updateData.shape = shapeValue;
     }
+    if (updateDto.label !== undefined) {
+      const trimmed = updateDto.label?.trim() ?? '';
+      updateData.label = trimmed.length > 0 ? trimmed.slice(0, 24) : null;
+    }
     if (updateDto.areaId !== undefined) updateData.areaId = updateDto.areaId;
     if (updateDto.position) {
       updateData.positionX = updateDto.position.x;
       updateData.positionY = updateDto.position.y;
     }
+    applyLayoutPatch(
+      updateData,
+      updateDto.layout,
+      String(updateData.shape ?? updateDto.shape ?? 'SQUARE'),
+      Number(updateDto.capacity ?? 4),
+      false,
+    );
 
     return this.prisma.table.update({
       where: { id },
@@ -384,7 +483,12 @@ export class TablesService {
   async bulkUpdatePositions(
     restaurantId: string,
     userId: string,
-    positions: Array<{ tableId: string; x: number; y: number }>,
+    positions: Array<{
+      tableId: string;
+      x: number;
+      y: number;
+      layout?: TableLayoutDto;
+    }>,
   ) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
@@ -405,15 +509,17 @@ export class TablesService {
     }
 
     await this.prisma.$transaction(
-      updates.map((p) =>
-        this.prisma.table.update({
+      updates.map((p) => {
+        const data: Record<string, unknown> = {
+          positionX: Math.round(p.x),
+          positionY: Math.round(p.y),
+        };
+        applyLayoutPatch(data, p.layout, 'SQUARE', 4, false);
+        return this.prisma.table.update({
           where: { id: p.tableId },
-          data: {
-            positionX: Math.round(p.x),
-            positionY: Math.round(p.y),
-          },
-        }),
-      ),
+          data,
+        });
+      }),
     );
 
     return { updated: updates.length };
@@ -674,10 +780,26 @@ export class TablesService {
   ) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
+    const canvasHue =
+      createDto.canvasHue === undefined
+        ? undefined
+        : createDto.canvasHue === null
+          ? null
+          : Math.min(360, Math.max(0, Math.round(createDto.canvasHue)));
+
+    const structureElements =
+      createDto.structureElements === undefined
+        ? undefined
+        : normalizeStructureElements(createDto.structureElements);
+
     return this.prisma.tableArea.create({
       data: {
         restaurantId,
         name: createDto.name,
+        ...(canvasHue !== undefined ? { canvasHue } : {}),
+        ...(structureElements !== undefined
+          ? { structureElements: structureElements as Prisma.InputJsonValue }
+          : {}),
       },
       include: {
         tables: true,
@@ -716,9 +838,31 @@ export class TablesService {
       throw new NotFoundException(`Area with ID ${id} not found`);
     }
 
+    const data: {
+      name?: string;
+      canvasHue?: number | null;
+      structureElements?: Prisma.InputJsonValue | typeof Prisma.DbNull;
+    } = {};
+    if (updateDto.name !== undefined) data.name = updateDto.name;
+    if (updateDto.canvasHue !== undefined) {
+      data.canvasHue =
+        updateDto.canvasHue === null
+          ? null
+          : Math.min(360, Math.max(0, Math.round(updateDto.canvasHue)));
+    }
+    if (updateDto.structureElements !== undefined) {
+      if (updateDto.structureElements === null) {
+        data.structureElements = Prisma.DbNull;
+      } else {
+        data.structureElements = normalizeStructureElements(
+          updateDto.structureElements,
+        ) as Prisma.InputJsonValue;
+      }
+    }
+
     return this.prisma.tableArea.update({
       where: { id },
-      data: updateDto,
+      data,
       include: {
         tables: true,
       },
@@ -935,6 +1079,7 @@ export class TablesService {
     return {
       id: table.id,
       number: table.number,
+      label: table.label ?? null,
       capacity: table.capacity,
       status: table.status,
       shape: table.shape,
@@ -942,6 +1087,10 @@ export class TablesService {
         x: table.positionX,
         y: table.positionY,
       },
+      widthPct: table.widthPct ?? 10,
+      heightPct: table.heightPct ?? 10,
+      rotationDeg: table.rotationDeg ?? 0,
+      accentHue: table.accentHue ?? null,
       areaId: table.areaId,
       waiter: table.waiter,
       customerName: table.customerName,

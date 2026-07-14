@@ -149,18 +149,32 @@ export class EdgeSyncPullApplyService {
       const area = rawArea as {
         id?: string;
         name?: string;
+        canvasHue?: number | null;
+        structureElements?: unknown;
         tables?: Array<{
           id?: string;
           number?: string;
+          label?: string | null;
           capacity?: number;
           shape?: string;
           areaId?: string;
           positionX?: number;
           positionY?: number;
+          widthPct?: number;
+          heightPct?: number;
+          rotationDeg?: number;
+          accentHue?: number | null;
         }>;
       };
 
       if (!area.id || !area.name) continue;
+
+      const structurePayload =
+        area.structureElements === undefined
+          ? undefined
+          : area.structureElements === null
+            ? Prisma.DbNull
+            : (area.structureElements as Prisma.InputJsonValue);
 
       await this.prisma.tableArea.upsert({
         where: { id: area.id },
@@ -168,9 +182,18 @@ export class EdgeSyncPullApplyService {
           id: area.id,
           restaurantId,
           name: area.name,
+          canvasHue: area.canvasHue ?? null,
+          ...(structurePayload !== undefined &&
+          structurePayload !== Prisma.DbNull
+            ? { structureElements: structurePayload }
+            : {}),
         },
         update: {
           name: area.name,
+          canvasHue: area.canvasHue ?? null,
+          ...(structurePayload !== undefined
+            ? { structureElements: structurePayload }
+            : {}),
         },
       });
 
@@ -183,20 +206,30 @@ export class EdgeSyncPullApplyService {
             id: table.id,
             restaurantId,
             number: String(table.number),
+            label: table.label ?? null,
             capacity: table.capacity,
             areaId: table.areaId ?? area.id,
             shape,
             positionX: table.positionX ?? 0,
             positionY: table.positionY ?? 0,
+            widthPct: table.widthPct ?? 10,
+            heightPct: table.heightPct ?? 10,
+            rotationDeg: table.rotationDeg ?? 0,
+            accentHue: table.accentHue ?? null,
             status: TableStatus.AVAILABLE,
           },
           update: {
             number: String(table.number),
+            label: table.label ?? null,
             capacity: table.capacity,
             areaId: table.areaId ?? area.id,
             shape,
             positionX: table.positionX ?? 0,
             positionY: table.positionY ?? 0,
+            widthPct: table.widthPct ?? 10,
+            heightPct: table.heightPct ?? 10,
+            rotationDeg: table.rotationDeg ?? 0,
+            accentHue: table.accentHue ?? null,
           },
         });
       }
