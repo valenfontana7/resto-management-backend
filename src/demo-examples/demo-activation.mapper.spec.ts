@@ -1,6 +1,8 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+  buildBuilderDraftFromPayload,
   buildSuggestedRestaurantSlug,
+  extractDemoMenu,
   mapDemoMenuCategories,
   parseDemoPayloadHours,
   remapFeaturedDishIds,
@@ -50,5 +52,47 @@ describe('demo-activation.mapper', () => {
     const featured = (next.sections as { featured: { dishIds: string[] } })
       .featured;
     expect(featured.dishIds).toEqual(['real-dish-id', 'missing']);
+  });
+
+  it('extracts nested dishes from prospect-style menu payload', () => {
+    const menu = extractDemoMenu([
+      {
+        id: 'cat-1',
+        name: 'Cafés',
+        dishes: [
+          { id: 'd1', name: 'Latte', price: 10, isFeatured: true },
+          { name: 'Sin id', price: 'bad' },
+        ],
+      },
+      { name: '' },
+      null,
+    ]);
+
+    expect(menu).toHaveLength(1);
+    expect(menu[0].dishes).toHaveLength(2);
+    expect(menu[0].dishes?.[0]).toMatchObject({
+      id: 'd1',
+      name: 'Latte',
+      price: 10,
+      isFeatured: true,
+    });
+    expect(menu[0].dishes?.[1].price).toBeUndefined();
+  });
+
+  it('builds builder draft from branding and seo when no builderConfig', () => {
+    const draft = buildBuilderDraftFromPayload({
+      branding: {
+        theme: { primary: '#111' },
+        assets: { coverImage: 'cover.webp' },
+      },
+      seo: { title: 'Mi resto', description: 'Demo' },
+    });
+
+    expect(draft.theme).toEqual({ primary: '#111' });
+    expect(draft.seo).toMatchObject({
+      title: 'Mi resto',
+      description: 'Demo',
+      ogImage: 'cover.webp',
+    });
   });
 });

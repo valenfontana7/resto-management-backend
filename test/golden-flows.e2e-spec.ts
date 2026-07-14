@@ -9,6 +9,7 @@ const { AppModule } = require('../dist/app.module');
 const { PrismaService } = require('../dist/prisma/prisma.service');
 import {
   GOLDEN_FLOWS_ENABLED,
+  E2E_FIXTURE_PASSWORD,
   E2E_INVENTORY_RECIPE_QTY_PER_DISH,
   hydrateGoldenFlowTokens,
   isGoldenFlowDatabaseReady,
@@ -1044,6 +1045,240 @@ describe('Golden flows (e2e)', () => {
       expect(new Set(sessionRow?.items.map((item) => item.paidInOrderId))).toEqual(
         new Set(orderIds),
       );
+    });
+  });
+
+  seededDescribe('Seeded lead demo activation golden flow', () => {
+    it('onboarding-seed → register → create materializa menú, sitio y lead CLIENT', async () => {
+      if (!fixture) return;
+
+      const suffix = `${Date.now()}`;
+      const demoSlug = `e2e-demo-act-${suffix}`;
+      const ownerEmail = `e2e.demo.act.${suffix}@example.com`;
+      const restaurantSlug = `e2e-live-${suffix}`;
+      let leadId: string | null = null;
+      let demoId: string | null = null;
+      let restaurantId: string | null = null;
+      let userId: string | null = null;
+
+      try {
+        const lead = await prisma.lead.create({
+          data: {
+            businessName: 'Arena Café E2E',
+            email: `lead.${suffix}@example.com`,
+            city: 'CABA',
+            status: 'INTERESTED',
+            demoExampleSlug: demoSlug,
+          },
+        });
+        leadId = lead.id;
+
+        const demo = await prisma.demoExample.create({
+          data: {
+            slug: demoSlug,
+            name: 'Arena Café E2E',
+            type: 'cafe',
+            cuisine: ['cafe'],
+            city: 'CABA',
+            neighborhood: 'Palermo',
+            isPublic: false,
+            leadId: lead.id,
+            isActive: true,
+            payload: {
+              description: 'Demo E2E para activación',
+              contact: {
+                email: lead.email,
+                phone: '+54 11 4000-0000',
+              },
+              location: {
+                address: 'Honduras 4500',
+                city: 'CABA',
+              },
+              hours: {
+                monday: '09:00-18:00',
+                sunday: 'Cerrado',
+              },
+              branding: {
+                assets: {
+                  logo: 'leads-demos/e2e/logo.webp',
+                  coverImage: 'leads-demos/e2e/hero.webp',
+                },
+                theme: { primary: '#0f766e' },
+                sections: {
+                  featured: { dishIds: ['dish-latte'] },
+                },
+              },
+              menu: [
+                {
+                  id: 'cat-cafes',
+                  name: 'Cafés',
+                  description: 'Barra',
+                  dishes: [
+                    {
+                      id: 'dish-latte',
+                      name: 'Latte E2E',
+                      description: 'Con leche',
+                      price: 4200,
+                      isFeatured: true,
+                    },
+                    {
+                      id: 'dish-americano',
+                      name: 'Americano E2E',
+                      price: 3500,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        });
+        demoId = demo.id;
+
+        const seedRes = await request(app.getHttpServer())
+          .get(`/api/demo-examples/by-slug/${demoSlug}/onboarding-seed`)
+          .expect(200);
+
+        expect(seedRes.body.demoExampleSlug).toBe(demoSlug);
+        expect(seedRes.body.leadId).toBe(lead.id);
+        expect(seedRes.body.restaurantName).toBe('Arena Café E2E');
+        expect(seedRes.body.suggestedSlug).not.toBe(demoSlug);
+        expect(seedRes.body.onboardingData?.demoActivation?.demoExampleSlug).toBe(
+          demoSlug,
+        );
+        expect(seedRes.body.onboardingData?.menuSetup?.categories).toHaveLength(1);
+        expect(seedRes.body.onboardingData?.menuSetup?.estimatedDishes).toBe(2);
+
+        const registerRes = await request(app.getHttpServer())
+          .post('/api/auth/register')
+          .send({
+            email: ownerEmail,
+            password: E2E_FIXTURE_PASSWORD,
+            name: 'Owner Demo Act',
+          })
+          .expect(201);
+
+        const token = registerRes.body.token as string;
+        userId = registerRes.body.user?.id ?? null;
+        expect(token).toBeTruthy();
+        expect(userId).toBeTruthy();
+
+        const onboardingData = {
+          ...seedRes.body.onboardingData,
+          contact: {
+            ...seedRes.body.onboardingData.contact,
+            email: ownerEmail,
+            customSlug: restaurantSlug,
+          },
+          demoActivation: {
+            demoExampleSlug: demoSlug,
+            leadId: lead.id,
+            restaurantName: 'Arena Café E2E',
+          },
+        };
+
+        const blockedCreate = await request(app.getHttpServer())
+          .post('/api/restaurants')
+          .set('Authorization', `Bearer ${token}`)
+          .send({
+            onboardingData,
+            customSlug: restaurantSlug,
+            demoExampleSlug: demoSlug,
+          });
+
+        expect(blockedCreate.status).toBe(403);
+        expect(blockedCreate.body?.code ?? blockedCreate.body?.message).toEqual(
+          expect.stringMatching(/EMAIL_VERIFICATION_REQUIRED|verificar/i),
+        );
+
+        await prisma.user.update({
+          where: { id: userId! },
+          data: { emailVerifiedAt: new Date() },
+        });
+
+        const createRes = await request(app.getHttpServer())
+          .post('/api/restaurants')
+          .set('Authorization', `Bearer ${token}`)
+          .send({
+            onboardingData,
+            customSlug: restaurantSlug,
+            demoExampleSlug: demoSlug,
+          })
+          .expect(201);
+
+        restaurantId =
+          createRes.body.restaurant?.id ??
+          createRes.body.data?.id ??
+          createRes.body.id ??
+          null;
+        expect(restaurantId).toBeTruthy();
+
+        const categories = await prisma.category.findMany({
+          where: { restaurantId: restaurantId! },
+          include: { dishes: true },
+          orderBy: { order: 'asc' },
+        });
+        expect(categories).toHaveLength(1);
+        expect(categories[0].name).toBe('Cafés');
+        expect(categories[0].dishes).toHaveLength(2);
+        expect(categories[0].dishes.map((d) => d.name).sort()).toEqual([
+          'Americano E2E',
+          'Latte E2E',
+        ]);
+
+        const restaurant = await prisma.restaurant.findUnique({
+          where: { id: restaurantId! },
+        });
+        expect(restaurant?.logo).toBe('leads-demos/e2e/logo.webp');
+        expect(restaurant?.coverImage).toBe('leads-demos/e2e/hero.webp');
+        expect(restaurant?.slug).toBe(restaurantSlug);
+
+        const builder = await prisma.builderConfig.findUnique({
+          where: { restaurantId: restaurantId! },
+        });
+        expect(builder?.isPublished).toBe(true);
+        const builderConfig = builder?.config as {
+          sections?: { featured?: { dishIds?: string[] } };
+        };
+        const featuredIds = builderConfig?.sections?.featured?.dishIds ?? [];
+        const latte = categories[0].dishes.find((d) => d.name === 'Latte E2E');
+        expect(featuredIds).toContain(latte?.id);
+
+        const convertedLead = await prisma.lead.findUnique({
+          where: { id: lead.id },
+        });
+        expect(convertedLead?.status).toBe('CLIENT');
+        expect(convertedLead?.convertedRestaurantId).toBe(restaurantId);
+      } finally {
+        if (restaurantId) {
+          await prisma.dish.deleteMany({ where: { restaurantId } });
+          await prisma.category.deleteMany({ where: { restaurantId } });
+          await prisma.builderConfig.deleteMany({ where: { restaurantId } });
+          await prisma.businessHour.deleteMany({ where: { restaurantId } });
+          await prisma.restaurantOperationalProfile.deleteMany({
+            where: { restaurantId },
+          }).catch(() => undefined);
+          await prisma.subscription.deleteMany({ where: { restaurantId } });
+          await prisma.restaurantMembership.deleteMany({
+            where: { restaurantId },
+          });
+          await prisma.role.deleteMany({ where: { restaurantId } });
+          await prisma.user.updateMany({
+            where: { restaurantId },
+            data: { restaurantId: null, roleId: null },
+          });
+          await prisma.restaurant.deleteMany({ where: { id: restaurantId } });
+        }
+        if (userId) {
+          await prisma.user.deleteMany({ where: { id: userId } });
+        }
+        if (demoId) {
+          await prisma.demoExample.deleteMany({ where: { id: demoId } });
+        }
+        if (leadId) {
+          await prisma.leadStatusChange.deleteMany({ where: { leadId } });
+          await prisma.lead.deleteMany({ where: { id: leadId } });
+        }
+      }
     });
   });
 });

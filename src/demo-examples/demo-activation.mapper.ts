@@ -218,15 +218,19 @@ export function extractDemoMenu(menu: unknown): DemoMenuCategoryPayload[] {
   for (const entry of menu) {
     const row = asRecord(entry);
     if (!row || typeof row.name !== 'string') continue;
+    const name = row.name.trim();
+    if (!name) continue;
 
     const dishes: DemoDishPayload[] = [];
     if (Array.isArray(row.dishes)) {
       for (const dish of row.dishes) {
         const dishRow = asRecord(dish);
         if (!dishRow || typeof dishRow.name !== 'string') continue;
+        const dishName = dishRow.name.trim();
+        if (!dishName) continue;
         dishes.push({
           id: typeof dishRow.id === 'string' ? dishRow.id : undefined,
-          name: dishRow.name,
+          name: dishName,
           description:
             typeof dishRow.description === 'string'
               ? dishRow.description
@@ -245,7 +249,7 @@ export function extractDemoMenu(menu: unknown): DemoMenuCategoryPayload[] {
 
     categories.push({
       id: typeof row.id === 'string' ? row.id : undefined,
-      name: row.name,
+      name,
       description:
         typeof row.description === 'string' ? row.description : undefined,
       order: typeof row.order === 'number' ? row.order : undefined,
