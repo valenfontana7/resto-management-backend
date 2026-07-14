@@ -97,6 +97,7 @@ model Restaurant {
   intelligenceStates        RestaurantIntelligenceState[]
   rssHistoryEntries         RestaurantRssHistoryEntry[]
   briefingFeedbacks         BriefingFeedback[]
+  productFeedbacks          ProductFeedback[]
   operationShifts           OperationShift[]
   coordinations             Coordination[]
   handoffs                  Handoff[]
@@ -848,6 +849,7 @@ model User {
   organizationMemberships OrganizationMembership[]
   deliveryDriverProfiles DeliveryDriver[]
   accountSubscription Subscription?
+  productFeedbacks   ProductFeedback[]
 
   @@index([email])
   @@index([restaurantId])
@@ -2699,6 +2701,61 @@ model BriefingFeedback {
 
   @@unique([restaurantId, preparationId])
   @@index([restaurantId, expiresAt])
+}
+
+enum ProductFeedbackType {
+  BUG_REPORT
+  FEATURE_REQUEST
+  PRODUCT_FEEDBACK
+  INTEGRATION_REQUEST
+  GENERAL_COMMENT
+}
+
+enum ProductFeedbackPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ProductFeedbackStatus {
+  NEW
+  SEEN
+  IN_PROGRESS
+  RESOLVED
+  DISMISSED
+}
+
+/// Feedback de producto del admin (bugs, ideas, comentarios). Inbox master + email.
+model ProductFeedback {
+  id                   String                   @id @default(cuid())
+  restaurantId         String?
+  userId               String?
+  type                 ProductFeedbackType
+  title                String?
+  message              String
+  category             String?
+  priority             ProductFeedbackPriority?
+  rating               Int?
+  integrationPlatform  String?
+  useCase              String?
+  status               ProductFeedbackStatus    @default(NEW)
+  /// Contexto capturado (ruta, device, versiones) sin screenshots base64.
+  context              Json?
+  screenshotCount      Int                      @default(0)
+  screenshotLabels     String[]                 @default([])
+  clientSubmissionId   String?
+  submittedAt          DateTime                 @default(now())
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  restaurant           Restaurant?              @relation(fields: [restaurantId], references: [id], onDelete: SetNull)
+  user                 User?                    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([status, submittedAt])
+  @@index([type, submittedAt])
+  @@index([restaurantId])
+  @@index([userId])
+  @@index([clientSubmissionId])
 }
 
 // --- Restaurant Operating System (Operations bounded context) ---

@@ -65,6 +65,10 @@ class AdminAlertEventsDto {
   @IsBoolean()
   @IsOptional()
   registrationAbuseSpike?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  productFeedback?: boolean;
 }
 
 class NotificationsDto {

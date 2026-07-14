@@ -13,6 +13,7 @@ export const ADMIN_ALERT_EVENT_TOGGLE_DEFAULTS = {
   billingControlsUpdated: true,
   edgeSyncStale: true,
   registrationAbuseSpike: true,
+  productFeedback: true,
 } as const;
 
 export type AdminAlertEventToggleKey =
@@ -38,6 +39,7 @@ export const ADMIN_ALERT_EVENT_KEY_MAP: Record<
   BILLING_CONTROLS_UPDATED: 'billingControlsUpdated',
   EDGE_SYNC_STALE: 'edgeSyncStale',
   REGISTRATION_ABUSE_SPIKE: 'registrationAbuseSpike',
+  PRODUCT_FEEDBACK: 'productFeedback',
 };
 
 export const REGISTRATION_ADMIN_ALERT_EVENT_KEYS =

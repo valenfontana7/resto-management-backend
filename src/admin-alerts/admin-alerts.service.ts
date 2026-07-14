@@ -361,6 +361,60 @@ export class AdminAlertsService {
     });
   }
 
+  async notifyProductFeedback(payload: {
+    source: string;
+    feedbackId: string;
+    type: string;
+    typeLabel: string;
+    title: string;
+    message: string;
+    priority?: string | null;
+    category?: string | null;
+    rating?: number | null;
+    screenshotCount: number;
+    restaurantId?: string | null;
+    restaurantName: string;
+    userEmail?: string | null;
+    userName?: string | null;
+    userLabel: string;
+  }): Promise<boolean> {
+    const lines = [
+      `Tipo: ${payload.typeLabel}`,
+      `De: ${payload.userLabel}`,
+      `Restaurante: ${payload.restaurantName}`,
+    ];
+    if (payload.priority) lines.push(`Prioridad: ${payload.priority}`);
+    if (payload.category) lines.push(`Área: ${payload.category}`);
+    if (payload.rating != null) lines.push(`Rating: ${payload.rating}/5`);
+    if (payload.screenshotCount > 0) {
+      lines.push(`Capturas: ${payload.screenshotCount}`);
+    }
+    lines.push('');
+    lines.push(payload.message);
+    lines.push('');
+    lines.push(`Inbox: bentoo.com.ar/master/feedback`);
+
+    return this.notifyAdminEvent({
+      source: payload.source,
+      event: 'PRODUCT_FEEDBACK',
+      subject: `💬 Feedback · ${payload.typeLabel}: ${payload.title}`,
+      title: `Nuevo feedback de producto (${payload.typeLabel})`,
+      message: lines.join('\n'),
+      data: {
+        feedbackId: payload.feedbackId,
+        type: payload.type,
+        priority: payload.priority ?? null,
+        category: payload.category ?? null,
+        rating: payload.rating ?? null,
+        screenshotCount: payload.screenshotCount,
+        restaurantId: payload.restaurantId ?? null,
+        restaurantName: payload.restaurantName,
+        userEmail: payload.userEmail ?? null,
+        userName: payload.userName ?? null,
+      },
+    });
+  }
+
   async notifyAdminEvent(payload: AdminEventAlertPayload): Promise<boolean> {
     try {
       const eventEnabled = await this.isEventEnabled(payload.event);

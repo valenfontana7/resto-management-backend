@@ -55,6 +55,7 @@ import { FloorModule } from './floor/floor.module';
 import { BusinessHealthModule } from './business-health/business-health.module';
 import { BusinessMemoryModule } from './business-memory/business-memory.module';
 import { BriefingFeedbackModule } from './briefing-feedback/briefing-feedback.module';
+import { ProductFeedbackModule } from './product-feedback/product-feedback.module';
 import { BusinessEventsModule } from './business-events/business-events.module';
 import { OperationsModule } from './operations/operations.module';
 import { DecisionEngineModule } from './decision-engine/decision-engine.module';
@@ -178,6 +179,7 @@ import { parseRedisUrl } from './common/redis/redis-connection.util';
     BusinessHealthModule,
     BusinessMemoryModule,
     BriefingFeedbackModule,
+    ProductFeedbackModule,
     BusinessEventsModule,
     OperationsModule,
     DecisionEngineModule,
