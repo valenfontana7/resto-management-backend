@@ -168,8 +168,11 @@ export class OrderNotificationsService {
         notificationType = 'order_created';
         break;
       case OrderStatus.PREPARING:
-      case OrderStatus.READY:
         notificationType = 'order_updated';
+        break;
+      case OrderStatus.READY:
+        // Tipo dedicado — evita re-toasts por updates genéricos con status READY.
+        notificationType = 'order_ready';
         break;
       case OrderStatus.CANCELLED:
         notificationType = 'order_cancelled';

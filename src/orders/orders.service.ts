@@ -1249,7 +1249,13 @@ export class OrdersService {
     }
 
     this.notifications.emitOrderUpdate(restaurantId, updatedOrder);
-    void this.notifications.emitKitchenNotification(updatedOrder, finalStatus);
+    // Solo notificar cocina/toast cuando el estado realmente cambió.
+    if ((order.status as OrderStatus) !== finalStatus) {
+      void this.notifications.emitKitchenNotification(
+        updatedOrder,
+        finalStatus,
+      );
+    }
 
     this.operationalEvents.emit({
       restaurantId,

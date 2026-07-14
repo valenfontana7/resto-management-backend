@@ -23,6 +23,8 @@ export interface KitchenNotification {
   restaurantId: string;
   data: unknown;
   timestamp: Date;
+  /** Orígen interno — evita eco local cuando Redis pub/sub reinyecta el mismo evento. */
+  _origin?: string;
 }
 
 const KITCHEN_CHANNEL_PREFIX = 'bentoo:kitchen:';
@@ -44,6 +46,8 @@ export class KitchenNotificationsService
   >();
   private redisSubscriber: Redis | null = null;
   private readonly useRedis: boolean;
+  /** Identifica esta instancia para ignorar ecos del propio publish. */
+  private readonly instanceId = `kitchen-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
 
   constructor(
     private readonly config: ConfigService,
@@ -64,6 +68,8 @@ export class KitchenNotificationsService
         const restaurantId = channel.replace(KITCHEN_CHANNEL_PREFIX, '');
         try {
           const notification = JSON.parse(message) as KitchenNotification;
+          // Mismo proceso publicó → ya se entregó por Subject local; no duplicar.
+          if (notification._origin === this.instanceId) return;
           this.localSubjects.get(restaurantId)?.next(notification);
         } catch (error) {
           this.logger.warn(`Invalid kitchen pub/sub payload: ${String(error)}`);
@@ -114,12 +120,16 @@ export class KitchenNotificationsService
 
   emitNotification(
     restaurantId: string,
-    notification: Omit<KitchenNotification, 'restaurantId' | 'timestamp'>,
+    notification: Omit<
+      KitchenNotification,
+      'restaurantId' | 'timestamp' | '_origin'
+    >,
   ): void {
     const fullNotification: KitchenNotification = {
       ...notification,
       restaurantId,
       timestamp: new Date(),
+      _origin: this.instanceId,
     };
 
     this.getOrCreateSubject(restaurantId).next(fullNotification);
