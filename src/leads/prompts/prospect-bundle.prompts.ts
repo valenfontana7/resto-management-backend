@@ -154,6 +154,7 @@ export function buildProspectMenuStructurePrompt(
     'Reglas:',
     '- SOLO platos/precios que aparezcan en la investigación o en la web/carta del lead. Prohibido inventar.',
     '- Mínimo 8 productos con precio numérico > 0 en ARS (si la investigación no los tiene, este paso no debería haberse ejecutado).',
+    '- Nunca uses price: 0. Si un plato aparece sin precio verificable, OMITILO del JSON (no lo incluyas).',
     '- Mínimo 3 categorías con id kebab-case (cat-xxx).',
     '- Product id: p-{slug} únicos.',
     '- Incluí platos estrella, bebidas si están en la carta.',

@@ -4,6 +4,7 @@ import { AiProvider, Lead } from '@prisma/client';
 import { AiProviderRouterService } from '../ai-platform/providers/ai-provider-router.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { validateBundle } from '../prospect-importer/validator';
+import { repairInvalidProductPrices } from './prospect-menu-price-repair';
 import type {
   ProspectBundle,
   ValidationResult,
@@ -151,9 +152,17 @@ export class LeadProspectBundleGeneratorService {
       validation = validateBundle(bundle);
     }
 
+    const metadataWarnings = Array.isArray(bundle.metadata?.warnings)
+      ? (bundle.metadata.warnings as string[])
+      : [];
+
     validation = {
       ...validation,
-      warnings: [...generationWarnings, ...validation.warnings],
+      warnings: [
+        ...generationWarnings,
+        ...metadataWarnings,
+        ...validation.warnings,
+      ],
     };
 
     return {
@@ -394,6 +403,24 @@ export class LeadProspectBundleGeneratorService {
   ): ProspectBundle {
     const next = structuredClone(bundle);
     this.logger.debug(`Heuristic repair for: ${errors.join('; ')}`);
+
+    const priceWarnings = repairInvalidProductPrices(next);
+    if (priceWarnings.length) {
+      const prior = Array.isArray(next.metadata?.warnings)
+        ? (next.metadata.warnings as string[])
+        : [];
+      next.metadata = {
+        ...next.metadata,
+        warnings: [...prior, ...priceWarnings],
+      };
+      this.logger.warn(priceWarnings.join(' | '));
+    }
+
+    if (next.menu.products.length === 0 && next.sections.featuredProducts) {
+      next.sections.featuredProducts.enabled = false;
+      next.sections.featuredProducts.reason =
+        'Sin productos con precio válido tras reparación heurística.';
+    }
 
     const mediaIds = new Set((next.media?.images ?? []).map((m) => m.id));
 

@@ -222,7 +222,8 @@ export const PROSPECT_MENU_BLOCK_SCHEMA = {
               id: { type: 'string' },
               name: { type: 'string' },
               description: { type: 'string' },
-              price: { type: 'number' },
+              // exclusiveMinimum no siempre lo respetan los modelos; el repair post-hoc cubre 0.
+              price: { type: 'number', minimum: 1 },
               category: { type: 'string' },
               ingredients: { type: 'array', items: { type: 'string' } },
               allergens: { type: 'array', items: { type: 'string' } },
