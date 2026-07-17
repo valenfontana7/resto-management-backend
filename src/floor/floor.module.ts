@@ -1,5 +1,4 @@
 import { Module, forwardRef } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
 import { FloorController } from './floor.controller';
 import { TableSessionService } from './services/table-session.service';
 import { CashRegisterService } from './services/cash-register.service';
@@ -42,7 +41,6 @@ import { EdgeSyncLocalModule } from '../edge-sync/edge-sync-local.module';
     TablesModule,
     StorageModule,
     NotificationsModule,
-    ScheduleModule.forRoot(),
     forwardRef(() => OrdersModule),
     forwardRef(() => RestaurantsModule),
   ],

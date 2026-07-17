@@ -40,7 +40,9 @@ COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 
-RUN chmod +x /app/scripts/docker-entrypoint.sh
+# Normalize CRLF (Windows checkouts) so the entrypoint is executable under Linux.
+RUN sed -i 's/\r$//' /app/scripts/docker-entrypoint.sh \
+    && chmod +x /app/scripts/docker-entrypoint.sh
 
 RUN set -eux; \
         if ! getent group nodejs >/dev/null 2>&1; then \

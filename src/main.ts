@@ -223,10 +223,37 @@ async function bootstrap() {
     await app.listen(port);
   }
 
+  const logMemory = (reason: string) => {
+    const mem = process.memoryUsage();
+    winstonLogger.warn(`Process memory snapshot (${reason})`, {
+      rssMb: Math.round(mem.rss / 1024 / 1024),
+      heapUsedMb: Math.round(mem.heapUsed / 1024 / 1024),
+      heapTotalMb: Math.round(mem.heapTotal / 1024 / 1024),
+      externalMb: Math.round(mem.external / 1024 / 1024),
+      uptimeSec: Math.round(process.uptime()),
+    });
+  };
+
+  process.on('unhandledRejection', (reason) => {
+    logMemory('unhandledRejection');
+    winstonLogger.error('Unhandled promise rejection', {
+      reason: reason instanceof Error ? reason.stack : reason,
+    });
+  });
+
+  process.on('uncaughtException', (error) => {
+    logMemory('uncaughtException');
+    winstonLogger.error('Uncaught exception', {
+      stack: error.stack,
+      message: error.message,
+    });
+  });
+
   // Graceful shutdown
   const registerShutdownHandler = (signal: 'SIGTERM' | 'SIGINT') => {
     process.on(signal, () => {
       void (async () => {
+        logMemory(signal);
         winstonLogger.info(`${signal} received, shutting down gracefully`);
         await app.close();
       })();

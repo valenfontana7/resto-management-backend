@@ -1,5 +1,4 @@
 import { Module, forwardRef } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
 import { AdminAlertsModule } from '../admin-alerts/admin-alerts.module';
 import { isCloudMode } from '../common/config/bentoo-mode.config';
 import { FloorModule } from '../floor/floor.module';
@@ -12,7 +11,6 @@ import { EdgeSyncStaleMonitorService } from './edge-sync-stale-monitor.service';
 
 @Module({
   imports: [
-    ScheduleModule.forRoot(),
     AdminAlertsModule,
     EdgeSyncLocalModule,
     forwardRef(() => FloorModule),

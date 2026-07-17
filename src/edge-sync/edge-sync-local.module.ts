@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from '../prisma/prisma.module';
 import { isLocalMode } from '../common/config/bentoo-mode.config';
 import { EdgeSyncOutboxService } from './edge-sync-outbox.service';
@@ -8,7 +7,7 @@ import { EdgeSyncPullApplyService } from './edge-sync-pull-apply.service';
 import { EdgeSyncWorkerService } from './edge-sync-worker.service';
 
 @Module({
-  imports: [PrismaModule, ScheduleModule.forRoot()],
+  imports: [PrismaModule],
   providers: [
     EdgeSyncOutboxService,
     EdgeSyncOutboxRecorder,

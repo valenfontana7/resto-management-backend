@@ -1,5 +1,4 @@
 import { Module, forwardRef } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
 import { CommonModule } from '../common/common.module';
 import { BusinessMemoryModule } from '../business-memory/business-memory.module';
 import { DecisionEngineModule } from '../decision-engine/decision-engine.module';
@@ -30,7 +29,6 @@ import { BusinessEventDigestService } from './business-event-digest.service';
     DecisionEngineModule,
     forwardRef(() => NotificationsModule),
     WebsocketModule,
-    ScheduleModule.forRoot(),
   ],
   controllers: [BusinessEventsController],
   providers: [

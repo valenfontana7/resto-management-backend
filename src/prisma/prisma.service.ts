@@ -13,7 +13,11 @@ export class PrismaService
     process.env.APP_TIMEZONE || 'America/Argentina/Buenos_Aires';
 
   constructor() {
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    const poolMax = Number(process.env.PG_POOL_MAX || 10);
+    const pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: Number.isFinite(poolMax) && poolMax > 0 ? poolMax : 10,
+    });
     const adapter = new PrismaPg(pool);
 
     super({

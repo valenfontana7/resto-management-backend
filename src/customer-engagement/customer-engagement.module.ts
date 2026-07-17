@@ -1,7 +1,5 @@
 import { Module, OnModuleInit } from '@nestjs/common';
 
-import { ScheduleModule } from '@nestjs/schedule';
-
 import { DecisionEngineModule } from '../decision-engine/decision-engine.module';
 
 import { OwnerCommunicationsModule } from '../owner-communications/owner-communications.module';
@@ -58,8 +56,6 @@ import {
 
 @Module({
   imports: [
-    ScheduleModule.forRoot(),
-
     OwnerCommunicationsModule,
 
     DecisionEngineModule,

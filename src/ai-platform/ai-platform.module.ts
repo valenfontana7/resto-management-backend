@@ -1,7 +1,6 @@
 import { Module, OnModuleInit } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
-import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AiPlatformController } from './ai-platform.controller';
 import { AiPlannerController } from './ai-planner.controller';
@@ -52,7 +51,6 @@ const redisAvailable = !!process.env.REDIS_URL;
   imports: [
     PrismaModule,
     ConfigModule,
-    ScheduleModule.forRoot(),
     ...(redisAvailable
       ? [BullModule.registerQueue({ name: AI_TASKS_QUEUE })]
       : []),

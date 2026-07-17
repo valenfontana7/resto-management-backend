@@ -1,6 +1,7 @@
 import { APP_GUARD, APP_FILTER } from '@nestjs/core';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { BullModule } from '@nestjs/bullmq';
 import { CacheModule } from '@nestjs/cache-manager';
@@ -137,6 +138,9 @@ import { parseRedisUrl } from './common/redis/redis-connection.util';
       secret: getJwtSecret(process.env.JWT_SECRET),
       signOptions: { expiresIn: '24h' },
     }),
+    // Only once for the whole app — feature modules must NOT call forRoot() again
+    // or @Cron handlers are registered N times and overload the event loop.
+    ScheduleModule.forRoot(),
     PrismaModule,
     CommonModule, // Servicios compartidos (ownership, image processing)
     AuthModule,

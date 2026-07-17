@@ -1,5 +1,4 @@
 import { Module, forwardRef, OnModuleInit } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from '../prisma/prisma.module';
 import { KitchenModule } from '../kitchen/kitchen.module';
 import { WebsocketModule } from '../websocket/websocket.module';
@@ -11,12 +10,7 @@ import { KitchenOperationalEventHandler } from './handlers/kitchen-operational.h
 import { RealtimeOperationalEventHandler } from './handlers/realtime-operational.handler';
 
 @Module({
-  imports: [
-    PrismaModule,
-    ScheduleModule.forRoot(),
-    forwardRef(() => KitchenModule),
-    WebsocketModule,
-  ],
+  imports: [PrismaModule, forwardRef(() => KitchenModule), WebsocketModule],
   providers: [
     OperationalOutboxPublisher,
     OperationalOutboxDispatcher,

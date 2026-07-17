@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from '../prisma/prisma.module';
 import { CommonModule } from '../common/common.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
@@ -13,7 +12,6 @@ import { DigestController } from './digest.controller';
 
 @Module({
   imports: [
-    ScheduleModule.forRoot(),
     PrismaModule,
     CommonModule,
     AnalyticsModule,

@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
 import { AiPlatformModule } from '../ai-platform/ai-platform.module';
 import { CommercialIntelligenceModule } from '../commercial-intelligence/commercial-intelligence.module';
 import { RevenueModule } from '../revenue/revenue.module';
@@ -57,7 +56,6 @@ import { RunProspectPipelineTask } from './tasks/leads-prospect-pipeline.tasks';
     RevenueModule,
     ProspectImporterModule,
     StorageModule,
-    ScheduleModule.forRoot(),
   ],
   controllers: [LeadsController, PublicLeadsController],
   providers: [

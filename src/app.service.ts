@@ -85,20 +85,9 @@ export class AppService {
   }
 
   private async checkRedis(): Promise<string> {
-    const redisUrl = this.config.get<string>('REDIS_URL');
-    if (!redisUrl) return 'not_configured';
-    try {
-      const { default: Redis } = await import('ioredis');
-      const client = new Redis(redisUrl, {
-        connectTimeout: 2000,
-        lazyConnect: true,
-      });
-      await client.connect();
-      await client.ping();
-      await client.quit();
-      return 'connected';
-    } catch {
-      return 'disconnected';
-    }
+    // Liveness must stay cheap: do not open a new Redis client on every /api/health
+    // (Docker healthchecks hit this every ~30s). Connectivity is owned by RedisModule/BullMQ.
+    const redisUrl = this.config.get<string>('REDIS_URL')?.trim();
+    return redisUrl ? 'configured' : 'not_configured';
   }
 }

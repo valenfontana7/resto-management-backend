@@ -1,6 +1,5 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ScheduleModule } from '@nestjs/schedule';
 import { OrdersController, PublicOrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { OrderAnalyticsService } from './services/order-analytics.service';
@@ -24,7 +23,6 @@ import { EventSpineModule } from '../event-spine/event-spine.module';
 @Module({
   imports: [
     ConfigModule,
-    ScheduleModule.forRoot(),
     PrismaModule,
     CommonModule,
     forwardRef(() => BusinessHealthModule),

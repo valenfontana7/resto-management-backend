@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from '../prisma/prisma.module';
 import { RestaurantEventAdapterService } from './adapters/restaurant-event.adapter';
 import { DecisionEngineOrchestratorService } from './decision-engine-orchestrator.service';
@@ -23,7 +22,7 @@ import { PrismaSignalStateStore } from './signals/stores/prisma-signal-state.sto
 import { IntelligenceSnapshotStore } from './stores/intelligence-snapshot.store';
 
 @Module({
-  imports: [PrismaModule, ScheduleModule.forRoot()],
+  imports: [PrismaModule],
   controllers: [IntelligenceController],
   providers: [
     SignalRegistry,

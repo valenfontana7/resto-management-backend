@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ScheduleModule } from '@nestjs/schedule';
 import { MercadoPagoController } from './mercadopago.controller';
 import { MercadoPagoCredentialsService } from './mercadopago-credentials.service';
 import { MercadoPagoService } from './mercadopago.service';
@@ -17,7 +16,6 @@ import { GoLiveEnforcementModule } from '../restaurants/go-live-enforcement.modu
   imports: [
     PrismaModule,
     ConfigModule,
-    ScheduleModule.forRoot(),
     AuthModule,
     BusinessEventsModule,
     GoLiveEnforcementModule,

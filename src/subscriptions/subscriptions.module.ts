@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
 import { SubscriptionsController } from './subscriptions.controller';
 import { UserSubscriptionController } from './user-subscription.controller';
 import { SubscriptionsService } from './subscriptions.service';
@@ -17,7 +16,6 @@ import { CommonModule } from '../common/common.module';
     PrismaModule,
     CommonModule,
     EmailModule,
-    ScheduleModule.forRoot(),
     MercadoPagoModule,
     AuthModule,
     PlansModule,
