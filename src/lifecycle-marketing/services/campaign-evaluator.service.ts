@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { CampaignRegistry } from './campaign-registry.service';
+import { CampaignOverrideService } from './campaign-override.service';
 import { EligibilityEngine } from './eligibility-engine.service';
 import { FrequencyEngine } from './frequency-engine.service';
 import { LifecyclePersistenceService } from '../stores/lifecycle-persistence.service';
@@ -13,6 +14,7 @@ import type {
 export class CampaignEvaluator {
   constructor(
     private readonly registry: CampaignRegistry,
+    private readonly campaignOverrides: CampaignOverrideService,
     private readonly eligibility: EligibilityEngine,
     private readonly frequency: FrequencyEngine,
     private readonly persistence: LifecyclePersistenceService,
@@ -25,6 +27,22 @@ export class CampaignEvaluator {
   }): Promise<LifecycleCampaignEvaluationResult> {
     const { campaign, bundle } = input;
     const snapshot = bundle.snapshot!;
+
+    if (await this.campaignOverrides.isPaused(campaign.id)) {
+      return {
+        campaignId: campaign.id,
+        campaignType: campaign.type,
+        eligible: false,
+        shouldCommunicate: false,
+        reason: 'Campaña pausada desde Marketing Hub',
+        intelligenceBacked: true,
+        recommendationCode: null,
+        opportunityCode: null,
+        selectedStep: null,
+        selectedChannel: null,
+        selectedTemplateId: null,
+      };
+    }
 
     const activeCampaignTypes = await this.persistence.listActiveCampaignTypes(
       snapshot.restaurantId,

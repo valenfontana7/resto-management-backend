@@ -79,6 +79,35 @@ function isOpeningComplete(
   );
 }
 
+/** Misma regla que apertura: checklist completo O timestamp de ritual/cierre. */
+function isClosingComplete(
+  closingChecklist: Prisma.JsonValue | null | undefined,
+  closingCompletedAt: Date | null,
+): boolean {
+  const checklist = normalizeChecklist(CLOSING_CHECKLIST_IDS, closingChecklist);
+  return (
+    isChecklistComplete(CLOSING_CHECKLIST_IDS, checklist) ||
+    Boolean(closingCompletedAt)
+  );
+}
+
+export type DailyOperationPhase =
+  | 'NOT_OPENED'
+  | 'OPEN'
+  | 'CLOSING'
+  | 'DAY_CLOSED';
+
+function resolveDailyPhase(input: {
+  openingComplete: boolean;
+  closingComplete: boolean;
+  dailyClosedAt: Date | null;
+}): DailyOperationPhase {
+  if (input.dailyClosedAt) return 'DAY_CLOSED';
+  if (input.closingComplete) return 'CLOSING';
+  if (input.openingComplete) return 'OPEN';
+  return 'NOT_OPENED';
+}
+
 type DailySummaryView = 'full' | 'dashboard';
 
 type SalesTodayAggregates = {
@@ -130,6 +159,12 @@ export class DailyOperationService {
     const businessDate = parseBusinessDate(dateStr);
     const existing = await this.ensureRecord(scopedRestaurantId, businessDate);
 
+    if (existing.dailyClosedAt) {
+      throw new BadRequestException(
+        'El día ya está cerrado. No se puede modificar la apertura/cierre.',
+      );
+    }
+
     const openingChecklist = dto.openingChecklist
       ? normalizeChecklist(OPENING_CHECKLIST_IDS, dto.openingChecklist)
       : normalizeChecklist(OPENING_CHECKLIST_IDS, existing.openingChecklist);
@@ -138,14 +173,44 @@ export class DailyOperationService {
       ? normalizeChecklist(CLOSING_CHECKLIST_IDS, dto.closingChecklist)
       : normalizeChecklist(CLOSING_CHECKLIST_IDS, existing.closingChecklist);
 
-    const openingComplete =
-      dto.openingCompleted ??
-      isChecklistComplete(OPENING_CHECKLIST_IDS, openingChecklist);
-    const closingComplete =
-      dto.closingCompleted ??
-      isChecklistComplete(CLOSING_CHECKLIST_IDS, closingChecklist);
+    const wasOpeningComplete = isOpeningComplete(
+      existing.openingChecklist,
+      existing.openingCompletedAt,
+    );
 
-    const wasOpeningComplete = Boolean(existing.openingCompletedAt);
+    // Una vez abierto el día, no se puede “des-abrir” (FSM).
+    if (wasOpeningComplete && dto.openingCompleted === false) {
+      throw new BadRequestException(
+        'El día ya fue abierto. No se puede revertir la apertura.',
+      );
+    }
+
+    const openingComplete =
+      dto.openingCompleted === true
+        ? true
+        : dto.openingCompleted === false
+          ? false
+          : isChecklistComplete(OPENING_CHECKLIST_IDS, openingChecklist) ||
+            wasOpeningComplete;
+
+    const wasClosingComplete = isClosingComplete(
+      existing.closingChecklist,
+      existing.closingCompletedAt,
+    );
+
+    const closingComplete =
+      dto.closingCompleted === true
+        ? true
+        : dto.closingCompleted === false
+          ? false
+          : isChecklistComplete(CLOSING_CHECKLIST_IDS, closingChecklist) ||
+            wasClosingComplete;
+
+    if (closingComplete && !openingComplete) {
+      throw new BadRequestException(
+        'No se puede marcar el cierre sin haber abierto el día.',
+      );
+    }
 
     const updated = await this.prisma.dailyOperation.update({
       where: { id: existing.id },
@@ -160,7 +225,9 @@ export class DailyOperationService {
         closingNotes: dto.closingNotes ?? existing.closingNotes,
         closingCompletedAt: closingComplete
           ? (existing.closingCompletedAt ?? new Date())
-          : null,
+          : dto.closingCompleted === false
+            ? null
+            : existing.closingCompletedAt,
       },
     });
 
@@ -195,6 +262,21 @@ export class DailyOperationService {
     const scopedRestaurantId = await this.scopeRestaurant(restaurantId, userId);
     const businessDate = parseBusinessDate(dateStr);
     const record = await this.ensureRecord(scopedRestaurantId, businessDate);
+
+    if (
+      !isOpeningComplete(record.openingChecklist, record.openingCompletedAt)
+    ) {
+      throw new BadRequestException({
+        message: 'No se puede cerrar la caja diaria sin haber abierto el día',
+        blockers: [
+          {
+            code: 'DAY_NOT_OPENED' as const,
+            message: 'Abrí el turno del día antes de cerrar la caja diaria',
+          },
+        ],
+      });
+    }
+
     const blockers = await this.collectCloseBlockers(
       scopedRestaurantId,
       record,
@@ -216,6 +298,27 @@ export class DailyOperationService {
       notes: dto.notes ?? record.closingNotes,
     });
 
+    const openCriticalCount = await this.prisma.coordination.count({
+      where: {
+        restaurantId: scopedRestaurantId,
+        priority: 'CRITICAL',
+        status: {
+          in: ['OPEN', 'ACKNOWLEDGED', 'IN_PROGRESS', 'ESCALATED'],
+        },
+        shift: { businessDate },
+      },
+    });
+
+    const enrichedReport = {
+      ...dailyCloseReport,
+      dayHandoff: {
+        notes: dto.notes ?? record.closingNotes,
+        openCriticalCount,
+        cashDifference: dailyCloseReport.partialCashSummary.totalDifference,
+        closedAt: closedAt.toISOString(),
+      },
+    };
+
     const closingChecklist = normalizeChecklist(
       CLOSING_CHECKLIST_IDS,
       record.closingChecklist,
@@ -224,7 +327,7 @@ export class DailyOperationService {
     const updated = await this.prisma.dailyOperation.update({
       where: { id: record.id },
       data: {
-        dailyCloseReport: dailyCloseReport as unknown as Prisma.InputJsonValue,
+        dailyCloseReport: enrichedReport as unknown as Prisma.InputJsonValue,
         dailyClosedAt: closedAt,
         dailyClosedByName: userName,
         closingCompletedAt: record.closingCompletedAt ?? closedAt,
@@ -239,7 +342,7 @@ export class DailyOperationService {
       correlationId: `daily-closing-completed:${formatBusinessDate(businessDate)}`,
       payload: {
         date: formatBusinessDate(businessDate),
-        totalSales: dailyCloseReport.totalRevenue,
+        totalSales: enrichedReport.totalRevenue,
       },
     });
 
@@ -259,7 +362,7 @@ export class DailyOperationService {
     return {
       operation: this.formatOperation(updated),
       summary,
-      dailyCloseReport,
+      dailyCloseReport: enrichedReport,
     };
   }
 
@@ -344,8 +447,11 @@ export class DailyOperationService {
         openingChecklist: Prisma.JsonValue | null;
         openingCompletedAt: Date | null;
         closingChecklist: Prisma.JsonValue | null;
+        closingCompletedAt?: Date | null;
         dailyClosedAt: Date | null;
         dailyClosedByName: string | null;
+        dailyCloseReport?: Prisma.JsonValue | null;
+        closingNotes?: string | null;
       } | null;
     } = {},
   ) {
@@ -405,6 +511,7 @@ export class DailyOperationService {
       salesAggregates,
       yesterdayOrders,
       yesterdayRevenue,
+      yesterdayOperation,
     ] = await Promise.all([
       operationRecordPromise,
       this.prisma.restaurant.findUnique({
@@ -474,6 +581,20 @@ export class DailyOperationService {
         },
         _sum: { total: true },
       }),
+      this.prisma.dailyOperation.findUnique({
+        where: {
+          restaurantId_businessDate: {
+            restaurantId,
+            businessDate: yesterday,
+          },
+        },
+        select: {
+          openingCompletedAt: true,
+          dailyClosedAt: true,
+          closingNotes: true,
+          dailyCloseReport: true,
+        },
+      }),
     ]);
 
     const dailyCloseConfig = resolveDailyCloseConfig(
@@ -490,6 +611,53 @@ export class DailyOperationService {
       CLOSING_CHECKLIST_IDS,
       operationRecord?.closingChecklist,
     );
+    const openingComplete = isOpeningComplete(
+      operationRecord?.openingChecklist,
+      operationRecord?.openingCompletedAt ?? null,
+    );
+    const closingComplete = isClosingComplete(
+      closingChecklist,
+      operationRecord?.closingCompletedAt ?? null,
+    );
+    const phase = resolveDailyPhase({
+      openingComplete,
+      closingComplete,
+      dailyClosedAt: operationRecord?.dailyClosedAt ?? null,
+    });
+
+    const yesterdayHadActivity =
+      yesterdayOrders > 0 ||
+      (yesterdayRevenue._sum.total ?? 0) > 0 ||
+      Boolean(yesterdayOperation?.openingCompletedAt);
+    const yesterdayLeftOpen =
+      Boolean(yesterdayOperation) &&
+      !yesterdayOperation?.dailyClosedAt &&
+      yesterdayHadActivity;
+
+    let yesterdayDayHandoff: {
+      notes: string | null;
+      openCriticalCount: number;
+      cashDifference: number | null;
+      closedAt: string;
+    } | null = null;
+    const yReport = yesterdayOperation?.dailyCloseReport;
+    if (yReport && typeof yReport === 'object' && !Array.isArray(yReport)) {
+      const handoff = (yReport as { dayHandoff?: unknown }).dayHandoff;
+      if (handoff && typeof handoff === 'object' && !Array.isArray(handoff)) {
+        const h = handoff as {
+          notes?: string | null;
+          openCriticalCount?: number;
+          cashDifference?: number | null;
+          closedAt?: string;
+        };
+        yesterdayDayHandoff = {
+          notes: h.notes ?? yesterdayOperation?.closingNotes ?? null,
+          openCriticalCount: h.openCriticalCount ?? 0,
+          cashDifference: h.cashDifference ?? null,
+          closedAt: h.closedAt ?? '',
+        };
+      }
+    }
 
     return {
       businessDate: formatBusinessDate(businessDate),
@@ -497,14 +665,15 @@ export class DailyOperationService {
       todayRevenue: todayRevenue._sum.total ?? 0,
       yesterdayOrders,
       yesterdayRevenue: yesterdayRevenue._sum.total ?? 0,
-      openingComplete: isOpeningComplete(
-        operationRecord?.openingChecklist,
-        operationRecord?.openingCompletedAt ?? null,
-      ),
-      closingComplete: isChecklistComplete(
-        CLOSING_CHECKLIST_IDS,
-        closingChecklist,
-      ),
+      openingComplete,
+      closingComplete,
+      phase,
+      yesterdayContinuity: {
+        businessDate: formatBusinessDate(yesterday),
+        leftOpen: yesterdayLeftOpen,
+        closingNotes: yesterdayOperation?.closingNotes ?? null,
+        dayHandoff: yesterdayDayHandoff,
+      },
       pendingReservations,
       openTableSessions,
       cashRegisterOpen: Boolean(openCashRegister),
@@ -674,6 +843,8 @@ export class DailyOperationService {
     operationRecord: {
       dailyClosedAt: Date | null;
       closingChecklist: Prisma.JsonValue | null;
+      openingChecklist?: Prisma.JsonValue | null;
+      openingCompletedAt?: Date | null;
     } | null,
     snapshot?: {
       cashRegisterOpen: boolean;
@@ -691,6 +862,19 @@ export class DailyOperationService {
         message: 'La caja diaria ya fue cerrada',
       });
       return blockers;
+    }
+
+    if (
+      operationRecord &&
+      !isOpeningComplete(
+        operationRecord.openingChecklist,
+        operationRecord.openingCompletedAt ?? null,
+      )
+    ) {
+      blockers.push({
+        code: 'DAY_NOT_OPENED',
+        message: 'Abrí el turno del día antes de cerrar la caja diaria',
+      });
     }
 
     let cashRegisterOpen = snapshot?.cashRegisterOpen;
@@ -834,9 +1018,9 @@ export class DailyOperationService {
       closingChecklist,
       closingCompletedAt: record.closingCompletedAt,
       closingNotes: record.closingNotes,
-      closingComplete: isChecklistComplete(
-        CLOSING_CHECKLIST_IDS,
+      closingComplete: isClosingComplete(
         closingChecklist,
+        record.closingCompletedAt,
       ),
       dailyClosedAt: record.dailyClosedAt,
       dailyClosedByName: record.dailyClosedByName,

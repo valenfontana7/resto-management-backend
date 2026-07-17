@@ -97,12 +97,6 @@ export class ShiftService {
     const businessDate = startOfBusinessDate(dto.businessDate);
     const segment = dto.segment ?? OperationShiftSegment.EVENING;
 
-    const dailyOp = await this.prisma.dailyOperation.findUnique({
-      where: {
-        restaurantId_businessDate: { restaurantId, businessDate },
-      },
-    });
-
     const nowIso = new Date().toISOString();
     const assignments: ShiftAssignment[] = dto.assignments?.map((a) => ({
       userId: a.userId,
@@ -129,25 +123,53 @@ export class ShiftService {
       ] as ShiftAssignment['responsibilities'];
     }
 
-    if (dailyOp && !dailyOp.openingCompletedAt) {
-      await this.prisma.dailyOperation.update({
-        where: { id: dailyOp.id },
-        data: { openingCompletedAt: new Date() },
-      });
-    }
+    const openedAt = new Date();
 
-    const shift = await this.prisma.operationShift.create({
-      data: {
-        restaurantId,
-        businessDate,
-        segment,
-        label: dto.label ?? this.defaultLabel(segment),
-        status: OperationShiftStatus.OPEN,
-        assignments: assignments as unknown as Prisma.InputJsonValue,
-        dailyOperationId: dailyOp?.id,
-        openedAt: new Date(),
-        openedByUserId: userId,
-      },
+    const { shift } = await this.prisma.$transaction(async (tx) => {
+      let dailyOp = await tx.dailyOperation.findUnique({
+        where: {
+          restaurantId_businessDate: { restaurantId, businessDate },
+        },
+      });
+
+      if (dailyOp?.dailyClosedAt) {
+        throw new BadRequestException(
+          'El día ya está cerrado. No se puede abrir un turno en un día cerrado.',
+        );
+      }
+
+      if (!dailyOp) {
+        dailyOp = await tx.dailyOperation.create({
+          data: {
+            restaurantId,
+            businessDate,
+            openingCompletedAt: openedAt,
+            openingChecklist: {},
+            closingChecklist: {},
+          },
+        });
+      } else if (!dailyOp.openingCompletedAt) {
+        dailyOp = await tx.dailyOperation.update({
+          where: { id: dailyOp.id },
+          data: { openingCompletedAt: openedAt },
+        });
+      }
+
+      const created = await tx.operationShift.create({
+        data: {
+          restaurantId,
+          businessDate,
+          segment,
+          label: dto.label ?? this.defaultLabel(segment),
+          status: OperationShiftStatus.OPEN,
+          assignments: assignments as unknown as Prisma.InputJsonValue,
+          dailyOperationId: dailyOp.id,
+          openedAt,
+          openedByUserId: userId,
+        },
+      });
+
+      return { shift: created };
     });
 
     const lead = assignments.find((a) =>
@@ -176,6 +198,17 @@ export class ShiftService {
       payload: {
         shiftId: shift.id,
         userId: lead?.userId ?? userId,
+      },
+    });
+
+    void this.businessEvents.publish({
+      eventType: BentooBusinessEventType.RestaurantOpened,
+      restaurantId,
+      source: 'operations.shift',
+      correlationId: `restaurant-opened:${formatBusinessDate(businessDate)}`,
+      payload: {
+        date: formatBusinessDate(businessDate),
+        openedAt: openedAt.toISOString(),
       },
     });
 
@@ -383,6 +416,28 @@ export class ShiftService {
         closedByUserId: userId,
       },
     });
+
+    // Espejo de fase diaria CLOSING (no cierra la caja diaria).
+    if (shift.dailyOperationId) {
+      await this.prisma.dailyOperation.updateMany({
+        where: {
+          id: shift.dailyOperationId,
+          dailyClosedAt: null,
+          closingCompletedAt: null,
+        },
+        data: { closingCompletedAt: closedAt },
+      });
+    } else {
+      await this.prisma.dailyOperation.updateMany({
+        where: {
+          restaurantId,
+          businessDate: shift.businessDate,
+          dailyClosedAt: null,
+          closingCompletedAt: null,
+        },
+        data: { closingCompletedAt: closedAt },
+      });
+    }
 
     void this.businessEvents.publish({
       eventType: BentooBusinessEventType.ShiftClosed,

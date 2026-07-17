@@ -45,10 +45,18 @@ export interface DailyCloseReport {
     totalDifference: number;
   };
   notes: string | null;
+  /** Traspaso del día para la apertura de mañana (continuidad). */
+  dayHandoff?: {
+    notes: string | null;
+    openCriticalCount: number;
+    cashDifference: number | null;
+    closedAt: string;
+  };
 }
 
 export type DailyCloseBlockerCode =
   | 'DAILY_ALREADY_CLOSED'
+  | 'DAY_NOT_OPENED'
   | 'OPEN_PARTIAL_CASH'
   | 'OPEN_TABLES'
   | 'INCOMPLETE_CLOSING_CHECKLIST';

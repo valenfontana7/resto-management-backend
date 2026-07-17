@@ -324,23 +324,25 @@ export class ExpectedValueEngineService {
     verdict: RecommendationVerdict,
   ): string {
     const name = lead.businessName;
+    const valor = `$${ev.toFixed(0)}`;
+    const costo = `$${costUsd.toFixed(2)}`;
     switch (verdict) {
       case 'DO_NOW':
-        return `${name} tiene valor esperado de USD ${ev.toFixed(2)} por USD ${costUsd.toFixed(3)} de costo. Conviene ${action.label.toLowerCase()} hoy.`;
+        return `${name}: valor estimado ${valor} con costo ${costo}. Conviene ${action.label.toLowerCase()} hoy.`;
       case 'GENERATE_DEMO':
-        return `${name} no tiene web y score alto (${lead.score}). Una demo aumenta probabilidad de respuesta. EV: USD ${ev.toFixed(2)}.`;
+        return `${name} no tiene web y encaja bien (${lead.score}/100). Una demo suele mejorar la respuesta. Valor estimado: ${valor}.`;
       case 'SKIP_DEMO':
-        return `Generar demo para ${name} no justifica el costo con el valor esperado actual (USD ${ev.toFixed(2)}).`;
+        return `Generar demo para ${name} no justifica el costo con el valor actual (${valor}).`;
       case 'SKIP_BUDGET':
-        return `Presupuesto insuficiente para ${action.label.toLowerCase()} en ${name} (costo USD ${costUsd.toFixed(3)}).`;
+        return `Presupuesto insuficiente para ${action.label.toLowerCase()} en ${name} (costo ${costo}).`;
       case 'USE_FLASH':
-        return `Conviene usar modelo económico (Flash) para ${name}: buen balance costo/resultado.`;
+        return `Conviene usar el modelo económico para ${name}: buen balance costo/resultado.`;
       case 'WAIT':
-        return `Esperar antes de contactar a ${name}. Contacto reciente o timing subóptimo.`;
+        return `Esperar antes de contactar a ${name}. Contacto reciente o mal momento.`;
       case 'NO_ACTION':
-        return `No conviene gastar presupuesto en ${name} ahora. Valor esperado: USD ${ev.toFixed(2)}.`;
+        return `No conviene gastar presupuesto en ${name} ahora. Valor estimado: ${valor}.`;
       default:
-        return `Evaluación comercial para ${name}.`;
+        return `Revisión comercial para ${name}.`;
     }
   }
 }

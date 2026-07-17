@@ -12,7 +12,10 @@ export interface ResolvedAction {
 export class ActionCatalogService {
   resolvePrimaryAction(lead: Lead): ResolvedAction {
     if (lead.status === LeadStatus.LOST || lead.status === LeadStatus.CLIENT) {
-      return { actionType: 'NO_ACTION', label: 'Sin acción (lead cerrado)' };
+      return {
+        actionType: 'NO_ACTION',
+        label: 'Sin acción (prospecto cerrado)',
+      };
     }
 
     if (lead.status === LeadStatus.CONTACTED) {
@@ -28,7 +31,7 @@ export class ActionCatalogService {
         return {
           actionType: 'GENERATE_PROSPECT_PACKAGE',
           taskKey: 'leads.run_prospect_pipeline',
-          label: 'Pipeline prospecto completo (demo + ventas)',
+          label: 'Armar demo y paquete de venta',
         };
       }
 
@@ -52,14 +55,14 @@ export class ActionCatalogService {
         return {
           actionType: 'SEND_FIRST_MESSAGE',
           taskKey,
-          label: 'Enviar primer mensaje comercial',
+          label: 'Enviar primer mensaje',
         };
       }
 
       return {
         actionType: 'RE_ANALYZE',
         taskKey: 'leads.business_diagnosis',
-        label: 'Analizar oportunidad comercial',
+        label: 'Revisar oportunidad',
       };
     }
 
@@ -70,7 +73,7 @@ export class ActionCatalogService {
       return {
         actionType: 'RE_ANALYZE',
         taskKey: 'leads.business_diagnosis',
-        label: 'Actualizar diagnóstico comercial',
+        label: 'Actualizar diagnóstico',
       };
     }
 
@@ -99,7 +102,7 @@ export class ActionCatalogService {
       alts.push({
         actionType: 'GENERATE_PROSPECT_PACKAGE',
         taskKey: 'leads.run_prospect_pipeline',
-        label: 'Pipeline prospecto completo',
+        label: 'Armar demo y paquete de venta',
       });
     }
 
@@ -107,7 +110,7 @@ export class ActionCatalogService {
       alts.push({
         actionType: 'RE_ANALYZE',
         taskKey: 'leads.business_diagnosis',
-        label: 'Re-analizar sin contactar',
+        label: 'Revisar sin contactar',
       });
     }
 

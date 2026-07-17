@@ -3078,6 +3078,15 @@ model LifecycleTemplateOverride {
   updatedAt    DateTime @updatedAt
 }
 
+/// Pause/activate a nivel catálogo (sin editar el JSON de campañas).
+model LifecycleCampaignOverride {
+  campaignId String   @id
+  paused     Boolean  @default(false)
+  updatedBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
 // ─── Auditoría estratégica 2026-07: Event spine operativo ─────────────────────
 
 model OperationalOutbox {

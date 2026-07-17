@@ -827,7 +827,7 @@ const SUBSCRIPTION_PLAN_SEEDS: SubscriptionPlanSeed[] = [
       promoEndsAt: null,
       interval: 'monthly',
       trialDays: 14,
-      color: 'from-purple-400 to-purple-600',
+      color: 'from-teal-500 to-emerald-600',
       order: 2,
       isActive: true,
       isDefault: false,

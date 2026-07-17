@@ -19,6 +19,7 @@ import {
   MarketingDeliveriesQueryService,
   type MarketingDeliveriesQuery,
 } from './marketing-deliveries-query.service';
+import { CampaignOverrideService } from '../../lifecycle-marketing/services/campaign-override.service';
 
 const ONBOARDING_FLOW = [
   { id: 'LCM-WELCOME-01', label: 'Bienvenida', type: 'WELCOME' },
@@ -101,6 +102,7 @@ export class MarketingHubService {
     private readonly director: MarketingDirectorService,
     private readonly lifecycle: LifecycleMarketingService,
     private readonly templateOverrides: TemplateOverrideService,
+    private readonly campaignOverrides: CampaignOverrideService,
     private readonly engagement: EngagementEngineService,
     private readonly restaurantRef: RestaurantRefResolverService,
     private readonly orchestrator: DecisionEngineOrchestratorService,
@@ -121,6 +123,7 @@ export class MarketingHubService {
       winback,
       billing,
       recoveredCount,
+      careQueue,
     ] = await Promise.all([
       this.segments.getRestaurantSegments(),
       this.director.getCommandCenter(),
@@ -129,6 +132,7 @@ export class MarketingHubService {
       this.director.getCampaignPerformance(WINBACK_CAMPAIGN_ID, safeDays),
       this.getBillingSnapshot(),
       this.countRecoveredRestaurants(since),
+      this.segments.getCareQueue(12),
     ]);
 
     const avgPlanMrr =
@@ -169,16 +173,16 @@ export class MarketingHubService {
         recoveredRestaurants: recoveredCount,
         currency: 'ARS',
         dataNote:
-          'MRR recuperado estimado = restaurantes recuperados × MRR promedio por cuenta pagada. No es atribución causal v1.',
+          'Ingreso recuperado estimado = restaurantes recuperados × ingreso mensual promedio por cuenta pagada. No es atribución causal v1.',
       },
+      careQueue,
       dataGaps: {
         activationRate:
           lcmStats.activationRate === null
-            ? 'Derivado de outcomes GOAL_COMPLETED / envíos LCM'
+            ? 'Derivado de objetivos completados / envíos de ciclo de vida'
             : null,
         retentionRate: 'Proxy: 1 − (cancelaciones 30d / cuentas pagas)',
-        ttvMedianDays:
-          'Pendiente — usar onboarding-analytics/activation-dashboard en v2',
+        ttvMedianDays: 'Pendiente — usar panel de activación del alta en v2',
       },
     };
   }
@@ -188,24 +192,27 @@ export class MarketingHubService {
     const since = new Date();
     since.setDate(since.getDate() - safeDays);
 
-    const [running, lastSentRows, conversionRows] = await Promise.all([
-      this.director.getRunningCampaignsSummary(since),
-      this.prisma.lifecycleDelivery.groupBy({
-        by: ['campaignId'],
-        where: { status: { in: ['SENT', 'SIMULATED'] } },
-        _max: { sentAt: true, createdAt: true },
-      }),
-      this.prisma.lifecycleOutcome.groupBy({
-        by: ['campaignId'],
-        where: {
-          recordedAt: { gte: since },
-          type: {
-            in: ['GOAL_COMPLETED', 'JOURNEY_COMPLETED', 'OPENED', 'CLICKED'],
+    const catalog = listCampaigns();
+    const [running, lastSentRows, conversionRows, pausedMap] =
+      await Promise.all([
+        this.director.getRunningCampaignsSummary(since),
+        this.prisma.lifecycleDelivery.groupBy({
+          by: ['campaignId'],
+          where: { status: { in: ['SENT', 'SIMULATED'] } },
+          _max: { sentAt: true, createdAt: true },
+        }),
+        this.prisma.lifecycleOutcome.groupBy({
+          by: ['campaignId'],
+          where: {
+            recordedAt: { gte: since },
+            type: {
+              in: ['GOAL_COMPLETED', 'JOURNEY_COMPLETED', 'OPENED', 'CLICKED'],
+            },
           },
-        },
-        _count: { _all: true },
-      }),
-    ]);
+          _count: { _all: true },
+        }),
+        this.campaignOverrides.getPausedMap(catalog.map((c) => c.id)),
+      ]);
 
     const lastSentMap = new Map(
       lastSentRows.map((r) => [
@@ -220,12 +227,15 @@ export class MarketingHubService {
 
     return {
       periodDays: safeDays,
-      items: listCampaigns().map((campaign) => {
+      items: catalog.map((campaign) => {
         const stats = runningMap.get(campaign.id);
-        const status = this.deriveCampaignStatus(
-          stats?.activeRestaurants ?? 0,
-          stats?.sentThisWeek ?? 0,
-        );
+        const paused = pausedMap.get(campaign.id) === true;
+        const status = paused
+          ? ('idle' as const)
+          : this.deriveCampaignStatus(
+              stats?.activeRestaurants ?? 0,
+              stats?.sentThisWeek ?? 0,
+            );
         return {
           campaignId: campaign.id,
           campaignType: campaign.type,
@@ -242,21 +252,36 @@ export class MarketingHubService {
           sentThisPeriod: stats?.sentThisWeek ?? 0,
           openRate: stats?.openRate ?? 0,
           conversions: conversionMap.get(campaign.id) ?? 0,
-          impactNote: stats?.activeRestaurants
-            ? `${stats.activeRestaurants} instancias activas`
-            : 'Sin instancias activas',
+          impactNote: paused
+            ? 'Pausada desde Comunicación'
+            : stats?.activeRestaurants
+              ? `${stats.activeRestaurants} instancias activas`
+              : 'Sin instancias activas',
           lastExecutionAt: lastSentMap.get(campaign.id) ?? null,
-          enabled: true,
+          enabled: !paused,
           actions: {
-            canPause: false,
-            canActivate: false,
+            canPause: !paused,
+            canActivate: paused,
             canDuplicate: true,
-            dataNote:
-              'Activar/pausar requiere catálogo v2 — estado derivado de instancias en DB',
+            dataNote: paused
+              ? 'Pausada — no se evalúa ni envía hasta reactivar'
+              : 'Activar o pausar controla qué campañas corren',
           },
         };
       }),
     };
+  }
+
+  async setCampaignPaused(
+    campaignId: string,
+    paused: boolean,
+    updatedBy?: string,
+  ) {
+    return this.campaignOverrides.setPaused(campaignId, paused, updatedBy);
+  }
+
+  async getCareQueue(limit = 12) {
+    return this.segments.getCareQueue(limit);
   }
 
   async getCampaignPerformance(campaignId: string, days = 7) {
@@ -326,7 +351,8 @@ export class MarketingHubService {
         hasOverride: false,
         updatedAt: null,
         updatedBy: null,
-        historyNote: 'Templates CS son catálogo JSON v1 — overrides en v2',
+        historyNote:
+          'Plantillas de seguimiento: catálogo base v1 — personalización completa en v2',
       }),
     );
 
@@ -421,7 +447,7 @@ export class MarketingHubService {
         conversionToNext: conversionRate,
         avgDaysBetweenSteps: null as number | null,
         dataNote:
-          'Tiempo promedio entre pasos pendiente — requiere analytics de cohorte v2',
+          'Tiempo promedio entre pasos pendiente — requiere estadísticas de cohorte v2',
       };
     });
 
@@ -449,7 +475,7 @@ export class MarketingHubService {
           activeRestaurants: activeMap.get(j.id) ?? 0,
           completedThisPeriod: completedMap.get(j.id) ?? 0,
           abandonNote:
-            'Abandonos requieren tracking de journey CANCELLED — disponible en DB, agregar en v2 UI',
+            'Abandonos: seguimiento de recorridos cancelados disponible en datos; se suma a la UI en v2',
         }),
       ),
     };
@@ -516,7 +542,7 @@ export class MarketingHubService {
           },
         }),
         dataNote:
-          'Expansion atribuida a campaña UPSELL — ver performance por campaña',
+          'Expansión atribuida a campaña de mejora de plan — ver números por campaña',
       },
       champion: {
         count: segments.championRestaurants,
@@ -548,7 +574,7 @@ export class MarketingHubService {
           )
           .reduce((sum, o) => sum + o._count._all, 0),
         dataNote:
-          'Impacto RSS agregado desde outcomes LCM — no re-calcula inteligencia',
+          'Impacto en salud sumado desde resultados del ciclo de vida — no recalcula la puntuación',
       },
       trend: winback.trend,
     };
@@ -674,6 +700,7 @@ export class MarketingHubService {
       deliveries: {
         lifecycle: lcmDeliveries.slice(0, 30).map((d) => ({
           id: d.id,
+          campaignId: d.campaignId,
           campaignType: d.campaignType,
           channel: d.channel,
           status: d.status,

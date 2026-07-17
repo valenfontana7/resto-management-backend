@@ -1,9 +1,12 @@
 import {
+  Body,
   Controller,
   Get,
   NotFoundException,
   Param,
+  Patch,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -12,6 +15,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { MarketingHubService } from './services/marketing-hub.service';
 import type { MarketingDeliveriesQuery } from './services/marketing-deliveries-query.service';
+import { SetLifecycleCampaignPausedDto } from '../lifecycle-marketing/dto/set-lifecycle-campaign-paused.dto';
 
 function parseDays(days?: string) {
   const parsed = days ? Number(days) : 7;
@@ -32,10 +36,35 @@ export class MarketingHubController {
     return this.hub.getDashboard(parseDays(days));
   }
 
+  @Get('care-queue')
+  @ApiOperation({
+    summary: 'Cuentas a cuidar hoy (riesgo + activación + winback)',
+  })
+  getCareQueue(@Query('limit') limit?: string) {
+    const parsed = limit ? Number(limit) : 12;
+    return this.hub.getCareQueue(
+      Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 30) : 12,
+    );
+  }
+
   @Get('campaigns')
   @ApiOperation({ summary: 'Listado completo de campañas con métricas' })
   getCampaigns(@Query('days') days?: string) {
     return this.hub.getCampaigns(parseDays(days));
+  }
+
+  @Patch('campaigns/:campaignId/paused')
+  @ApiOperation({ summary: 'Pausar o reactivar una campaña' })
+  setCampaignPaused(
+    @Param('campaignId') campaignId: string,
+    @Body() body: SetLifecycleCampaignPausedDto,
+    @Req() req: { user?: { id?: string; email?: string } },
+  ) {
+    return this.hub.setCampaignPaused(
+      campaignId,
+      body.paused,
+      req.user?.email ?? req.user?.id ?? 'super-admin',
+    );
   }
 
   @Get('campaigns/:campaignId/performance')

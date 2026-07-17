@@ -22,10 +22,12 @@ import {
   WINBACK_CAMPAIGN_ID,
 } from './services/marketing-director.service';
 import { TemplateOverrideService } from './services/template-override.service';
+import { CampaignOverrideService } from './services/campaign-override.service';
 import { listCampaigns } from './catalog/campaign-catalog.loader';
 import { listTemplates } from './catalog/template-catalog.loader';
 import { RegisterLifecycleOutcomeDto } from './dto/register-lifecycle-outcome.dto';
 import { UpdateLifecycleTemplateDto } from './dto/update-lifecycle-template.dto';
+import { SetLifecycleCampaignPausedDto } from './dto/set-lifecycle-campaign-paused.dto';
 import type { LifecycleOutcomeRegistrationInput } from './services/outcome-collector.service';
 
 @ApiTags('Lifecycle Marketing')
@@ -40,6 +42,7 @@ export class LifecycleMarketingController {
     private readonly deliveryProcessor: LifecycleDeliveryProcessorService,
     private readonly marketingDirector: MarketingDirectorService,
     private readonly templateOverrides: TemplateOverrideService,
+    private readonly campaignOverrides: CampaignOverrideService,
   ) {}
 
   @Get('director/command-center')
@@ -85,6 +88,20 @@ export class LifecycleMarketingController {
     return this.marketingDirector.getCampaignPerformance(
       WINBACK_CAMPAIGN_ID,
       safeDays,
+    );
+  }
+
+  @Patch('director/campaigns/:campaignId/paused')
+  @ApiOperation({ summary: 'Pausar o reactivar una campaña del catálogo' })
+  setCampaignPaused(
+    @Param('campaignId') campaignId: string,
+    @Body() body: SetLifecycleCampaignPausedDto,
+    @Req() req: { user?: { id?: string; email?: string } },
+  ) {
+    return this.campaignOverrides.setPaused(
+      campaignId,
+      body.paused,
+      req.user?.email ?? req.user?.id ?? 'super-admin',
     );
   }
 

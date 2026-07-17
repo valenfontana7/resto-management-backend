@@ -140,19 +140,19 @@ export class CommercialWorkQueueService {
         ? [
             {
               key: 'express',
-              label: 'Ejecutar ahora',
+              label: 'Hacer ahora',
               mode: 'express' as const,
             },
             {
               key: 'l1',
-              label: 'Crear objetivo (L1)',
+              label: 'Crear objetivo',
               mode: 'l1' as const,
             },
           ]
         : []),
       {
         key: 'view',
-        label: 'Ver lead',
+        label: 'Ver prospecto',
         href: `/master/leads/prospectos/${rec.targetId}`,
       },
     ];
@@ -276,7 +276,7 @@ export class CommercialWorkQueueService {
         },
         {
           key: 'view',
-          label: 'Ver lead',
+          label: 'Ver prospecto',
           href: `/master/leads/prospectos/${signal.leadId}`,
         },
       ];

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SubscriptionStatus } from '@prisma/client';
+import { formatMasterAuditAction } from '../audit-action-labels';
 
 export interface AuditLogListItem {
   id: string;
@@ -235,11 +236,14 @@ export class SuperAdminPlatformService {
     });
 
     for (const log of recentAudits) {
+      const actionLabel = formatMasterAuditAction(log.action);
+      const targetName = log.targetRestaurant?.name ?? 'Sistema';
+      const actor = log.admin?.name ?? log.admin?.email ?? 'Admin';
       items.push({
         id: `audit-${log.id}`,
         severity: log.action.includes('DELETE') ? 'critical' : 'info',
-        title: `${log.action} · ${log.targetRestaurant?.name ?? 'Sistema'}`,
-        message: `${log.admin?.name ?? log.admin?.email ?? 'Admin'} ejecutó ${log.action}`,
+        title: `${actionLabel} · ${targetName}`,
+        message: `${actor} ejecutó: ${actionLabel}`,
         href: log.targetRestaurantId
           ? `/master/restaurants/${log.targetRestaurantId}`
           : '/master/audit',

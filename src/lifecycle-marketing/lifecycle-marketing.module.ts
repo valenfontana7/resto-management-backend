@@ -19,6 +19,7 @@ import { CampaignStepSchedulerService } from './services/campaign-step-scheduler
 import { LifecycleCronService } from './services/lifecycle-cron.service';
 import { LifecycleMarketingService } from './services/lifecycle-marketing.service';
 import { TemplateOverrideService } from './services/template-override.service';
+import { CampaignOverrideService } from './services/campaign-override.service';
 import { MarketingDirectorService } from './services/marketing-director.service';
 import { LifecyclePersistenceService } from './stores/lifecycle-persistence.service';
 import {
@@ -46,6 +47,7 @@ import {
     CampaignEvaluator,
     TemplateResolver,
     TemplateOverrideService,
+    CampaignOverrideService,
     MarketingDirectorService,
     PersonalizationResolver,
     CampaignScheduler,
@@ -67,6 +69,7 @@ import {
     OutcomeCollector,
     MarketingDirectorService,
     TemplateOverrideService,
+    CampaignOverrideService,
   ],
 })
 export class LifecycleMarketingModule implements OnModuleInit {
