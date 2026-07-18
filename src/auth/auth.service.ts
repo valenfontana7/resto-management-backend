@@ -1744,14 +1744,15 @@ export class AuthService {
       where: { userId_restaurantId: { userId, restaurantId } },
     });
 
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { role: { select: { name: true } } },
+    });
+    const isSuperAdmin = user?.role?.name === 'SUPER_ADMIN';
+
     if (!membership) {
       // Tolerar SUPER_ADMIN o el propio restaurante activo aunque el registro
       // de membership todavía no exista (se creará al regenerar la sesión).
-      const user = await this.prisma.user.findUnique({
-        where: { id: userId },
-        include: { role: { select: { name: true } } },
-      });
-      const isSuperAdmin = user?.role?.name === 'SUPER_ADMIN';
       const isCurrent = user?.restaurantId === restaurantId;
       if (!isSuperAdmin && !isCurrent) {
         throw new ForbiddenException('No tenés acceso a este restaurante');
@@ -1762,7 +1763,10 @@ export class AuthService {
       where: { id: userId },
       data: {
         restaurantId,
-        ...(membership?.roleId ? { roleId: membership.roleId } : {}),
+        // Nunca degradar SUPER_ADMIN de plataforma al cambiar de local.
+        ...(isSuperAdmin || !membership?.roleId
+          ? {}
+          : { roleId: membership.roleId }),
       },
       include: {
         role: true,

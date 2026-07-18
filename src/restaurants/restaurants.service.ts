@@ -595,8 +595,20 @@ export class RestaurantsService {
     // activo (si existe) como membership antes de mover el restaurante activo.
     const currentUser = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { restaurantId: true, roleId: true },
+      select: {
+        restaurantId: true,
+        roleId: true,
+        role: { select: { name: true } },
+      },
     });
+
+    const isSuperAdmin = currentUser?.role?.name === 'SUPER_ADMIN';
+    // SUPER_ADMIN es rol de plataforma: no degradarlo a OWNER del tenant.
+    // El membership del local nuevo puede quedar sin roleId de tenant; el acceso
+    // cross-tenant sigue por SUPER_ADMIN en User.role.
+    const membershipRoleId = isSuperAdmin
+      ? (currentUser?.roleId ?? null)
+      : adminRole.id;
 
     const existingMemberships = await this.prisma.restaurantMembership.count({
       where: { userId },
@@ -620,23 +632,21 @@ export class RestaurantsService {
       });
     }
 
-    // Update user to associate with restaurant and Admin role (nuevo activo)
     await this.prisma.user.update({
       where: { id: userId },
       data: {
         restaurantId,
-        roleId: adminRole.id,
+        ...(isSuperAdmin ? {} : { roleId: adminRole.id }),
       },
     });
 
-    // Registrar el membership del nuevo restaurante.
     await this.prisma.restaurantMembership.upsert({
       where: { userId_restaurantId: { userId, restaurantId } },
-      update: { roleId: adminRole.id },
+      update: membershipRoleId ? { roleId: membershipRoleId } : {},
       create: {
         userId,
         restaurantId,
-        roleId: adminRole.id,
+        roleId: membershipRoleId ?? undefined,
         isDefault: existingMemberships === 0 && !currentUser?.restaurantId,
       },
     });
