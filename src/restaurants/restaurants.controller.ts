@@ -79,6 +79,11 @@ import { PublicWriteAbuseService } from '../common/services/public-write-abuse.s
 import { getClientIp } from '../common/utils/client-ip.util';
 import { GoLiveReadinessService } from './services/go-live-readiness.service';
 import { DemoActivationService } from '../demo-examples/demo-activation.service';
+import {
+  ActivationService,
+  type ActivationPath,
+  type FirstValueType,
+} from './services/activation.service';
 
 @ApiTags('Restaurants')
 @Controller('api/restaurants')
@@ -96,6 +101,7 @@ export class RestaurantsController {
     private readonly publicWriteAbuse: PublicWriteAbuseService,
     private readonly goLiveReadiness: GoLiveReadinessService,
     private readonly demoActivationService: DemoActivationService,
+    private readonly activationService: ActivationService,
     @Optional() private readonly adminAlerts?: AdminAlertsService,
   ) {}
 
@@ -453,7 +459,10 @@ export class RestaurantsController {
 
   @Post(':id/complete-onboarding')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Mark restaurant onboarding as complete' })
+  @ApiOperation({
+    summary:
+      'Mark restaurant onboarding as complete (does not require payment provider; post-WOW readiness handles MP/Payway)',
+  })
   @ApiParam({ name: 'id', description: 'The id of the restaurant' })
   @ApiResponse({
     status: 200,
@@ -469,40 +478,101 @@ export class RestaurantsController {
       throw new NotFoundException('Restaurant not found');
     }
 
-    const productIntent = getRestaurantProductIntent(current.businessRules);
-
-    if (requiresOnlinePaymentForOnboardingComplete(productIntent)) {
-      const [payway, mp] = await Promise.all([
-        this.prisma.paymentProviderCredential.findFirst({
-          where: {
-            restaurantId,
-            isActive: true,
-            lastTestStatus: 'ok',
-          },
-          select: { id: true },
-        }),
-        this.prisma.mercadoPagoCredential.findUnique({
-          where: { restaurantId },
-          select: { accessTokenCiphertext: true },
-        }),
-      ]);
-
-      const hasMpConfigured = Boolean(mp?.accessTokenCiphertext);
-      const hasPayway = Boolean(payway);
-
-      if (!hasPayway && !hasMpConfigured) {
-        throw new BadRequestException({
-          code: 'PAYMENT_PROVIDER_REQUIRED',
-          message:
-            'Configurá al menos un proveedor de pago (Payway o MercadoPago) y probá la conexión antes de finalizar el onboarding.',
-        });
-      }
-    }
+    // Payment providers are no longer a gate for completing onboarding /
+    // first-value activation. Keep the helper for dual-read compatibility.
+    void requiresOnlinePaymentForOnboardingComplete(
+      getRestaurantProductIntent(current.businessRules),
+    );
 
     const restaurant = await this.restaurantsService.update(restaurantId, {
       onboardingIncomplete: false,
     });
     return { restaurant };
+  }
+
+  @Get(':id/activation')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get activation / first-value state' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  async getActivation(@VerifyRestaurantAccess('id') restaurantId: string) {
+    return this.activationService.getActivation(restaurantId);
+  }
+
+  @Post(':id/activation/start')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Start activation path (digital or salon)' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  async startActivation(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+    @Body() body: { path: ActivationPath; productIntent?: string },
+  ) {
+    if (body?.path !== 'digital' && body?.path !== 'salon') {
+      throw new BadRequestException('path must be digital or salon');
+    }
+    return this.activationService.startActivation(restaurantId, body);
+  }
+
+  @Post(':id/activation/first-value')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Record first value milestone (digital publish or salon test charge)',
+  })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  async recordFirstValue(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+    @Body() body: { type: FirstValueType; path?: ActivationPath },
+  ) {
+    if (
+      body?.type !== 'digital_publish' &&
+      body?.type !== 'salon_test_charge'
+    ) {
+      throw new BadRequestException(
+        'type must be digital_publish or salon_test_charge',
+      );
+    }
+    return this.activationService.recordFirstValue(restaurantId, body);
+  }
+
+  @Post(':id/activation/module-visit')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Record admin module first visit (Activation Gen2)',
+  })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  async recordActivationModuleVisit(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+    @Body() body: { moduleId?: string },
+  ) {
+    if (!body?.moduleId || typeof body.moduleId !== 'string') {
+      throw new BadRequestException('moduleId is required');
+    }
+    return this.activationService.recordModuleVisit(
+      restaurantId,
+      body.moduleId.slice(0, 64),
+    );
+  }
+
+  @Post(':id/activation/second-session')
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Record second authenticated session (Activation Gen2)',
+  })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  async recordActivationSecondSession(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+  ) {
+    return this.activationService.recordSecondSession(restaurantId);
+  }
+
+  @Post(':id/activation/abandoned')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Mark activation abandoned (stale draft)' })
+  @ApiParam({ name: 'id', description: 'The id of the restaurant' })
+  async markActivationAbandoned(
+    @VerifyRestaurantAccess('id') restaurantId: string,
+  ) {
+    return this.activationService.markAbandoned(restaurantId);
   }
 
   @ApiOperation({ summary: 'Update restaurant hours' })

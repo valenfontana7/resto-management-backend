@@ -20,15 +20,12 @@ describe('onboarding-product-intent', () => {
   });
 
   describe('requiresOnlinePaymentForOnboardingComplete', () => {
-    it('skips online payment for operations-only', () => {
+    it('never blocks activation on payment provider (post-WOW readiness)', () => {
       expect(requiresOnlinePaymentForOnboardingComplete('operations')).toBe(
         false,
       );
-    });
-
-    it('requires online payment for digital and both', () => {
-      expect(requiresOnlinePaymentForOnboardingComplete('digital')).toBe(true);
-      expect(requiresOnlinePaymentForOnboardingComplete('both')).toBe(true);
+      expect(requiresOnlinePaymentForOnboardingComplete('digital')).toBe(false);
+      expect(requiresOnlinePaymentForOnboardingComplete('both')).toBe(false);
     });
   });
 });

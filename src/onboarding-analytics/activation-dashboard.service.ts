@@ -9,6 +9,7 @@ import {
   buildTopFrictions,
   computePeriodDelta,
 } from './activation-dashboard.utils';
+import { computeGen2MetricsFromCohort } from './activation-gen2-metrics.utils';
 import {
   buildOrderIncidentSummary,
   CRITICAL_INCIDENT_KIND_LABELS,
@@ -66,6 +67,7 @@ export class ActivationDashboardService {
       retention,
       criticalIncidentsMetrics,
       trialPaymentIntent,
+      gen2Cohort,
     ] = await Promise.all([
       this.countRestaurantsRegistered(since),
       this.countRestaurantsRegistered(previousSince, since),
@@ -83,7 +85,10 @@ export class ActivationDashboardService {
       this.onboardingAnalytics.getRetentionCohorts(Math.min(safeDays, 60)),
       this.getCriticalIncidentsMetrics(since),
       this.getTrialPaymentIntentRate(since),
+      this.listGen2CohortRestaurants(since),
     ]);
+
+    const gen2 = computeGen2MetricsFromCohort(gen2Cohort);
 
     const funnelDrops = funnel.steps
       .map((step, idx) => {
@@ -138,6 +143,14 @@ export class ActivationDashboardService {
         },
         medianTtvHours: ttvMetrics.medianHours,
         ttvSampleSize: ttvMetrics.sampleSize,
+        medianTtfvMinutes: gen2.medianTtfvMinutes,
+        ttfvP75Minutes: gen2.ttfvP75Minutes,
+        ttfvSampleSize: gen2.ttfvSampleSize,
+        acr24hPercent: gen2.acr24hPercent,
+        acr7dPercent: gen2.acr7dPercent,
+        wowMomentRatePercent: gen2.wowMomentRatePercent,
+        secondSessionRatePercent: gen2.secondSessionRatePercent,
+        activationScoreDistribution: gen2.scoreDistribution,
         onlinePaymentActiveWeek1Percent: onlinePaymentWeek1.rate,
         onlinePaymentActiveWeek1Sample: onlinePaymentWeek1.sampleSize,
         averageD30Rate: retention.averageD30Rate,
@@ -162,6 +175,7 @@ export class ActivationDashboardService {
       },
       topFrictions,
       stuckRestaurants,
+      gen2,
       funnelHighlights: {
         overallConversion: funnel.overallConversion,
         biggestDrop: funnelDrops[0] ?? null,
@@ -182,6 +196,17 @@ export class ActivationDashboardService {
         }),
       },
     };
+  }
+
+  private async listGen2CohortRestaurants(since: Date) {
+    return this.prisma.restaurant.findMany({
+      where: { createdAt: { gte: since } },
+      select: {
+        id: true,
+        createdAt: true,
+        businessRules: true,
+      },
+    });
   }
 
   private countRestaurantsRegistered(since: Date, until?: Date) {

@@ -933,6 +933,23 @@ export class RestaurantsService {
         };
       }
 
+      const hasOnboarding =
+        currentBusinessRules.onboarding ||
+        parsedIncomingBusinessRules.onboarding;
+
+      if (hasOnboarding) {
+        const currentOnboarding = currentBusinessRules.onboarding || {};
+        const incomingOnboarding = parsedIncomingBusinessRules.onboarding || {};
+        mergedBusinessRules.onboarding = {
+          ...currentOnboarding,
+          ...incomingOnboarding,
+          activation: {
+            ...(currentOnboarding.activation || {}),
+            ...(incomingOnboarding.activation || {}),
+          },
+        };
+      }
+
       const currentMethods = this.readPaymentMethods(currentBusinessRules);
       const nextMethods = this.readPaymentMethods(mergedBusinessRules);
       const addingDigitalWallet =

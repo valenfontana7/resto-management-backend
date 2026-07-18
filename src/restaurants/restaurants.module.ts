@@ -16,6 +16,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { MercadoPagoModule } from '../mercadopago/mercadopago.module';
 import { EdgeSyncModule } from '../edge-sync/edge-sync.module';
 import { GoLiveReadinessService } from './services/go-live-readiness.service';
+import { ActivationService } from './services/activation.service';
 import { GoLiveEnforcementModule } from './go-live-enforcement.module';
 import { DemoExamplesModule } from '../demo-examples/demo-examples.module';
 
@@ -44,6 +45,7 @@ import { DemoExamplesModule } from '../demo-examples/demo-examples.module';
     RestaurantSettingsService,
     BranchesService,
     GoLiveReadinessService,
+    ActivationService,
   ],
   exports: [
     RestaurantsService,
@@ -53,6 +55,7 @@ import { DemoExamplesModule } from '../demo-examples/demo-examples.module';
     BranchesService,
     GoLiveEnforcementModule,
     GoLiveReadinessService,
+    ActivationService,
   ],
 })
 export class RestaurantsModule {}

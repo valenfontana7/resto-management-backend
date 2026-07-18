@@ -13,6 +13,7 @@ import { AdminAlertsService } from '../admin-alerts/admin-alerts.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { GoLiveReadinessService } from './services/go-live-readiness.service';
 import { DemoActivationService } from '../demo-examples/demo-activation.service';
+import { ActivationService } from './services/activation.service';
 
 describe('RestaurantsController', () => {
   let controller: RestaurantsController;
@@ -36,6 +37,7 @@ describe('RestaurantsController', () => {
         },
         { provide: GoLiveReadinessService, useValue: {} },
         { provide: DemoActivationService, useValue: {} },
+        { provide: ActivationService, useValue: {} },
         { provide: AdminAlertsService, useValue: {} },
       ],
     }).compile();

@@ -155,6 +155,14 @@ export class ShiftService {
         });
       }
 
+      // Nuevo turno el mismo día: salir de "cierre del día" si quedó marcado.
+      if (dailyOp.closingCompletedAt) {
+        dailyOp = await tx.dailyOperation.update({
+          where: { id: dailyOp.id },
+          data: { closingCompletedAt: null },
+        });
+      }
+
       const created = await tx.operationShift.create({
         data: {
           restaurantId,
@@ -417,27 +425,9 @@ export class ShiftService {
       },
     });
 
-    // Espejo de fase diaria CLOSING (no cierra la caja diaria).
-    if (shift.dailyOperationId) {
-      await this.prisma.dailyOperation.updateMany({
-        where: {
-          id: shift.dailyOperationId,
-          dailyClosedAt: null,
-          closingCompletedAt: null,
-        },
-        data: { closingCompletedAt: closedAt },
-      });
-    } else {
-      await this.prisma.dailyOperation.updateMany({
-        where: {
-          restaurantId,
-          businessDate: shift.businessDate,
-          dailyClosedAt: null,
-          closingCompletedAt: null,
-        },
-        data: { closingCompletedAt: closedAt },
-      });
-    }
+    // No marcar closingCompletedAt aquí: cerrar un turno ≠ cierre del día.
+    // El día entra en DAY_WINDING_DOWN solo con checklist / “Cerrar el día”.
+    // (openShift limpia closingCompletedAt si se abre otro turno el mismo día.)
 
     void this.businessEvents.publish({
       eventType: BentooBusinessEventType.ShiftClosed,

@@ -92,9 +92,13 @@ export function getRestaurantProductIntent(
   return 'both';
 }
 
-/** Canal digital requiere proveedor online antes de cerrar el onboarding formal. */
+/**
+ * @deprecated Activación WOW: el primer valor NO exige cobro online.
+ * Mantener en false; la conexión MP/Payway vive en readiness post-WOW.
+ */
 export function requiresOnlinePaymentForOnboardingComplete(
   intent: OnboardingProductIntent,
 ): boolean {
-  return intent === 'digital' || intent === 'both';
+  void intent;
+  return false;
 }
