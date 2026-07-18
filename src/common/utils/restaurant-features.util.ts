@@ -53,7 +53,7 @@ export function applyRestaurantFeatureCascade(
     features.onlineOrdering = false;
     features.delivery = false;
     features.takeaway = false;
-    features.salon = false;
+    // Salón/mesas son independientes del canal de pedidos online.
   }
 
   if (features.salon === false && features.reservations === false) {

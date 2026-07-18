@@ -7,7 +7,7 @@ export function featuresForProductIntent(intent?: OnboardingProductIntent) {
         menu: true,
         orders: true,
         salon: true,
-        tables: false,
+        tables: true,
         onlineOrdering: false,
         takeaway: false,
         socialMedia: false,

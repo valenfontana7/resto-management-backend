@@ -1,9 +1,20 @@
 import {
+  featuresForProductIntent,
   getRestaurantProductIntent,
   requiresOnlinePaymentForOnboardingComplete,
 } from './onboarding-product-intent';
 
 describe('onboarding-product-intent', () => {
+  describe('featuresForProductIntent', () => {
+    it('enables salon and tables for operations (mesa de prueba)', () => {
+      expect(featuresForProductIntent('operations')).toMatchObject({
+        salon: true,
+        tables: true,
+        onlineOrdering: false,
+      });
+    });
+  });
+
   describe('getRestaurantProductIntent', () => {
     it('returns stored intent from businessRules', () => {
       expect(

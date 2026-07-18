@@ -124,12 +124,15 @@ function buildRestaurantFeaturesFromPlan(plan: PlanType): RestaurantFeatures {
   const snapshot = buildFallbackSnapshot(plan);
   const feature = (key: string) => snapshot.features[key] ?? false;
   const onlineOrders = feature('online_orders');
+  // STARTER tiene cupo de mesas (p.ej. 3): salón/mesas no dependen de reservas ni de pedidos online.
+  const tablesLimit = snapshot.limits.tables ?? 0;
+  const allowsTables = isUnlimitedLimit(tablesLimit) || tablesLimit > 0;
 
   return {
     menu: feature('qr_menus'),
     orders: onlineOrders,
-    salon: onlineOrders,
-    tables: feature('reservations'),
+    salon: allowsTables,
+    tables: allowsTables,
     reservations: feature('reservations'),
     delivery: feature('delivery'),
     loyalty: feature('loyalty'),

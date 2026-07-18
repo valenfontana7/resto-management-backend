@@ -18,16 +18,18 @@ describe('normalizeRestaurantFeatures', () => {
     ).toBe(false);
   });
 
-  it('cascades orders off to salon and online channels', () => {
+  it('cascades orders off to online channels without killing salon', () => {
     const features = normalizeRestaurantFeatures({
       orders: false,
       onlineOrdering: true,
       delivery: true,
       takeaway: true,
       salon: true,
+      tables: true,
     });
 
-    expect(features.salon).toBe(false);
+    expect(features.salon).toBe(true);
+    expect(features.tables).toBe(true);
     expect(features.onlineOrdering).toBe(false);
     expect(features.delivery).toBe(false);
     expect(features.takeaway).toBe(false);
