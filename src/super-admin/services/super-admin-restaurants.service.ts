@@ -613,6 +613,93 @@ export class SuperAdminRestaurantsService {
         },
       });
 
+      // Floor graph: TableSessionItem.dishId / TableSession.tableId historically
+      // lacked ON DELETE CASCADE, so Postgres can delete Dish/Table before items
+      // and blow up the hard delete. Clear explicitly first.
+      await tx.table.updateMany({
+        where: {
+          restaurantId: {
+            in: targetRestaurantIds,
+          },
+        },
+        data: {
+          currentSessionId: null,
+          currentOrderId: null,
+          currentReservationId: null,
+        },
+      });
+
+      await tx.order.updateMany({
+        where: {
+          restaurantId: {
+            in: targetRestaurantIds,
+          },
+          tableSessionId: {
+            not: null,
+          },
+        },
+        data: {
+          tableSessionId: null,
+        },
+      });
+
+      await tx.cashMovement.updateMany({
+        where: {
+          tableSession: {
+            restaurantId: {
+              in: targetRestaurantIds,
+            },
+          },
+        },
+        data: {
+          tableSessionId: null,
+        },
+      });
+
+      await tx.fiscalDocument.updateMany({
+        where: {
+          restaurantId: {
+            in: targetRestaurantIds,
+          },
+          tableSessionId: {
+            not: null,
+          },
+        },
+        data: {
+          tableSessionId: null,
+        },
+      });
+
+      await tx.tableSessionItemModifier.deleteMany({
+        where: {
+          sessionItem: {
+            session: {
+              restaurantId: {
+                in: targetRestaurantIds,
+              },
+            },
+          },
+        },
+      });
+
+      await tx.tableSessionItem.deleteMany({
+        where: {
+          session: {
+            restaurantId: {
+              in: targetRestaurantIds,
+            },
+          },
+        },
+      });
+
+      await tx.tableSession.deleteMany({
+        where: {
+          restaurantId: {
+            in: targetRestaurantIds,
+          },
+        },
+      });
+
       await tx.user.deleteMany({
         where: {
           restaurantId: {

@@ -396,7 +396,7 @@ model Order {
   customerProfile     RestaurantCustomerProfile? @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
   restaurant          Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   table               Table?               @relation("TableOrders", fields: [tableId], references: [id])
-  tableSession        TableSession?        @relation("SessionComandas", fields: [tableSessionId], references: [id])
+  tableSession        TableSession?        @relation("SessionComandas", fields: [tableSessionId], references: [id], onDelete: SetNull)
   closedSession       TableSession?        @relation("SessionFinalOrder")
   items               OrderItem[]
   statusHistory       OrderStatusHistory[]
@@ -464,7 +464,7 @@ model OrderItem {
   unitPrice         Int
   subtotal          Int
   notes             String?
-  dish              Dish                @relation(fields: [dishId], references: [id])
+  dish              Dish                @relation(fields: [dishId], references: [id], onDelete: Cascade)
   order             Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
   selectedModifiers OrderItemModifier[]
 
@@ -1693,7 +1693,7 @@ model TableSession {
   cashRegisterSessionId String?
   comandaRound          Int                @default(0)
   restaurant            Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  table                 Table              @relation("TableSessions", fields: [tableId], references: [id])
+  table                 Table              @relation("TableSessions", fields: [tableId], references: [id], onDelete: Cascade)
   activeOnTable         Table?             @relation("CurrentTableSession")
   finalOrder            Order?             @relation("SessionFinalOrder", fields: [orderId], references: [id])
   cashRegisterSession   CashRegisterSession? @relation(fields: [cashRegisterSessionId], references: [id])
@@ -1723,7 +1723,7 @@ model TableSessionItem {
   sentToKitchenAt DateTime?
   createdAt       DateTime          @default(now())
   session         TableSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  dish            Dish              @relation(fields: [dishId], references: [id])
+  dish            Dish              @relation(fields: [dishId], references: [id], onDelete: Cascade)
   modifiers       TableSessionItemModifier[]
 
   @@index([sessionId])
@@ -1781,7 +1781,7 @@ model CashMovement {
   createdByName   String?
   createdAt       DateTime         @default(now())
   cashSession     CashRegisterSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  tableSession    TableSession?    @relation(fields: [tableSessionId], references: [id])
+  tableSession    TableSession?    @relation(fields: [tableSessionId], references: [id], onDelete: SetNull)
   sourceSession   CashRegisterSession? @relation("PartialToMainDeposit", fields: [sourceSessionId], references: [id])
 
   @@index([sessionId])
@@ -1813,7 +1813,7 @@ model FiscalDocument {
   createdAt               DateTime             @default(now())
   updatedAt               DateTime             @updatedAt
   restaurant              Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
-  tableSession            TableSession?        @relation(fields: [tableSessionId], references: [id])
+  tableSession            TableSession?        @relation(fields: [tableSessionId], references: [id], onDelete: SetNull)
   relatedFiscalDocument   FiscalDocument?      @relation("FiscalCreditNote", fields: [relatedFiscalDocumentId], references: [id])
   creditNotes             FiscalDocument[]     @relation("FiscalCreditNote")
 
