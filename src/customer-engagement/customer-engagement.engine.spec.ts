@@ -6,8 +6,8 @@ import { findTemplate } from './catalog/template-catalog.loader';
 import { findJourneyByRecommendationCode } from './catalog/journey-catalog.loader';
 import type { DetectedRecommendation } from '../decision-engine/recommendations/types/recommendation.types';
 import type { RestaurantSuccessSnapshot } from '../decision-engine/rss/types/restaurant-success-snapshot.types';
-import type { EngagementPersistenceService } from './stores/engagement-persistence.service';
 import type { ActiveJourneyService } from './services/active-journey.service';
+import type { CrossEngineFrequencyService } from '../owner-communications/cross-engine-frequency.service';
 
 describe('Customer Engagement Engine', () => {
   it('carga catálogos de policy, journey y template', () => {
@@ -51,22 +51,32 @@ describe('Customer Engagement Engine', () => {
       expectedOutcome: 'Canal propio visible',
     });
 
-    expect(message.body).toContain('La Parrilla');
-    expect(message.body).toContain('Juan');
     expect(message.subject).toContain('La Parrilla');
+    expect(message.body).toContain('Juan');
+    expect(message.body).toContain('Publicar tu sitio');
   });
 
   it('policy evalúa frequency cap desde REC (no eventos)', async () => {
-    const persistence = {
-      listRecentDeliveries: async () => [],
-      daysSinceLastDeliveryForRecommendation: async () => null,
-    } as unknown as EngagementPersistenceService;
-
     const activeJourneys = {
       hasActiveRiskJourney: async () => false,
     } as unknown as ActiveJourneyService;
 
-    const registry = new EngagementPolicyRegistry(persistence, activeJourneys);
+    const crossEngine = {
+      getGlobalCap: () => ({
+        days: 7,
+        maxMessages: 3,
+        minDaysBetweenSameRecommendation: 3,
+      }),
+      countRecentCommunications: async () => 0,
+      daysSinceLastContactForRecommendation: async () => null,
+      assertEngineOwnership: () => ({
+        allowed: true,
+        reason: 'ok',
+        primaryEngine: 'customer_engagement',
+      }),
+    } as unknown as CrossEngineFrequencyService;
+
+    const registry = new EngagementPolicyRegistry(activeJourneys, crossEngine);
     const policy = getPolicyForRecommendationCode('REC-PUB-01')!;
 
     const recommendation = {

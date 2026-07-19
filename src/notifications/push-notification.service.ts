@@ -1,7 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as webpush from 'web-push';
 import { PrismaService } from '../prisma/prisma.service';
+import { ExecutionContextService } from '../common/execution/execution-context.service';
+import { LabEffectsPolicyService } from '../bentoo-lab/effects/lab-effects-policy.service';
 
 export interface PushPayload {
   title: string;
@@ -29,6 +31,8 @@ export class PushNotificationService implements OnModuleInit {
   constructor(
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    @Optional() private readonly labEffects?: LabEffectsPolicyService,
+    @Optional() private readonly executionContext?: ExecutionContextService,
   ) {}
 
   onModuleInit(): void {
@@ -86,6 +90,7 @@ export class PushNotificationService implements OnModuleInit {
     restaurantId: string,
     payload: PushPayload,
   ): Promise<number> {
+    if (this.isBlockedByLab(`restaurant:${restaurantId}`)) return 0;
     if (!this.enabled) return 0;
     const subs = await this.prisma.pushSubscription.findMany({
       where: { restaurantId },
@@ -94,6 +99,7 @@ export class PushNotificationService implements OnModuleInit {
   }
 
   async sendToUser(userId: string, payload: PushPayload): Promise<number> {
+    if (this.isBlockedByLab(`user:${userId}`)) return 0;
     if (!this.enabled) return 0;
     const subs = await this.prisma.pushSubscription.findMany({
       where: { userId },
@@ -156,5 +162,13 @@ export class PushNotificationService implements OnModuleInit {
     }
 
     return delivered;
+  }
+
+  private isBlockedByLab(detail: string): boolean {
+    const decision = this.labEffects?.authorize('PUSH_WEB', {
+      runId: this.executionContext?.get()?.runId,
+      detail,
+    });
+    return decision?.allowed === false;
   }
 }

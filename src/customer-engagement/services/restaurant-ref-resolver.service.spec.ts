@@ -1,48 +1,43 @@
 import { NotFoundException } from '@nestjs/common';
+import { OwnershipService } from '../../common/services/ownership.service';
 import { RestaurantRefResolverService } from './restaurant-ref-resolver.service';
 
 describe('RestaurantRefResolverService', () => {
-  const prisma = {
-    restaurant: {
-      findUnique: jest.fn(),
-    },
+  const ownership = {
+    resolveRestaurantId: jest.fn(),
   };
 
   let service: RestaurantRefResolverService;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new RestaurantRefResolverService(prisma as never);
+    service = new RestaurantRefResolverService(
+      ownership as unknown as OwnershipService,
+    );
   });
 
   it('resuelve por id', async () => {
-    prisma.restaurant.findUnique.mockResolvedValueOnce({ id: 'cuid123' });
+    ownership.resolveRestaurantId.mockResolvedValueOnce('cuid123');
 
     await expect(service.resolveRestaurantId('cuid123')).resolves.toBe(
       'cuid123',
     );
-    expect(prisma.restaurant.findUnique).toHaveBeenCalledWith({
-      where: { id: 'cuid123' },
-      select: { id: true },
-    });
+    expect(ownership.resolveRestaurantId).toHaveBeenCalledWith('cuid123');
   });
 
   it('resuelve por slug en minúsculas', async () => {
-    prisma.restaurant.findUnique
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({ id: 'cuid456' });
+    ownership.resolveRestaurantId.mockResolvedValueOnce('cuid456');
 
     await expect(service.resolveRestaurantId('La-Parrilla')).resolves.toBe(
       'cuid456',
     );
-    expect(prisma.restaurant.findUnique).toHaveBeenLastCalledWith({
-      where: { slug: 'la-parrilla' },
-      select: { id: true },
-    });
+    expect(ownership.resolveRestaurantId).toHaveBeenCalledWith('La-Parrilla');
   });
 
   it('falla si no existe', async () => {
-    prisma.restaurant.findUnique.mockResolvedValue(null);
+    ownership.resolveRestaurantId.mockRejectedValueOnce(
+      new NotFoundException('Restaurante no encontrado'),
+    );
 
     await expect(
       service.resolveRestaurantId('no-existe'),

@@ -19,6 +19,8 @@ import {
   type OrderData,
   type RestaurantData,
 } from './email-templates';
+import { ExecutionContextService } from '../common/execution/execution-context.service';
+import { LabEffectsPolicyService } from '../bentoo-lab/effects/lab-effects-policy.service';
 
 export type { OrderData, RestaurantData };
 
@@ -35,6 +37,8 @@ export class EmailService {
     @Optional()
     @InjectQueue(EMAIL_QUEUE)
     private readonly emailQueue: Queue<EmailJobData> | null,
+    @Optional() private readonly labEffects?: LabEffectsPolicyService,
+    @Optional() private readonly executionContext?: ExecutionContextService,
   ) {
     const apiKey = this.configService.get<string>('RESEND_API_KEY');
     if (apiKey) {
@@ -207,6 +211,11 @@ export class EmailService {
     subject: string;
     html: string;
   }): Promise<boolean> {
+    if (this.isBlockedByLab(`email:${params.subject}`)) {
+      this.logger.log(`[EMAIL LAB BLOQUEADO] ${params.subject}`);
+      return true;
+    }
+
     if (this.useQueue) {
       try {
         await this.emailQueue!.add('send', params, {
@@ -607,6 +616,9 @@ export class EmailService {
     html: string;
     deliveryId: string;
   }): Promise<{ ok: boolean; simulated: boolean; providerId?: string }> {
+    if (this.isBlockedByLab(`engagement:${params.deliveryId}`)) {
+      return { ok: true, simulated: true };
+    }
     if (!this.resend) {
       this.logger.log(
         `[EMAIL MOCK] CS engagement ${params.deliveryId} → ${params.to}`,
@@ -654,6 +666,9 @@ export class EmailService {
     html: string;
     deliveryId: string;
   }): Promise<{ ok: boolean; simulated: boolean; providerId?: string }> {
+    if (this.isBlockedByLab(`lifecycle:${params.deliveryId}`)) {
+      return { ok: true, simulated: true };
+    }
     if (!this.resend) {
       this.logger.log(
         `[EMAIL MOCK] Lifecycle marketing ${params.deliveryId} → ${params.to}`,
@@ -698,5 +713,13 @@ export class EmailService {
       month: 'long',
       year: 'numeric',
     });
+  }
+
+  private isBlockedByLab(detail: string): boolean {
+    const decision = this.labEffects?.authorize('EMAIL_RESEND', {
+      runId: this.executionContext?.get()?.runId,
+      detail,
+    });
+    return decision?.allowed === false;
   }
 }

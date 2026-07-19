@@ -3,6 +3,7 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -17,6 +18,9 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { Readable } from 'stream';
 import { withRetry } from '../common/utils/retry';
+import { isLabRuntime } from '../common/config/bentoo-mode.config';
+import { ExecutionContextService } from '../common/execution/execution-context.service';
+import { LabEffectsPolicyService } from '../bentoo-lab/effects/lab-effects-policy.service';
 
 @Injectable()
 export class S3Service {
@@ -31,10 +35,17 @@ export class S3Service {
   private readonly forcePathStyle: boolean;
   private readonly objectAcl?: ObjectCannedACL;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() private readonly labEffects?: LabEffectsPolicyService,
+    @Optional() private readonly executionContext?: ExecutionContextService,
+  ) {
+    const labRuntime = isLabRuntime();
     // DigitalOcean Spaces (S3-compatible) env vars
     // Prefer S3_* (este repo), fallback a AWS_* por compatibilidad.
-    this.bucket = this.mustGetFirst('S3_BUCKET', 'AWS_S3_BUCKET');
+    this.bucket = labRuntime
+      ? '__bentoo_lab_blocked__'
+      : this.mustGetFirst('S3_BUCKET', 'AWS_S3_BUCKET');
     this.region =
       this.config.get<string>('S3_REGION') ||
       this.config.get<string>('AWS_REGION') ||
@@ -58,10 +69,11 @@ export class S3Service {
     ).trim();
     this.keyPrefix = prefix ? prefix.replace(/^\/+|\/+$/g, '') + '/' : '';
 
-    this.endpoint =
-      this.config.get<string>('S3_ENDPOINT') ||
-      this.config.get<string>('AWS_S3_ENDPOINT') ||
-      undefined;
+    this.endpoint = labRuntime
+      ? 'http://127.0.0.1:1'
+      : this.config.get<string>('S3_ENDPOINT') ||
+        this.config.get<string>('AWS_S3_ENDPOINT') ||
+        undefined;
 
     const forcePathStyleRaw =
       this.config.get<string>('S3_FORCE_PATH_STYLE') ||
@@ -89,8 +101,9 @@ export class S3Service {
       region: this.region,
       endpoint: this.endpoint,
       forcePathStyle: this.forcePathStyle,
-      credentials:
-        accessKeyId && secretAccessKey
+      credentials: labRuntime
+        ? { accessKeyId: 'blocked', secretAccessKey: 'blocked' }
+        : accessKeyId && secretAccessKey
           ? { accessKeyId, secretAccessKey }
           : undefined,
     });
@@ -106,6 +119,7 @@ export class S3Service {
     contentType: string;
     cacheControl?: string;
   }): Promise<{ key: string; url: string }> {
+    this.assertExternalAllowed(`upload:${params.key}`);
     const physicalKey = this.normalizeKey(params.key);
 
     // Try to create bucket if not exists (for dev with MinIO)
@@ -146,6 +160,7 @@ export class S3Service {
     publicUrl: string;
     requiredHeaders: Record<string, string>;
   }> {
+    this.assertExternalAllowed(`presign-put:${params.key}`);
     const physicalKey = this.normalizeKey(params.key);
     const logicalKey = this.stripPrefix(physicalKey);
 
@@ -182,6 +197,7 @@ export class S3Service {
     key: string;
     expiresInSeconds?: number;
   }): Promise<string> {
+    this.assertExternalAllowed(`presign-get:${params.key}`);
     const physicalKey = this.normalizeKey(params.key);
     return getSignedUrl(
       this.client,
@@ -199,6 +215,7 @@ export class S3Service {
     etag?: string;
     lastModified?: Date;
   }> {
+    this.assertExternalAllowed(`head:${key}`);
     try {
       const physicalKey = this.normalizeKey(key);
       const head = await this.client.send(
@@ -228,6 +245,7 @@ export class S3Service {
     etag?: string;
     lastModified?: Date;
   }> {
+    this.assertExternalAllowed(`head-raw:${key}`);
     try {
       const head = await this.client.send(
         new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
@@ -251,6 +269,7 @@ export class S3Service {
   }
 
   async getObjectStream(key: string): Promise<{ body: Readable }> {
+    this.assertExternalAllowed(`get:${key}`);
     try {
       const physicalKey = this.normalizeKey(key);
       const obj = await this.client.send(
@@ -272,6 +291,7 @@ export class S3Service {
   }
 
   async getObjectStreamRaw(key: string): Promise<{ body: Readable }> {
+    this.assertExternalAllowed(`get-raw:${key}`);
     try {
       const obj = await this.client.send(
         new GetObjectCommand({ Bucket: this.bucket, Key: key }),
@@ -292,9 +312,9 @@ export class S3Service {
   }
 
   async deleteObjectByUrl(urlOrKey: string | null | undefined): Promise<void> {
+    if (!urlOrKey) return;
+    this.assertExternalAllowed(`delete:${urlOrKey}`);
     try {
-      if (!urlOrKey) return;
-
       const logicalKey = this.extractKey(urlOrKey);
       if (!logicalKey) return;
 
@@ -308,6 +328,16 @@ export class S3Service {
       );
     } catch {
       // best-effort
+    }
+  }
+
+  private assertExternalAllowed(detail: string): void {
+    const decision = this.labEffects?.authorize('STORAGE_S3_INIT', {
+      runId: this.executionContext?.get()?.runId,
+      detail,
+    });
+    if (decision && !decision.allowed) {
+      throw new Error(`Bentoo Lab bloqueó el efecto externo STORAGE_S3_INIT`);
     }
   }
 

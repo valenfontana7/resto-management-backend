@@ -5,6 +5,7 @@ import {
   Logger,
   Inject,
   forwardRef,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -26,6 +27,7 @@ import { PaymentBusinessEventsService } from '../business-events/publishers/paym
 import { BentooBusinessEventType } from '../business-events/types/event-type.enum';
 import { OperationalEventEmitter } from '../event-spine/operational-event-emitter.service';
 import { OPERATIONAL_EVENT_TYPES } from '../event-spine/operational-event.types';
+import { BusinessClockService } from '../common/time/business-clock.service';
 import * as crypto from 'crypto';
 import { Prisma, OrderSource, ComandaItemStatus } from '@prisma/client';
 import {
@@ -70,6 +72,7 @@ export class OrdersService {
     private readonly paymentEvents: PaymentBusinessEventsService,
     @Inject(forwardRef(() => OperationalEventEmitter))
     private readonly operationalEvents: OperationalEventEmitter,
+    @Optional() private readonly businessClock?: BusinessClockService,
   ) {}
 
   async create(
@@ -81,6 +84,7 @@ export class OrdersService {
       throw new BadRequestException('Request body is required');
     }
 
+    const businessNow = this.getBusinessNow();
     const customerName = (createDto.customerName ?? '').trim();
     const customerPhone = (createDto.customerPhone ?? '').trim();
     const paymentMethod = (createDto.paymentMethod ?? '').trim();
@@ -273,7 +277,9 @@ export class OrdersService {
           status: OrderStatus.CONFIRMED,
           paymentMethod,
           paymentStatus: PaymentStatus.PENDING,
-          confirmedAt: new Date(),
+          confirmedAt: businessNow,
+          createdAt: businessNow,
+          updatedAt: businessNow,
           subtotal,
           deliveryFee,
           discount,
@@ -312,6 +318,7 @@ export class OrdersService {
               toStatus: OrderStatus.CONFIRMED,
               changedBy: 'system',
               notes: 'Pedido recibido (pago pendiente)',
+              createdAt: businessNow,
             },
           },
         },
@@ -625,7 +632,7 @@ export class OrdersService {
   }
 
   private async generateOrderNumber(restaurantId: string): Promise<string> {
-    const today = new Date();
+    const today = this.getBusinessNow();
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');
@@ -1135,6 +1142,7 @@ export class OrdersService {
     }
 
     const parsed = this.parseOrderStatusOrPaymentStatus(updateDto.status);
+    const businessNow = this.getBusinessNow();
 
     if (parsed.kind === 'payment') {
       const updatedOrder = await this.prisma.order.update({
@@ -1143,7 +1151,7 @@ export class OrdersService {
           paymentStatus: parsed.paymentStatus,
           paidAt:
             parsed.paymentStatus === PaymentStatus.PAID
-              ? new Date()
+              ? businessNow
               : order.paidAt,
         },
         include: {
@@ -1198,6 +1206,7 @@ export class OrdersService {
           changedBy: userId,
           notes:
             index === transitionSteps.length - 1 ? updateDto.notes : undefined,
+          createdAt: businessNow,
         })),
       },
     };
@@ -1205,7 +1214,7 @@ export class OrdersService {
     for (const step of transitionSteps) {
       const timestampField = this.getTimestampField(step);
       if (timestampField) {
-        updateData[timestampField] = new Date();
+        updateData[timestampField] = businessNow;
       }
     }
 
@@ -2054,8 +2063,8 @@ export class OrdersService {
       items?: unknown[];
     },
   ): void {
-    void this.businessEvents
-      .publish({
+    void Promise.resolve(
+      this.businessEvents.publish({
         eventType: BentooBusinessEventType.OrderCreated,
         restaurantId,
         source: 'orders.service',
@@ -2068,14 +2077,14 @@ export class OrdersService {
           itemCount: Array.isArray(order.items) ? order.items.length : 0,
         },
         correlationId: order.id,
-      })
-      .catch((error) => {
-        this.logger.warn(
-          `Failed to publish OrderCreated for ${order.id}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      });
+      }),
+    ).catch((error) => {
+      this.logger.warn(
+        `Failed to publish OrderCreated for ${order.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
   }
 
   private publishCustomerReturnedIfApplicable(
@@ -2086,8 +2095,8 @@ export class OrdersService {
   ): void {
     if (!customerProfileId) return;
 
-    void this.prisma.order
-      .findFirst({
+    void Promise.resolve(
+      this.prisma.order.findFirst({
         where: {
           restaurantId,
           customerProfileId,
@@ -2096,7 +2105,8 @@ export class OrdersService {
         },
         orderBy: { createdAt: 'desc' },
         select: { createdAt: true },
-      })
+      }),
+    )
       .then((previous) => {
         if (!previous) return;
 
@@ -2127,5 +2137,9 @@ export class OrdersService {
           }`,
         );
       });
+  }
+
+  private getBusinessNow(): Date {
+    return this.businessClock?.now() ?? new Date();
   }
 }

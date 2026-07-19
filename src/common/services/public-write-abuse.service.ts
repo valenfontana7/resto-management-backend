@@ -4,9 +4,11 @@ import {
   Inject,
   Injectable,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
+import { ExecutionContextService } from '../execution/execution-context.service';
 
 export type PublicWriteScope =
   | 'order'
@@ -40,9 +42,15 @@ interface ScopeLimits {
 export class PublicWriteAbuseService {
   private readonly logger = new Logger(PublicWriteAbuseService.name);
 
-  constructor(@Inject(CACHE_MANAGER) private readonly cache: Cache) {}
+  constructor(
+    @Inject(CACHE_MANAGER) private readonly cache: Cache,
+    @Optional() private readonly executionContext?: ExecutionContextService,
+  ) {}
 
   async assertPublicWriteAllowed(ctx: PublicWriteGuardContext): Promise<void> {
+    if (this.executionContext?.get()) {
+      return;
+    }
     const limits = this.getLimits(ctx.scope);
     const normalizedIp = ctx.ip.trim() || 'unknown';
 

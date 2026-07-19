@@ -26,6 +26,8 @@ import {
   OrderFiltersDto,
 } from './dto/order.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../auth/guards/permissions.guard';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/strategies/jwt.strategy';
@@ -155,7 +157,8 @@ export class OrdersController {
   }
 
   @Patch('orders/:id/status')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @Permissions('orders', 'kitchen')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update order status (admin)' })
   @ApiResponse({

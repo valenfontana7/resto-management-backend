@@ -29,6 +29,7 @@ export class AiTaskDbPollerService {
         },
         orderBy: { createdAt: 'asc' },
         take: 5,
+        select: { id: true },
       });
 
       for (const task of pending) {

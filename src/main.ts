@@ -12,7 +12,8 @@ import {
   createWinstonLogger,
   WinstonNestLogger,
 } from './common/logging/winston-nest.logger';
-import { isLocalMode } from './common/config/bentoo-mode.config';
+import { isLabRuntime, isLocalMode } from './common/config/bentoo-mode.config';
+import { LabHttpTransport } from './bentoo-lab/http/lab-http.transport';
 
 async function bootstrap() {
   const winstonLogger = createWinstonLogger();
@@ -222,6 +223,12 @@ async function bootstrap() {
   } else {
     await app.listen(port);
   }
+  if (isLabRuntime()) {
+    app.get(LabHttpTransport).configure(port);
+    winstonLogger.info(
+      `Bentoo Lab activo con loopback exclusivo en http://127.0.0.1:${port}`,
+    );
+  }
 
   const logMemory = (reason: string) => {
     const mem = process.memoryUsage();
@@ -233,6 +240,12 @@ async function bootstrap() {
       uptimeSec: Math.round(process.uptime()),
     });
   };
+
+  logMemory('ready');
+  if (process.env.NODE_ENV === 'development') {
+    const memoryProbe = setInterval(() => logMemory('periodic'), 60_000);
+    memoryProbe.unref();
+  }
 
   process.on('unhandledRejection', (reason) => {
     logMemory('unhandledRejection');

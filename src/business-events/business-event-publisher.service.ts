@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { BusinessEventBusService } from './business-event-bus.service';
 import { BusinessEventRealtimeService } from './business-event-realtime.service';
@@ -8,6 +8,7 @@ import type {
   PublishBusinessEventInput,
 } from './types/business-event.types';
 import { getEventRegistryEntry } from './types/event-registry';
+import { BusinessClockService } from '../common/time/business-clock.service';
 
 @Injectable()
 export class BusinessEventPublisherService {
@@ -17,6 +18,7 @@ export class BusinessEventPublisherService {
     private readonly bus: BusinessEventBusService,
     private readonly store: BusinessEventStoreService,
     private readonly realtime: BusinessEventRealtimeService,
+    @Optional() private readonly businessClock?: BusinessClockService,
   ) {}
 
   /**
@@ -27,7 +29,7 @@ export class BusinessEventPublisherService {
     input: PublishBusinessEventInput<T>,
   ): Promise<BentooBusinessEvent<T>> {
     const registry = getEventRegistryEntry(input.eventType);
-    const occurredAt = input.occurredAt ?? new Date();
+    const occurredAt = input.occurredAt ?? this.getBusinessNow();
 
     const event: BentooBusinessEvent<T> = {
       id: crypto.randomUUID(),
@@ -63,7 +65,9 @@ export class BusinessEventPublisherService {
     dedupeWindowMinutes: number,
   ): Promise<BentooBusinessEvent<T> | null> {
     if (input.correlationId) {
-      const since = new Date(Date.now() - dedupeWindowMinutes * 60_000);
+      const since = new Date(
+        this.getBusinessNow().getTime() - dedupeWindowMinutes * 60_000,
+      );
       const recent = await this.store.query(input.restaurantId, {
         eventTypes: [input.eventType],
         since,
@@ -76,5 +80,9 @@ export class BusinessEventPublisherService {
     }
 
     return this.publish(input);
+  }
+
+  private getBusinessNow(): Date {
+    return this.businessClock?.now() ?? new Date();
   }
 }

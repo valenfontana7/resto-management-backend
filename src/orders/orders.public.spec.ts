@@ -310,7 +310,10 @@ describe('Orders public tracking', () => {
         },
         {
           provide: BusinessEventPublisherService,
-          useValue: { publish: jest.fn() },
+          useValue: {
+            publish: jest.fn().mockResolvedValue(null),
+            publishDeduped: jest.fn().mockResolvedValue(null),
+          },
         },
         {
           provide: PaymentBusinessEventsService,

@@ -11,6 +11,8 @@ import { PublicWriteAbuseService } from './services/public-write-abuse.service';
 import { OnboardingAiQuotaService } from './services/onboarding-ai-quota.service';
 import { UploadQuotaService } from './services/upload-quota.service';
 import { UploadOwnershipService } from './services/upload-ownership.service';
+import { ExecutionContextService } from './execution/execution-context.service';
+import { BusinessClockService } from './time/business-clock.service';
 
 /**
  * Módulo global que provee servicios compartidos a toda la aplicación.
@@ -40,6 +42,8 @@ import { UploadOwnershipService } from './services/upload-ownership.service';
     OnboardingAiQuotaService,
     UploadQuotaService,
     UploadOwnershipService,
+    ExecutionContextService,
+    BusinessClockService,
   ],
   exports: [
     OwnershipService,
@@ -52,6 +56,8 @@ import { UploadOwnershipService } from './services/upload-ownership.service';
     OnboardingAiQuotaService,
     UploadQuotaService,
     UploadOwnershipService,
+    ExecutionContextService,
+    BusinessClockService,
   ],
 })
 export class CommonModule {}

@@ -2,7 +2,7 @@ import { APP_GUARD, APP_FILTER } from '@nestjs/core';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { BullModule } from '@nestjs/bullmq';
 import { CacheModule } from '@nestjs/cache-manager';
 import { AppController } from './app.controller';
@@ -33,6 +33,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { RequestLoggingMiddleware } from './common/middleware/request-logging.middleware';
 import { FeatureFlagsGuard } from './common/guards/feature-flags.guard';
 import { MaintenanceModeGuard } from './common/guards/maintenance-mode.guard';
+import { LabAwareThrottlerGuard } from './common/guards/lab-aware-throttler.guard';
 
 import { SuperAdminModule } from './super-admin/super-admin.module';
 import { NotificationsModule } from './notifications/notifications.module';
@@ -66,7 +67,11 @@ import { MarketingHubModule } from './marketing-hub/marketing-hub.module';
 import { OwnerCommunicationsModule } from './owner-communications/owner-communications.module';
 import { getJwtSecret } from './common/config/jwt.config';
 import { validateEnvironment } from './common/config/env.validation';
-import { isLocalMode } from './common/config/bentoo-mode.config';
+import {
+  getSchedulerOptions,
+  isLabRuntime,
+  isLocalMode,
+} from './common/config/bentoo-mode.config';
 import { LocalDiscoveryModule } from './local-discovery/local-discovery.module';
 import { EdgeSyncModule } from './edge-sync/edge-sync.module';
 import { SalonDesktopModule } from './salon-desktop/salon-desktop.module';
@@ -81,11 +86,14 @@ import { OrganizationsModule } from './organizations/organizations.module';
 import { createKeyv } from '@keyv/redis';
 import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage';
 import { parseRedisUrl } from './common/redis/redis-connection.util';
+import { BentooLabModule } from './bentoo-lab/bentoo-lab.module';
+import { LabExecutionContextMiddleware } from './bentoo-lab/http/lab-execution-context.middleware';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: process.env.DOTENV_CONFIG_PATH || '.env',
       validate: validateEnvironment,
     }),
     // Redis-backed job queue (BullMQ) — only registered when REDIS_URL is set
@@ -140,7 +148,7 @@ import { parseRedisUrl } from './common/redis/redis-connection.util';
     }),
     // Only once for the whole app — feature modules must NOT call forRoot() again
     // or @Cron handlers are registered N times and overload the event loop.
-    ScheduleModule.forRoot(),
+    ScheduleModule.forRoot(getSchedulerOptions()),
     PrismaModule,
     CommonModule, // Servicios compartidos (ownership, image processing)
     AuthModule,
@@ -200,6 +208,7 @@ import { parseRedisUrl } from './common/redis/redis-connection.util';
     OperationalProfileModule,
     ExperienceModule,
     OrganizationsModule,
+    ...(isLabRuntime() ? [BentooLabModule] : []),
     ...(isLocalMode() ? [LocalDiscoveryModule] : []),
   ],
   controllers: [AppController],
@@ -211,7 +220,7 @@ import { parseRedisUrl } from './common/redis/redis-connection.util';
     },
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: LabAwareThrottlerGuard,
     },
     {
       provide: APP_GUARD,
@@ -230,5 +239,8 @@ import { parseRedisUrl } from './common/redis/redis-connection.util';
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(RequestLoggingMiddleware).forRoutes('*');
+    if (isLabRuntime()) {
+      consumer.apply(LabExecutionContextMiddleware).forRoutes('*');
+    }
   }
 }

@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ExecutionContextService } from '../common/execution/execution-context.service';
+import { LabEffectsPolicyService } from '../bentoo-lab/effects/lab-effects-policy.service';
 
 /**
  * Envío de mensajes WhatsApp al dueño usando CallMeBot.
@@ -11,12 +13,25 @@ export class CallMeBotService {
   private readonly logger = new Logger(CallMeBotService.name);
   private readonly baseUrl = 'https://api.callmebot.com/whatsapp.php';
 
+  constructor(
+    @Optional() private readonly labEffects?: LabEffectsPolicyService,
+    @Optional() private readonly executionContext?: ExecutionContextService,
+  ) {}
+
   async sendMessage(
     phone: string,
     apiKey: string,
     text: string,
   ): Promise<boolean> {
     if (!phone || !apiKey || !text) return false;
+    const decision = this.labEffects?.authorize('WHATSAPP_CALLMEBOT', {
+      runId: this.executionContext?.get()?.runId,
+      detail: 'send-message',
+    });
+    if (decision?.allowed === false) {
+      this.logger.log('[WHATSAPP LAB BLOQUEADO]');
+      return true;
+    }
 
     const url = `${this.baseUrl}?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(text)}&apikey=${encodeURIComponent(apiKey)}`;
 

@@ -1,13 +1,17 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { OutboxStatus, Prisma } from '@prisma/client';
 import type { OperationalEventPayload } from './operational-event.types';
+import { BusinessClockService } from '../common/time/business-clock.service';
 
 @Injectable()
 export class OperationalOutboxPublisher {
   private readonly logger = new Logger(OperationalOutboxPublisher.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly businessClock?: BusinessClockService,
+  ) {}
 
   async publish(
     payload: Omit<OperationalEventPayload, 'occurredAt'> & {
@@ -22,7 +26,7 @@ export class OperationalOutboxPublisher {
         aggregateId: payload.aggregateId,
         payload: {
           ...payload,
-          occurredAt: payload.occurredAt ?? new Date().toISOString(),
+          occurredAt: payload.occurredAt ?? this.getBusinessNow().toISOString(),
         } as Prisma.InputJsonValue,
         status: OutboxStatus.PENDING,
       },
@@ -49,11 +53,15 @@ export class OperationalOutboxPublisher {
         aggregateId: payload.aggregateId,
         payload: {
           ...payload,
-          occurredAt: payload.occurredAt ?? new Date().toISOString(),
+          occurredAt: payload.occurredAt ?? this.getBusinessNow().toISOString(),
         } as Prisma.InputJsonValue,
         status: OutboxStatus.PENDING,
       },
     });
     return row.id;
+  }
+
+  private getBusinessNow(): Date {
+    return this.businessClock?.now() ?? new Date();
   }
 }

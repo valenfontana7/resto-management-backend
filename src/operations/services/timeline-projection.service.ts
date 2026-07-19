@@ -10,6 +10,12 @@ import {
   TIMELINE_QUERY_EVENTS,
   type TimelineEntryKind,
 } from '../utils/timeline-events';
+import {
+  coordinationCompletedLabel,
+  coordinationOpenedLabel,
+  shiftLeadAssignedLabel,
+  shiftOpenedRosterDetail,
+} from '../utils/timeline-labels';
 
 const MAX_EXECUTION_ENTRIES = 24;
 
@@ -103,10 +109,10 @@ export class TimelineProjectionService {
         return {
           ...base,
           label: 'Turno abierto',
-          detail:
-            roster != null
-              ? `${roster} en roster · ${payloadText(payload.segment)}`
-              : undefined,
+          detail: shiftOpenedRosterDetail(
+            roster,
+            payloadText(payload.segment) || undefined,
+          ),
         };
       }
       case BentooBusinessEventType.ShiftClosingStarted:
@@ -125,7 +131,7 @@ export class TimelineProjectionService {
         };
       }
       case BentooBusinessEventType.ShiftLeadAssigned:
-        return { ...base, label: 'Lead asignado' };
+        return { ...base, label: shiftLeadAssignedLabel() };
       case BentooBusinessEventType.HandoffPublished:
         return { ...base, label: 'Traspaso publicado' };
       case BentooBusinessEventType.HandoffAccepted:
@@ -133,19 +139,19 @@ export class TimelineProjectionService {
       case BentooBusinessEventType.RestaurantOpened:
         return { ...base, label: 'Operación diaria abierta' };
       case BentooBusinessEventType.CoordinationOpened: {
-        const type = payloadText(payload.type, 'COORD');
-        const title = payloadText(payload.title, 'Coordinación');
+        const type = payloadText(payload.type);
+        const title = payloadText(payload.title);
         return {
           ...base,
-          label: `${type} · ${title}`,
+          label: coordinationOpenedLabel(type || undefined, title || undefined),
           coordinationId: payload.coordinationId as string | undefined,
         };
       }
       case BentooBusinessEventType.CoordinationCompleted: {
-        const outcome = payloadText(payload.outcome, 'RESOLVED');
+        const outcome = payloadText(payload.outcome);
         return {
           ...base,
-          label: `Coordinación ${outcome.toLowerCase()}`,
+          label: coordinationCompletedLabel(outcome || undefined),
           detail: payload.resultSummary as string | undefined,
           coordinationId: payload.coordinationId as string | undefined,
         };

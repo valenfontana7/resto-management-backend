@@ -19,13 +19,23 @@ export class PrismaService
       max: Number.isFinite(poolMax) && poolMax > 0 ? poolMax : 10,
     });
     const adapter = new PrismaPg(pool);
+    const jsonStdoutMode = process.env.BENTOO_LAB_JSON_STDOUT === 'true';
+    // Query logging opt-in: cada poll de outbox/cron spamea SELECTs enormes y
+    // hincha CPU/RAM del proceso + del terminal (concurrently). Activar con
+    // PRISMA_LOG_QUERIES=true solo cuando se diagnostique SQL.
+    const logQueries =
+      process.env.PRISMA_LOG_QUERIES === 'true' ||
+      process.env.PRISMA_LOG_QUERIES === '1';
 
     super({
       adapter,
-      log:
-        process.env.NODE_ENV === 'development'
+      log: jsonStdoutMode
+        ? []
+        : logQueries
           ? ['query', 'error', 'warn']
-          : ['error'],
+          : process.env.NODE_ENV === 'development'
+            ? ['error', 'warn']
+            : ['error'],
     });
 
     this.pool = pool;

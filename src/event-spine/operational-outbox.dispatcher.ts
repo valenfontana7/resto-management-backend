@@ -34,6 +34,7 @@ export class OperationalOutboxDispatcher implements OnModuleInit {
         },
         orderBy: { createdAt: 'asc' },
         take: BATCH_SIZE,
+        select: { id: true },
       });
 
       for (const event of events) {

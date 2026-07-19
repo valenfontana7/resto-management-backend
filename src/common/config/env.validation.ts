@@ -1,3 +1,5 @@
+import { LAB_FORBIDDEN_ENV_KEYS } from '../../bentoo-lab/effects/external-boundary.registry';
+
 const VALID_NODE_ENVS = new Set(['development', 'production', 'test']);
 const VALID_LOG_LEVELS = new Set([
   'error',
@@ -49,6 +51,52 @@ export function validateEnvironment(config: Record<string, unknown>) {
   const databaseUrl = env.DATABASE_URL?.trim();
   if (!databaseUrl) {
     errors.push('DATABASE_URL is required');
+  }
+
+  const runtimeMode = (
+    env.BENTOO_RUNTIME_MODE?.trim() || 'normal'
+  ).toLowerCase();
+  if (runtimeMode !== 'normal' && runtimeMode !== 'lab') {
+    errors.push('BENTOO_RUNTIME_MODE must be normal or lab');
+  }
+  env.BENTOO_RUNTIME_MODE = runtimeMode;
+
+  if (runtimeMode === 'lab') {
+    const internalToken = env.BENTOO_LAB_INTERNAL_TOKEN?.trim();
+    if (!internalToken || internalToken.length < 16) {
+      errors.push(
+        'BENTOO_LAB_INTERNAL_TOKEN is required in Lab and must be at least 16 characters long',
+      );
+    }
+
+    if (databaseUrl) {
+      try {
+        const parsed = new URL(databaseUrl);
+        const databaseName = decodeURIComponent(
+          parsed.pathname.replace(/^\/+/, ''),
+        );
+        const localHosts = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+        if (
+          !localHosts.has(parsed.hostname.toLowerCase()) ||
+          !['bentoo_lab', 'bentoo_ci'].includes(databaseName)
+        ) {
+          errors.push(
+            'Bentoo Lab requires a local PostgreSQL database named bentoo_lab or bentoo_ci',
+          );
+        }
+      } catch {
+        errors.push('Bentoo Lab requires a valid local DATABASE_URL');
+      }
+    }
+
+    const configuredExternalKeys = LAB_FORBIDDEN_ENV_KEYS.filter((key) =>
+      Boolean(env[key]?.trim()),
+    );
+    if (configuredExternalKeys.length > 0) {
+      errors.push(
+        `Bentoo Lab forbids external configuration: ${configuredExternalKeys.join(', ')}`,
+      );
+    }
   }
 
   const jwtSecret = env.JWT_SECRET?.trim();

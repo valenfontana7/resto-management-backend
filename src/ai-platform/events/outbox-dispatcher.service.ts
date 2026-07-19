@@ -30,6 +30,7 @@ export class OutboxDispatcherService {
         },
         orderBy: { createdAt: 'asc' },
         take: BATCH_SIZE,
+        select: { id: true },
       });
 
       for (const event of events) {

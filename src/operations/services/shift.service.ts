@@ -388,13 +388,13 @@ export class ShiftService {
     if (normalOpen.length > 0) {
       warnings.push({
         code: 'OPEN_COORDINATIONS',
-        message: `${normalOpen.length} coordinación(es) NORMAL/LOW quedan abiertas`,
+        message: `${normalOpen.length} coordinación(es) de prioridad baja o normal siguen abiertas`,
       });
     }
     if (!this.getShiftLeadUserId(shift)) {
       warnings.push({
         code: 'NO_SHIFT_LEAD',
-        message: 'El turno no tiene SHIFT_LEAD asignado',
+        message: 'El turno no tiene un encargado asignado',
       });
     }
 
