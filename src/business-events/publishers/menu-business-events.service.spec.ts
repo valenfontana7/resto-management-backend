@@ -1,14 +1,22 @@
 import { MenuBusinessEventsService } from './menu-business-events.service';
 import { BusinessEventPublisherService } from '../business-event-publisher.service';
 import { BentooBusinessEventType } from '../types/event-type.enum';
+import { PublicHttpCacheService } from '../../common/services/public-http-cache.service';
 
 describe('MenuBusinessEventsService', () => {
   const publish = jest.fn().mockResolvedValue(undefined);
+  const invalidatePublicMenuByRestaurantId = jest
+    .fn()
+    .mockResolvedValue(undefined);
   const publisher = { publish } as unknown as BusinessEventPublisherService;
-  const service = new MenuBusinessEventsService(publisher);
+  const publicHttpCache = {
+    invalidatePublicMenuByRestaurantId,
+  } as unknown as PublicHttpCacheService;
+  const service = new MenuBusinessEventsService(publisher, publicHttpCache);
 
   beforeEach(() => {
     publish.mockClear();
+    invalidatePublicMenuByRestaurantId.mockClear();
   });
 
   it('publishes MenuUpdated with correlation id', async () => {
@@ -16,6 +24,7 @@ describe('MenuBusinessEventsService', () => {
 
     await Promise.resolve();
 
+    expect(invalidatePublicMenuByRestaurantId).toHaveBeenCalledWith('rest-1');
     expect(publish).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: BentooBusinessEventType.MenuUpdated,

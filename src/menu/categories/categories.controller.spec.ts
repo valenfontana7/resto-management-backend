@@ -5,6 +5,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CategoriesService } from './categories.service';
 import { S3Service } from '../../storage/s3.service';
 import { PublicWriteAbuseService } from '../../common/services/public-write-abuse.service';
+import { PublicMenuCacheInterceptor } from '../../common/interceptors/public-menu-cache.interceptor';
 
 describe('CategoriesController', () => {
   let controller: CategoriesController;
@@ -21,6 +22,7 @@ describe('CategoriesController', () => {
           provide: PublicWriteAbuseService,
           useValue: { assertPublicWriteAllowed: jest.fn() },
         },
+        PublicMenuCacheInterceptor,
       ],
     }).compile();
 

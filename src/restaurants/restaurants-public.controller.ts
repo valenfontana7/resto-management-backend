@@ -6,11 +6,12 @@ import {
   Query,
   UseInterceptors,
 } from '@nestjs/common';
-import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
+import { CacheInterceptor, CacheKey, CacheTTL } from '@nestjs/cache-manager';
 import { Throttle } from '@nestjs/throttler';
 import { ApiTags, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator';
 import { RestaurantsService } from './restaurants.service';
+import { PUBLIC_RESTAURANTS_CACHE_KEY } from '../common/services/public-http-cache.keys';
 
 @ApiTags('public-restaurants')
 @Controller()
@@ -20,7 +21,8 @@ export class RestaurantsPublicController {
   @Get('api/public/restaurants')
   @Public()
   @UseInterceptors(CacheInterceptor)
-  @CacheTTL(300_000) // 5 min
+  @CacheKey(PUBLIC_RESTAURANTS_CACHE_KEY)
+  @CacheTTL(300_000) // 5 min — invalidado al publicar / actualizar restaurante
   @Throttle({ default: { ttl: 60_000, limit: 20 } })
   @ApiOperation({ summary: 'Listar restaurantes públicos para sitemap' })
   @ApiResponse({ status: 200, description: 'Lista de restaurantes' })

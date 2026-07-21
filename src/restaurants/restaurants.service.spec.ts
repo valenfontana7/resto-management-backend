@@ -6,6 +6,7 @@ import { RolesCatalogService } from '../common/services/roles-catalog.service';
 import { RestaurantSettingsService } from './services/restaurant-settings.service';
 import { SubscriptionResolverService } from '../subscriptions/subscription-resolver.service';
 import { GoLiveEnforcementService } from './services/go-live-enforcement.service';
+import { PublicHttpCacheService } from '../common/services/public-http-cache.service';
 
 describe('RestaurantsService', () => {
   let service: RestaurantsService;
@@ -47,6 +48,13 @@ describe('RestaurantsService', () => {
         { provide: SubscriptionResolverService, useValue: {} },
         { provide: RestaurantSettingsService, useValue: {} },
         { provide: GoLiveEnforcementService, useValue: {} },
+        {
+          provide: PublicHttpCacheService,
+          useValue: {
+            invalidatePublicRestaurants: jest.fn().mockResolvedValue(undefined),
+            invalidatePublicMenuBySlug: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
 

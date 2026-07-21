@@ -18,6 +18,7 @@ import { normalizeRestaurantFeatures } from '../common/utils/restaurant-features
 import { RolesCatalogService } from '../common/services/roles-catalog.service';
 import { SubscriptionResolverService } from '../subscriptions/subscription-resolver.service';
 import { GoLiveEnforcementService } from './services/go-live-enforcement.service';
+import { PublicHttpCacheService } from '../common/services/public-http-cache.service';
 
 @Injectable()
 export class RestaurantsService {
@@ -31,6 +32,7 @@ export class RestaurantsService {
     @Inject(forwardRef(() => RestaurantSettingsService))
     private readonly settingsService: RestaurantSettingsService,
     private readonly goLiveEnforcement: GoLiveEnforcementService,
+    private readonly publicHttpCache: PublicHttpCacheService,
   ) {}
 
   async findBySlug(slug: string) {
@@ -1102,6 +1104,12 @@ export class RestaurantsService {
         hours: true,
       },
     });
+
+    // La web pública / directorio no deben quedar con HTML o listados stale.
+    void this.publicHttpCache.invalidatePublicRestaurants();
+    void this.publicHttpCache.invalidatePublicMenuBySlug(
+      updated.slug || currentRestaurant.slug,
+    );
 
     return updated;
   }

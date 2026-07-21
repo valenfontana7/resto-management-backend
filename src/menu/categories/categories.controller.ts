@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
-import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
+import { CacheTTL } from '@nestjs/cache-manager';
 import {
   ApiTags,
   ApiOperation,
@@ -27,6 +27,7 @@ import { CategoriesService } from './categories.service';
 import { S3Service } from '../../storage/s3.service';
 import { Public } from '../../auth/decorators/public.decorator';
 import { PublicWriteAbuseService } from '../../common/services/public-write-abuse.service';
+import { PublicMenuCacheInterceptor } from '../../common/interceptors/public-menu-cache.interceptor';
 import { getClientIp } from '../../common/utils/client-ip.util';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../../auth/decorators/current-user.decorator';
@@ -48,8 +49,8 @@ export class CategoriesController {
 
   @Public()
   @Get('api/public/:slug/menu')
-  @UseInterceptors(CacheInterceptor)
-  @CacheTTL(120_000) // 2 min — menu updates are semi-frequent
+  @UseInterceptors(PublicMenuCacheInterceptor)
+  @CacheTTL(120_000) // 2 min — invalidado en mutaciones de menú
   @Throttle({ default: { ttl: 60_000, limit: 60 } })
   @ApiOperation({ summary: 'Get menu by restaurant slug (public)' })
   @ApiParam({ name: 'slug', description: 'The slug of the restaurant' })

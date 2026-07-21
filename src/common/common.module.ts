@@ -13,6 +13,8 @@ import { UploadQuotaService } from './services/upload-quota.service';
 import { UploadOwnershipService } from './services/upload-ownership.service';
 import { ExecutionContextService } from './execution/execution-context.service';
 import { BusinessClockService } from './time/business-clock.service';
+import { PublicHttpCacheService } from './services/public-http-cache.service';
+import { PublicMenuCacheInterceptor } from './interceptors/public-menu-cache.interceptor';
 
 /**
  * Módulo global que provee servicios compartidos a toda la aplicación.
@@ -44,6 +46,8 @@ import { BusinessClockService } from './time/business-clock.service';
     UploadOwnershipService,
     ExecutionContextService,
     BusinessClockService,
+    PublicHttpCacheService,
+    PublicMenuCacheInterceptor,
   ],
   exports: [
     OwnershipService,
@@ -58,6 +62,8 @@ import { BusinessClockService } from './time/business-clock.service';
     UploadOwnershipService,
     ExecutionContextService,
     BusinessClockService,
+    PublicHttpCacheService,
+    PublicMenuCacheInterceptor,
   ],
 })
 export class CommonModule {}

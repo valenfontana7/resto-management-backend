@@ -1,12 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { BusinessEventPublisherService } from '../business-event-publisher.service';
 import { BentooBusinessEventType } from '../types/event-type.enum';
+import { PublicHttpCacheService } from '../../common/services/public-http-cache.service';
 
 export type MenuChangeType = 'category' | 'dish' | 'modifier';
 
 @Injectable()
 export class MenuBusinessEventsService {
-  constructor(private readonly publisher: BusinessEventPublisherService) {}
+  constructor(
+    private readonly publisher: BusinessEventPublisherService,
+    private readonly publicHttpCache: PublicHttpCacheService,
+  ) {}
 
   publishMenuUpdated(
     restaurantId: string,
@@ -15,6 +19,10 @@ export class MenuBusinessEventsService {
     entityName: string,
     source = 'menu',
   ): void {
+    void this.publicHttpCache
+      .invalidatePublicMenuByRestaurantId(restaurantId)
+      .catch(() => undefined);
+
     void this.publisher
       .publish({
         eventType: BentooBusinessEventType.MenuUpdated,
