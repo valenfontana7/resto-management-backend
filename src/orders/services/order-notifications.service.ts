@@ -128,6 +128,8 @@ export class OrderNotificationsService {
       customerPhone: order.customerPhone,
       type: order.type,
       total: order.total,
+      scheduledFor: order.scheduledFor ?? null,
+      kitchenReleasedAt: order.kitchenReleasedAt ?? null,
       items: order.items.map((item: any) => ({
         name: item.dish?.name || item.name || 'Item',
         quantity: item.quantity,

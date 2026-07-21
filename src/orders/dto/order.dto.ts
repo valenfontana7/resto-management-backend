@@ -10,6 +10,7 @@ import {
   IsNotEmpty,
   IsNumber,
   IsBoolean,
+  IsDateString,
 } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 import { BotDefenseDto } from '../../common/dto/bot-defense.dto';
@@ -151,6 +152,11 @@ export class CreateOrderDto extends BotDefenseDto {
   @IsOptional()
   @IsString()
   paymentProvider?: string;
+
+  /** ISO datetime for scheduled pickup/delivery; omit or empty for ASAP. */
+  @IsOptional()
+  @IsDateString()
+  scheduledFor?: string;
 }
 
 export class UpdateOrderStatusDto {

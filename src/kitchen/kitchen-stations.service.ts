@@ -108,6 +108,7 @@ export class KitchenStationsService {
         status: {
           in: [OrderStatus.CONFIRMED, OrderStatus.PREPARING, OrderStatus.READY],
         },
+        OR: [{ scheduledFor: null }, { kitchenReleasedAt: { not: null } }],
       },
       include: {
         items: {

@@ -201,6 +201,15 @@ export class OrderRulesDto {
   allowScheduledOrders?: boolean;
 
   @ApiPropertyOptional({
+    example: 7,
+    description: 'Max days ahead for scheduled orders',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  maxScheduledDaysAhead?: number;
+
+  @ApiPropertyOptional({
     example: 100,
     description: 'Maximum concurrent orders',
   })

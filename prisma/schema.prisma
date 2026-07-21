@@ -425,6 +425,8 @@ model Order {
   tableSessionId      String?
   orderSource         OrderSource                @default(ONLINE)
   scheduledFor        DateTime?
+  /** Set when kitchen may start preparing (ASAP or scheduled window opened). */
+  kitchenReleasedAt   DateTime?
   preparedAt          DateTime?
   deliveredAt         DateTime?
   cancelledAt         DateTime?
@@ -460,6 +462,7 @@ model Order {
   @@index([customerProfileId])
   @@index([restaurantId, status])
   @@index([restaurantId, createdAt])
+  @@index([restaurantId, scheduledFor])
   @@index([orderNumber])
   @@index([tableSessionId])
 }
@@ -493,6 +496,7 @@ model CheckoutSession {
   deliveryNotes       String?
   tableId             String?
   notes               String?
+  scheduledFor        DateTime?
   paidAt              DateTime?
   createdAt           DateTime                   @default(now())
   updatedAt           DateTime                   @updatedAt

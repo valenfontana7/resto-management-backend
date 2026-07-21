@@ -23,6 +23,8 @@ export interface OrderUpdatePayload {
   customerPhone: string;
   type: string;
   total: number;
+  scheduledFor?: Date | string | null;
+  kitchenReleasedAt?: Date | string | null;
   items: Array<{
     name: string;
     quantity: number;

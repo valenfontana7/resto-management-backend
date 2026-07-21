@@ -5,6 +5,7 @@ import { OrdersService } from './orders.service';
 import { OrderAnalyticsService } from './services/order-analytics.service';
 import { OrderNotificationsService } from './services/order-notifications.service';
 import { PaymentReconciliationService } from './services/payment-reconciliation.service';
+import { ScheduledOrdersReleaseService } from './services/scheduled-orders-release.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { CommonModule } from '../common/common.module';
 import { MercadoPagoModule } from '../mercadopago/mercadopago.module';
@@ -44,6 +45,7 @@ import { EventSpineModule } from '../event-spine/event-spine.module';
     OrderAnalyticsService,
     OrderNotificationsService,
     PaymentReconciliationService,
+    ScheduledOrdersReleaseService,
   ],
   exports: [OrdersService, OrderNotificationsService],
 })

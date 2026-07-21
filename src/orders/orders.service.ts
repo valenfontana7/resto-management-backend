@@ -38,6 +38,13 @@ import {
   PaymentStatus,
   OrderType,
 } from './dto/order.dto';
+import {
+  extractOrderScheduleRules,
+  isKitchenReleased,
+  kitchenVisibleOrderWhere,
+  resolveLeadMinutes,
+  resolveScheduledOrder,
+} from './utils/scheduled-order.util';
 
 @Injectable()
 export class OrdersService {
@@ -137,12 +144,27 @@ export class OrdersService {
         country: true,
         businessRules: true,
         features: true,
+        hours: {
+          select: {
+            dayOfWeek: true,
+            isOpen: true,
+            openTime: true,
+            closeTime: true,
+          },
+        },
       },
     });
 
     if (!restaurant) {
       throw new NotFoundException('Restaurant not found');
     }
+
+    const schedule = resolveScheduledOrder({
+      scheduledForRaw: createDto.scheduledFor,
+      rules: extractOrderScheduleRules(restaurant.businessRules),
+      hours: restaurant.hours,
+      now: businessNow,
+    });
 
     const enabledPaymentMethods = this.extractEnabledPaymentMethods(
       restaurant.businessRules,
@@ -293,6 +315,8 @@ export class OrdersService {
           deliveryNotes: createDto.deliveryNotes,
           tableId: createDto.tableId,
           notes: createDto.notes,
+          scheduledFor: schedule.scheduledFor,
+          kitchenReleasedAt: schedule.kitchenReleasedAt,
           items: {
             create: orderItems.map((item) => ({
               dishId: item.dishId,
@@ -317,7 +341,9 @@ export class OrdersService {
             create: {
               toStatus: OrderStatus.CONFIRMED,
               changedBy: 'system',
-              notes: 'Pedido recibido (pago pendiente)',
+              notes: schedule.scheduledFor
+                ? `Pedido programado para ${schedule.scheduledFor.toISOString()} (pago pendiente)`
+                : 'Pedido recibido (pago pendiente)',
               createdAt: businessNow,
             },
           },
@@ -358,12 +384,14 @@ export class OrdersService {
         });
       }
 
-      // Notificar al admin (Socket.IO) y a cocina (SSE) que entró un pedido nuevo
+      // Notificar al admin (Socket.IO); cocina solo si ya está liberado
       this.notifications.emitNewOrderCreated(restaurantId, order);
-      void this.notifications.emitKitchenNotification(
-        order,
-        OrderStatus.CONFIRMED,
-      );
+      if (schedule.kitchenReleasedAt) {
+        void this.notifications.emitKitchenNotification(
+          order,
+          OrderStatus.CONFIRMED,
+        );
+      }
 
       void this.publishOrderCreatedEvent(restaurantId, order);
       this.operationalEvents.emit({
@@ -438,6 +466,7 @@ export class OrdersService {
         deliveryNotes: createDto.deliveryNotes,
         tableId: createDto.tableId,
         notes: createDto.notes,
+        scheduledFor: schedule.scheduledFor,
       },
     });
 
@@ -916,6 +945,16 @@ export class OrdersService {
       } else {
         where.status = { in: statuses };
       }
+
+      // Kitchen board: hide scheduled orders until release window
+      const isKitchenStatusQuery =
+        statuses.includes('CONFIRMED') &&
+        statuses.includes('PREPARING') &&
+        statuses.includes('READY') &&
+        statuses.length === 3;
+      if (isKitchenStatusQuery) {
+        where.AND = [...(where.AND ?? []), kitchenVisibleOrderWhere()];
+      }
     }
 
     if (filters.type) {
@@ -971,6 +1010,8 @@ export class OrdersService {
             paymentMethod: true,
             paymentStatus: true,
             restaurantId: true,
+            scheduledFor: true,
+            kitchenReleasedAt: true,
             _count: { select: { items: true } },
           },
           orderBy: {
@@ -1716,6 +1757,28 @@ export class OrdersService {
           phone: checkout.customerPhone,
         });
 
+    const restaurantForSchedule = await this.prisma.restaurant.findUnique({
+      where: { id: checkout.restaurantId },
+      select: {
+        businessRules: true,
+      },
+    });
+    const businessNow = this.getBusinessNow();
+    const scheduleRules = extractOrderScheduleRules(
+      restaurantForSchedule?.businessRules,
+    );
+    const leadMinutes = resolveLeadMinutes(scheduleRules);
+    let kitchenReleasedAt: Date | null = businessNow;
+    if (checkout.scheduledFor) {
+      kitchenReleasedAt = isKitchenReleased({
+        scheduledFor: checkout.scheduledFor,
+        now: businessNow,
+        leadMinutes,
+      })
+        ? businessNow
+        : null;
+    }
+
     let createdOrder;
     try {
       createdOrder = await this.prisma.order.create({
@@ -1746,6 +1809,8 @@ export class OrdersService {
           deliveryNotes: checkout.deliveryNotes,
           tableId: checkout.tableId,
           notes: checkout.notes,
+          scheduledFor: checkout.scheduledFor,
+          kitchenReleasedAt,
           paidAt: new Date(),
           items: {
             create: items.map((it) => ({
@@ -1774,7 +1839,9 @@ export class OrdersService {
                 fromStatus: null,
                 toStatus: OrderStatus.PENDING,
                 changedBy: 'system',
-                notes: 'Checkout iniciado',
+                notes: checkout.scheduledFor
+                  ? `Checkout programado para ${checkout.scheduledFor.toISOString()}`
+                  : 'Checkout iniciado',
               },
               {
                 fromStatus: OrderStatus.PENDING,
@@ -1881,6 +1948,12 @@ export class OrdersService {
       checkout.restaurantId,
       createdOrder,
     );
+    if (kitchenReleasedAt) {
+      void this.notifications.emitKitchenNotification(
+        createdOrder,
+        OrderStatus.PAID,
+      );
+    }
 
     void this.publishOrderCreatedEvent(checkout.restaurantId, createdOrder);
 
