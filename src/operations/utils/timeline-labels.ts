@@ -20,6 +20,23 @@ const COORDINATION_OUTCOME_LABEL: Record<string, string> = {
   CANCELED: 'cancelada',
 };
 
+/** Códigos OperationShiftSegment → copy de Historia del turno. */
+const SHIFT_SEGMENT_LABEL: Record<string, string> = {
+  MORNING: 'Turno Mañana',
+  AFTERNOON: 'Turno Tarde',
+  EVENING: 'Turno Noche',
+};
+
+export function shiftSegmentLabel(
+  segment: string | null | undefined,
+): string | undefined {
+  const seg = (segment ?? '').trim();
+  if (!seg) return undefined;
+  const key = seg.toUpperCase();
+  // Si ya viene humanizado (p. ej. "almuerzo"), respetarlo.
+  return SHIFT_SEGMENT_LABEL[key] ?? seg;
+}
+
 export function coordinationTypeLabel(type: string | null | undefined): string {
   if (!type) return 'Coordinación';
   const key = type.trim().toUpperCase();
@@ -66,6 +83,6 @@ export function shiftOpenedRosterDetail(
     rosterCount === 1
       ? '1 persona en el equipo'
       : `${rosterCount} personas en el equipo`;
-  const seg = (segment ?? '').trim();
+  const seg = shiftSegmentLabel(segment);
   return seg ? `${people} · ${seg}` : people;
 }

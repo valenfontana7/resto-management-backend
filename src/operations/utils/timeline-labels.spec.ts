@@ -4,6 +4,7 @@ import {
   coordinationTypeLabel,
   shiftLeadAssignedLabel,
   shiftOpenedRosterDetail,
+  shiftSegmentLabel,
 } from './timeline-labels';
 
 describe('timeline-labels', () => {
@@ -48,6 +49,15 @@ describe('timeline-labels', () => {
     );
     expect(shiftOpenedRosterDetail(1, undefined)).toBe(
       '1 persona en el equipo',
+    );
+  });
+
+  it('traduce segmentos de turno sin exponer códigos ingleses', () => {
+    expect(shiftSegmentLabel('EVENING')).toBe('Turno Noche');
+    expect(shiftSegmentLabel('MORNING')).toBe('Turno Mañana');
+    expect(shiftSegmentLabel('AFTERNOON')).toBe('Turno Tarde');
+    expect(shiftOpenedRosterDetail(1, 'EVENING')).toBe(
+      '1 persona en el equipo · Turno Noche',
     );
   });
 });
