@@ -35,8 +35,10 @@ import { OPERATIONAL_EVENT_TYPES } from '../../event-spine/operational-event.typ
 import {
   AddSessionItemsDto,
   CloseTableSessionDto,
+  MergeTablesDto,
   OpenTableSessionDto,
   SendToKitchenDto,
+  UnmergeTableDto,
 } from '../dto/table-session.dto';
 import {
   OrderType,
@@ -45,6 +47,15 @@ import {
 
 const SESSION_INCLUDE = {
   table: { include: { area: true } },
+  activeOnTables: {
+    select: {
+      id: true,
+      number: true,
+      capacity: true,
+      status: true,
+    },
+    orderBy: { number: 'asc' as const },
+  },
   items: {
     include: { modifiers: true, dish: true },
     orderBy: { createdAt: 'asc' as const },
@@ -625,16 +636,9 @@ export class TableSessionService {
         include: SESSION_INCLUDE,
       });
 
-      await tx.table.update({
-        where: { id: session.tableId },
-        data: {
-          status: TableStatus.CLEANING,
-          currentSessionId: null,
-          currentOrderId: null,
-          customerName: null,
-          waiter: null,
-          occupiedSince: null,
-        },
+      await this.releaseOccupiedTables(tx, sessionId, {
+        status: TableStatus.CLEANING,
+        clearOrder: true,
       });
 
       return { paymentOrder, session: closedSession, partial: false as const };
@@ -762,19 +766,213 @@ export class TableSessionService {
         where: { id: sessionId },
         data: { status: TableSessionStatus.CANCELLED, closedAt: new Date() },
       });
-      await tx.table.update({
-        where: { id: session.tableId },
-        data: {
-          status: TableStatus.AVAILABLE,
-          currentSessionId: null,
-          customerName: null,
-          waiter: null,
-          occupiedSince: null,
-        },
+      await this.releaseOccupiedTables(tx, sessionId, {
+        status: TableStatus.AVAILABLE,
       });
     });
 
     return { success: true };
+  }
+
+  /**
+   * Une mesas a una cuenta abierta (misma sesión, varias Table OCCUPIED).
+   * Mesas libres se vinculan; mesas con otra cuenta OPEN se absorben
+   * (ítems + comandas → sesión primaria; cuenta origen CANCELLED).
+   */
+  async mergeTables(
+    restaurantId: string,
+    sessionId: string,
+    userId: string,
+    dto: MergeTablesDto,
+  ) {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+    const session = await this.findSessionOrThrow(restaurantId, sessionId);
+
+    if (session.status !== TableSessionStatus.OPEN) {
+      throw new BadRequestException('La cuenta no está abierta');
+    }
+
+    const tableIds = [...new Set((dto.tableIds ?? []).filter(Boolean))];
+    if (!tableIds.length) {
+      throw new BadRequestException('tableIds is required');
+    }
+    if (tableIds.includes(session.tableId)) {
+      throw new BadRequestException(
+        'No se puede unir la mesa primaria de la cuenta',
+      );
+    }
+
+    const tables = await this.prisma.table.findMany({
+      where: { id: { in: tableIds }, restaurantId },
+    });
+    if (tables.length !== tableIds.length) {
+      throw new NotFoundException('Una o más mesas no existen');
+    }
+
+    for (const table of tables) {
+      if (table.currentSessionId === sessionId) {
+        throw new BadRequestException(
+          `La mesa ${table.number} ya está unida a esta cuenta`,
+        );
+      }
+      if (table.status === TableStatus.RESERVED) {
+        throw new BadRequestException(`La mesa ${table.number} está reservada`);
+      }
+    }
+
+    const foreignSessionIds = [
+      ...new Set(
+        tables
+          .map((table) => table.currentSessionId)
+          .filter((id): id is string => Boolean(id) && id !== sessionId),
+      ),
+    ];
+
+    const foreignSessions = foreignSessionIds.length
+      ? await this.prisma.tableSession.findMany({
+          where: {
+            id: { in: foreignSessionIds },
+            restaurantId,
+            status: TableSessionStatus.OPEN,
+          },
+        })
+      : [];
+    if (foreignSessions.length !== foreignSessionIds.length) {
+      throw new BadRequestException(
+        'Una o más mesas tienen una cuenta que no se puede unir',
+      );
+    }
+
+    const foreignById = new Map(
+      foreignSessions.map((foreign) => [foreign.id, foreign]),
+    );
+    let addedGuestCount = 0;
+    let maxComandaRound = session.comandaRound;
+
+    await this.prisma.$transaction(async (tx) => {
+      for (const foreignId of foreignSessionIds) {
+        const foreign = foreignById.get(foreignId)!;
+        addedGuestCount += foreign.guestCount;
+        maxComandaRound = Math.max(maxComandaRound, foreign.comandaRound);
+
+        await tx.tableSessionItem.updateMany({
+          where: { sessionId: foreignId },
+          data: { sessionId },
+        });
+        await tx.order.updateMany({
+          where: { tableSessionId: foreignId },
+          data: { tableSessionId: sessionId },
+        });
+        await tx.table.updateMany({
+          where: { currentSessionId: foreignId },
+          data: {
+            status: TableStatus.OCCUPIED,
+            currentSessionId: sessionId,
+            customerName: session.customerName,
+            waiter: session.waiterName,
+            occupiedSince: session.openedAt,
+          },
+        });
+        await tx.tableSession.update({
+          where: { id: foreignId },
+          data: {
+            status: TableSessionStatus.CANCELLED,
+            closedAt: new Date(),
+            subtotal: 0,
+            total: 0,
+            notes: [foreign.notes, `Unida a ${session.sessionNumber}`]
+              .filter(Boolean)
+              .join(' · '),
+          },
+        });
+      }
+
+      for (const table of tables) {
+        if (table.currentSessionId) continue;
+        await tx.table.update({
+          where: { id: table.id },
+          data: {
+            status: TableStatus.OCCUPIED,
+            currentSessionId: sessionId,
+            customerName: session.customerName,
+            waiter: session.waiterName,
+            occupiedSince: session.openedAt,
+          },
+        });
+      }
+
+      if (addedGuestCount > 0 || maxComandaRound !== session.comandaRound) {
+        await tx.tableSession.update({
+          where: { id: sessionId },
+          data: {
+            guestCount: session.guestCount + addedGuestCount,
+            comandaRound: maxComandaRound,
+          },
+        });
+      }
+    });
+
+    await this.recalculateTotals(sessionId);
+
+    void this.operationalEvents.emit({
+      restaurantId,
+      eventType: OPERATIONAL_EVENT_TYPES.TABLE_SESSION_OPENED,
+      aggregateType: 'table_session',
+      aggregateId: sessionId,
+      data: {
+        action: 'merge_tables',
+        tableIds,
+        primaryTableId: session.tableId,
+        absorbedSessionIds: foreignSessionIds,
+      },
+    });
+
+    const updated = await this.findSessionOrThrow(restaurantId, sessionId);
+    return {
+      session: this.formatSession(updated),
+      absorbedSessionIds: foreignSessionIds,
+    };
+  }
+
+  /** Desvincula una mesa secundaria; la primaria no se puede desunir. */
+  async unmergeTable(
+    restaurantId: string,
+    sessionId: string,
+    userId: string,
+    dto: UnmergeTableDto,
+  ) {
+    await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
+    const session = await this.findSessionOrThrow(restaurantId, sessionId);
+
+    if (session.status !== TableSessionStatus.OPEN) {
+      throw new BadRequestException('La cuenta no está abierta');
+    }
+    if (dto.tableId === session.tableId) {
+      throw new BadRequestException(
+        'No se puede desunir la mesa primaria de la cuenta',
+      );
+    }
+
+    const table = await this.prisma.table.findFirst({
+      where: { id: dto.tableId, restaurantId, currentSessionId: sessionId },
+    });
+    if (!table) {
+      throw new NotFoundException('La mesa no está unida a esta cuenta');
+    }
+
+    await this.prisma.table.update({
+      where: { id: table.id },
+      data: {
+        status: TableStatus.AVAILABLE,
+        currentSessionId: null,
+        customerName: null,
+        waiter: null,
+        occupiedSince: null,
+      },
+    });
+
+    const updated = await this.findSessionOrThrow(restaurantId, sessionId);
+    return { session: this.formatSession(updated) };
   }
 
   async voidSession(
@@ -850,16 +1048,9 @@ export class TableSessionService {
         },
       });
 
-      await tx.table.update({
-        where: { id: session.tableId },
-        data: {
-          status: markCleaning ? TableStatus.CLEANING : TableStatus.AVAILABLE,
-          currentSessionId: null,
-          currentOrderId: null,
-          customerName: null,
-          waiter: null,
-          occupiedSince: null,
-        },
+      await this.releaseOccupiedTables(tx, sessionId, {
+        status: markCleaning ? TableStatus.CLEANING : TableStatus.AVAILABLE,
+        clearOrder: true,
       });
     });
 
@@ -888,6 +1079,24 @@ export class TableSessionService {
       success: true,
       tableStatus: markCleaning ? 'CLEANING' : 'AVAILABLE',
     };
+  }
+
+  private async releaseOccupiedTables(
+    tx: Prisma.TransactionClient,
+    sessionId: string,
+    options: { status: TableStatus; clearOrder?: boolean },
+  ) {
+    await tx.table.updateMany({
+      where: { currentSessionId: sessionId },
+      data: {
+        status: options.status,
+        currentSessionId: null,
+        ...(options.clearOrder ? { currentOrderId: null } : {}),
+        customerName: null,
+        waiter: null,
+        occupiedSince: null,
+      },
+    });
   }
 
   private async recalculateTotals(sessionId: string) {
@@ -994,6 +1203,22 @@ export class TableSessionService {
   }
 
   private formatSession(session: any) {
+    const linkedTables = (
+      (session.activeOnTables ?? []) as Array<{
+        id: string;
+        number: string;
+        capacity: number;
+        status: string;
+      }>
+    )
+      .filter((table) => table.id !== session.tableId)
+      .map((table) => ({
+        id: table.id,
+        number: table.number,
+        capacity: table.capacity,
+        status: table.status,
+      }));
+
     return {
       id: session.id,
       sessionNumber: session.sessionNumber,
@@ -1008,6 +1233,7 @@ export class TableSessionService {
             area: session.table.area?.name ?? null,
           }
         : null,
+      linkedTables,
       waiterId: session.waiterId,
       waiterName: session.waiterName,
       guestCount: session.guestCount,

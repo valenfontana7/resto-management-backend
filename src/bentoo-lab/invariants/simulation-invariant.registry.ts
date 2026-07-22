@@ -6,6 +6,7 @@ import { LabEffectsPolicyService } from '../effects/lab-effects-policy.service';
 import { buildIncidentFingerprint } from '../incidents/incident-fingerprint';
 import { LabIncidentCode } from '../incidents/lab-incident.types';
 import { PersistedSimulationRuntimeState } from '../runtime/simulation-runtime.types';
+import { LabScenarioInvariantKey } from '../scenarios/scenario.types';
 
 function asRuntimeState(
   value: Prisma.JsonValue | null | undefined,
@@ -24,13 +25,35 @@ export type SimulationInvariantKey =
   | 'expected-incidents-once'
   | 'stock-non-negative'
   | 'timeline-contiguous'
-  | 'incident-replay-determinism';
+  | 'incident-replay-determinism'
+  | 'no-open-orders-at-complete';
 
 export interface SimulationInvariantResult {
   key: SimulationInvariantKey;
   status: InvariantStatus;
   detail: string;
 }
+
+const ALL_SCENARIO_INVARIANT_KEYS: readonly LabScenarioInvariantKey[] = [
+  'TENANT_SCOPE',
+  'ORDER_PREPARATION_CAUSALITY',
+  'AUTHORIZED_ACTOR_ACTIONS',
+  'EXTERNAL_EFFECTS_BLOCKED',
+  'ORDER_STATE_VALIDITY',
+  'EXPECTED_INCIDENTS_ONCE',
+  'STOCK_NON_NEGATIVE',
+  'TIMELINE_CONTIGUOUS',
+  'INCIDENT_REPLAY_DETERMINISM',
+  'NO_OPEN_ORDERS_AT_COMPLETE',
+] as const;
+
+const OPEN_KITCHEN_STATUSES: readonly OrderStatus[] = [
+  OrderStatus.PENDING,
+  OrderStatus.PAID,
+  OrderStatus.CONFIRMED,
+  OrderStatus.PREPARING,
+  OrderStatus.READY,
+];
 
 const VALID_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   PENDING: ['PAID', 'CONFIRMED', 'CANCELLED'],
@@ -42,6 +65,43 @@ const VALID_TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   CANCELLED: [],
 };
 
+const ONLINE_MUTATION_ACTIONS = [
+  'order.create',
+  'order.preparing',
+  'order.ready',
+  'order.delivered',
+  'order.payment',
+  'inventory.consume',
+  'incident.kitchen-delay',
+  'incident.stockout',
+] as const;
+
+const FLOOR_MUTATION_ACTIONS = [
+  'floor.session.open',
+  'floor.session.add-items',
+  'floor.session.send-kitchen',
+  'floor.session.close',
+  'floor.session.merge-tables',
+] as const;
+
+const DELIVERY_MUTATION_ACTIONS = [
+  'delivery.order.create',
+  'delivery.order.add-items',
+] as const;
+
+const PAYMENT_MUTATION_ACTIONS = ['payment.approve'] as const;
+
+const FISCAL_MUTATION_ACTIONS = ['fiscal.issue'] as const;
+
+const RESERVATION_MUTATION_ACTIONS = ['reservation.create'] as const;
+
+const GROWTH_MUTATION_ACTIONS = [
+  'coupon.validate',
+  'loyalty.enroll',
+  'review.create',
+  'builder.public.get',
+] as const;
+
 @Injectable()
 export class SimulationInvariantRegistry {
   constructor(
@@ -49,32 +109,132 @@ export class SimulationInvariantRegistry {
     private readonly effects: LabEffectsPolicyService,
   ) {}
 
-  async evaluate(runId: string): Promise<SimulationInvariantResult[]> {
-    const evaluators = [
-      () => this.evaluateTenantScope(runId),
-      () => this.evaluateOrderCausality(runId),
-      () => this.evaluateAuthorizedActions(runId),
-      () => this.evaluateExternalEffects(runId),
-      () => this.evaluateOrderStateValidity(runId),
-      () => this.evaluateExpectedIncidentsOnce(runId),
-      () => this.evaluateStockNonNegative(runId),
-      () => this.evaluateTimelineContiguous(runId),
-      () => this.evaluateIncidentReplayDeterminism(runId),
-    ];
-
+  async evaluate(
+    runId: string,
+    scenarioKeys?: readonly LabScenarioInvariantKey[],
+  ): Promise<SimulationInvariantResult[]> {
+    const keys = scenarioKeys?.length
+      ? scenarioKeys
+      : ALL_SCENARIO_INVARIANT_KEYS;
     const results: SimulationInvariantResult[] = [];
-    for (const evaluate of evaluators) {
+    for (const key of keys) {
       try {
-        results.push(await evaluate());
+        results.push(await this.evaluateByScenarioKey(runId, key));
       } catch (error) {
         results.push({
-          key: this.keyForIndex(results.length),
+          key: this.toResultKey(key),
           status: 'ERROR',
           detail: error instanceof Error ? error.message : String(error),
         });
       }
     }
     return results;
+  }
+
+  private evaluateByScenarioKey(
+    runId: string,
+    key: LabScenarioInvariantKey,
+  ): Promise<SimulationInvariantResult> | SimulationInvariantResult {
+    switch (key) {
+      case 'TENANT_SCOPE':
+        return this.evaluateTenantScope(runId);
+      case 'ORDER_PREPARATION_CAUSALITY':
+        return this.evaluateOrderCausality(runId);
+      case 'AUTHORIZED_ACTOR_ACTIONS':
+        return this.evaluateAuthorizedActions(runId);
+      case 'EXTERNAL_EFFECTS_BLOCKED':
+        return this.evaluateExternalEffects(runId);
+      case 'ORDER_STATE_VALIDITY':
+        return this.evaluateOrderStateValidity(runId);
+      case 'EXPECTED_INCIDENTS_ONCE':
+        return this.evaluateExpectedIncidentsOnce(runId);
+      case 'STOCK_NON_NEGATIVE':
+        return this.evaluateStockNonNegative(runId);
+      case 'TIMELINE_CONTIGUOUS':
+        return this.evaluateTimelineContiguous(runId);
+      case 'INCIDENT_REPLAY_DETERMINISM':
+        return this.evaluateIncidentReplayDeterminism(runId);
+      case 'NO_OPEN_ORDERS_AT_COMPLETE':
+        return this.evaluateNoOpenOrdersAtComplete(runId);
+      default: {
+        const _exhaustive: never = key;
+        return _exhaustive;
+      }
+    }
+  }
+
+  private toResultKey(key: LabScenarioInvariantKey): SimulationInvariantKey {
+    switch (key) {
+      case 'TENANT_SCOPE':
+        return 'tenant-scope';
+      case 'ORDER_PREPARATION_CAUSALITY':
+        return 'order-preparation-causality';
+      case 'AUTHORIZED_ACTOR_ACTIONS':
+        return 'authorized-actor-actions';
+      case 'EXTERNAL_EFFECTS_BLOCKED':
+        return 'external-effects-blocked';
+      case 'ORDER_STATE_VALIDITY':
+        return 'order-state-validity';
+      case 'EXPECTED_INCIDENTS_ONCE':
+        return 'expected-incidents-once';
+      case 'STOCK_NON_NEGATIVE':
+        return 'stock-non-negative';
+      case 'TIMELINE_CONTIGUOUS':
+        return 'timeline-contiguous';
+      case 'INCIDENT_REPLAY_DETERMINISM':
+        return 'incident-replay-determinism';
+      case 'NO_OPEN_ORDERS_AT_COMPLETE':
+        return 'no-open-orders-at-complete';
+      default: {
+        const _exhaustive: never = key;
+        return _exhaustive;
+      }
+    }
+  }
+
+  private async evaluateNoOpenOrdersAtComplete(
+    runId: string,
+  ): Promise<SimulationInvariantResult> {
+    const run = await this.prisma.simulationRun.findUniqueOrThrow({
+      where: { id: runId },
+      select: { restaurantId: true },
+    });
+    if (!run.restaurantId) {
+      return {
+        key: 'no-open-orders-at-complete',
+        status: 'FAIL',
+        detail: 'Sin restaurante para evaluar pedidos abiertos',
+      };
+    }
+    const openOrders = await this.prisma.order.findMany({
+      where: {
+        restaurantId: run.restaurantId,
+        OR: [
+          { status: { in: [...OPEN_KITCHEN_STATUSES] } },
+          {
+            paymentStatus: 'PENDING',
+            status: { not: OrderStatus.CANCELLED },
+          },
+        ],
+      },
+      select: { id: true, status: true, paymentStatus: true },
+      take: 10,
+    });
+    if (openOrders.length === 0) {
+      return {
+        key: 'no-open-orders-at-complete',
+        status: 'PASS',
+        detail: 'Sin pedidos abiertos ni impagos al complete',
+      };
+    }
+    const sample = openOrders
+      .map((order) => `${order.id}:${order.status}/${order.paymentStatus}`)
+      .join(', ');
+    return {
+      key: 'no-open-orders-at-complete',
+      status: 'FAIL',
+      detail: `${openOrders.length}+ pedidos abiertos/impagos (sample: ${sample})`,
+    };
   }
 
   private async evaluateTenantScope(
@@ -166,28 +326,33 @@ export class SimulationInvariantRegistry {
         runId,
         action: {
           in: [
-            'order.create',
-            'order.preparing',
-            'order.ready',
-            'order.payment',
-            'inventory.consume',
-            'incident.kitchen-delay',
-            'incident.stockout',
+            ...ONLINE_MUTATION_ACTIONS,
+            ...FLOOR_MUTATION_ACTIONS,
+            ...DELIVERY_MUTATION_ACTIONS,
+            ...PAYMENT_MUTATION_ACTIONS,
+            ...FISCAL_MUTATION_ACTIONS,
+            ...RESERVATION_MUTATION_ACTIONS,
+            ...GROWTH_MUTATION_ACTIONS,
           ],
         },
       },
-      select: { participantKey: true, correlationId: true },
+      select: { action: true, participantKey: true, correlationId: true },
     });
     const invalid = events.filter(
       (event) => !event.participantKey.trim() || !event.correlationId.trim(),
     );
+    const onlineMutations = events.filter((event) =>
+      (ONLINE_MUTATION_ACTIONS as readonly string[]).includes(event.action),
+    ).length;
+    // Pico online completo (~7 mutaciones). Flujos cortos (salón/ops/growth) ≥3.
+    const minRequired = onlineMutations >= 7 ? 7 : 3;
+    const ok = events.length >= minRequired && invalid.length === 0;
     return {
       key: 'authorized-actor-actions',
-      status: events.length >= 7 && invalid.length === 0 ? 'PASS' : 'FAIL',
-      detail:
-        events.length >= 7 && invalid.length === 0
-          ? `${events.length} mutaciones trazadas con participante y correlación`
-          : `Mutaciones esperadas≥7, observadas=${events.length}, inválidas=${invalid.length}`,
+      status: ok ? 'PASS' : 'FAIL',
+      detail: ok
+        ? `${events.length} mutaciones trazadas con participante y correlación`
+        : `Mutaciones esperadas≥${minRequired}, observadas=${events.length}, inválidas=${invalid.length}`,
     };
   }
 
@@ -428,19 +593,5 @@ export class SimulationInvariantRegistry {
         ? 'Replay con misma clave/configuración mantiene incidentes iguales'
         : `Fingerprint distinto al baseline ${previous.id}`,
     };
-  }
-
-  private keyForIndex(index: number): SimulationInvariantKey {
-    return [
-      'tenant-scope',
-      'order-preparation-causality',
-      'authorized-actor-actions',
-      'external-effects-blocked',
-      'order-state-validity',
-      'expected-incidents-once',
-      'stock-non-negative',
-      'timeline-contiguous',
-      'incident-replay-determinism',
-    ][index] as SimulationInvariantKey;
   }
 }

@@ -14,9 +14,11 @@ import type { EdgeSyncMutationDto } from './dto/edge-sync.dto';
 import {
   AddSessionItemsDto,
   CloseTableSessionDto,
+  MergeTablesDto,
   OpenTableSessionDto,
   SendToKitchenDto,
   SessionPaymentMethod,
+  UnmergeTableDto,
   VoidTableSessionDto,
 } from '../floor/dto/table-session.dto';
 
@@ -87,6 +89,22 @@ export class EdgeSyncPushApplyService {
           );
         case 'VOID_SESSION':
           return await this.applyVoid(
+            restaurantId,
+            userId,
+            clientMutationId,
+            payload,
+            body,
+          );
+        case 'MERGE_TABLES':
+          return await this.applyMergeTables(
+            restaurantId,
+            userId,
+            clientMutationId,
+            payload,
+            body,
+          );
+        case 'UNMERGE_TABLE':
+          return await this.applyUnmergeTable(
             restaurantId,
             userId,
             clientMutationId,
@@ -327,6 +345,60 @@ export class EdgeSyncPushApplyService {
         this.tableSessions.voidSession(restaurantId, sessionId, userId, dto),
     );
 
+    return { ok: true, result };
+  }
+
+  private async applyMergeTables(
+    restaurantId: string,
+    userId: string,
+    clientMutationId: string,
+    payload: Record<string, unknown>,
+    body: Record<string, unknown>,
+  ): Promise<ApplyResult> {
+    const sessionId = this.resolveSessionId(payload, body);
+    const tableIds = this.parseStringArray(body.tableIds);
+    if (tableIds.length === 0) {
+      return { ok: false, reason: 'missing_tableIds' };
+    }
+    const dto: MergeTablesDto = {
+      tableIds,
+      clientMutationId:
+        this.optionalString(body, 'clientMutationId') ?? clientMutationId,
+    };
+    const result = await this.idempotency.run(
+      restaurantId,
+      dto.clientMutationId,
+      'MERGE_TABLES',
+      () =>
+        this.tableSessions.mergeTables(restaurantId, sessionId, userId, dto),
+    );
+    return { ok: true, result };
+  }
+
+  private async applyUnmergeTable(
+    restaurantId: string,
+    userId: string,
+    clientMutationId: string,
+    payload: Record<string, unknown>,
+    body: Record<string, unknown>,
+  ): Promise<ApplyResult> {
+    const sessionId = this.resolveSessionId(payload, body);
+    const tableId = this.optionalString(body, 'tableId');
+    if (!tableId) {
+      return { ok: false, reason: 'missing_tableId' };
+    }
+    const dto: UnmergeTableDto = {
+      tableId,
+      clientMutationId:
+        this.optionalString(body, 'clientMutationId') ?? clientMutationId,
+    };
+    const result = await this.idempotency.run(
+      restaurantId,
+      dto.clientMutationId,
+      'UNMERGE_TABLE',
+      () =>
+        this.tableSessions.unmergeTable(restaurantId, sessionId, userId, dto),
+    );
     return { ok: true, result };
   }
 

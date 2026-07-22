@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import {
   BusinessMemoryCategory,
@@ -10,6 +11,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
+import { LabBusinessDateService } from '../bentoo-lab/config/lab-business-date.service';
 import {
   QueryBusinessMemoryDto,
   ResolveBusinessMemoryByKeysDto,
@@ -38,6 +40,7 @@ export class BusinessMemoryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
+    @Optional() private readonly labBusinessDate?: LabBusinessDateService,
   ) {}
 
   async query(
@@ -62,7 +65,8 @@ export class BusinessMemoryService {
       where.memoryKey = { in: dto.memoryKeys };
     }
     if (dto.sinceDays) {
-      const since = new Date();
+      const now = await this.resolveNow(restaurantId);
+      const since = new Date(now);
       since.setDate(since.getDate() - dto.sinceDays);
       where.lastSeenAt = { gte: since };
     }
@@ -80,7 +84,8 @@ export class BusinessMemoryService {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
     await this.expireStaleForRestaurant(restaurantId);
 
-    const since = new Date();
+    const now = await this.resolveNow(restaurantId);
+    const since = new Date(now);
     since.setDate(since.getDate() - sinceDays);
 
     const [active, recentlyResolved] = await Promise.all([
@@ -527,5 +532,12 @@ export class BusinessMemoryService {
     });
 
     return { memory: this.toRecord(updated), lifecycle: 'updated' as const };
+  }
+
+  private async resolveNow(restaurantId: string): Promise<Date> {
+    return (
+      (await this.labBusinessDate?.resolveSimulatedNow(restaurantId)) ??
+      new Date()
+    );
   }
 }

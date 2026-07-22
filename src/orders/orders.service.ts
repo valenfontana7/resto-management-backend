@@ -1684,8 +1684,8 @@ export class OrdersService {
     return this.analytics.getStats(restaurantId, userId);
   }
 
-  getTodayStats(restaurantId: string, userId: string) {
-    return this.analytics.getTodayStats(restaurantId, userId);
+  getTodayStats(restaurantId: string, userId: string, date?: string) {
+    return this.analytics.getTodayStats(restaurantId, userId, date);
   }
 
   getTopDishes(restaurantId: string, userId: string, period: string) {
@@ -1900,14 +1900,18 @@ export class OrdersService {
           type: 'delivery',
           subtotal: checkout.subtotal,
           address: checkout.deliveryAddress || undefined,
+          // Preferir zona fijada en checkout (evita drift vs re-geocode).
+          zoneId: checkout.deliveryZoneId || undefined,
         },
       );
+      const resolvedZoneId =
+        checkout.deliveryZoneId ?? deliveryQuote.zone?.id ?? null;
 
-      if (deliveryQuote.zone?.id || deliveryQuote.estimatedTime) {
+      if (resolvedZoneId || deliveryQuote.estimatedTime) {
         await this.prisma.order.update({
           where: { id: createdOrder.id },
           data: {
-            deliveryZoneId: deliveryQuote.zone?.id ?? null,
+            deliveryZoneId: resolvedZoneId,
             estimatedTime: deliveryQuote.estimatedTime ?? null,
           },
         });
@@ -1921,7 +1925,7 @@ export class OrdersService {
         } as any,
         {
           deliveryFee: checkout.deliveryFee,
-          zoneId: deliveryQuote.zone?.id,
+          zoneId: resolvedZoneId ?? undefined,
           estimatedTime: deliveryQuote.estimatedTime ?? undefined,
         },
       );

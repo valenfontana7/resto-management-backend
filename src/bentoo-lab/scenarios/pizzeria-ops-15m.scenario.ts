@@ -1,0 +1,83 @@
+import { LabScenarioDefinition } from './scenario.types';
+
+/** Escenario corto ops: domicilio salón + reserva pública. */
+export const PIZZERIA_OPS_15M_SCENARIO = {
+  id: 'pizzeria-ops-15m',
+  version: '1.0.0',
+  label: 'Pizzería · ops · domicilio + reserva · 15 minutos',
+  durationMinutes: 15,
+  simulatedStartAt: '2026-07-17T23:00:00.000Z',
+  defaultSpeed: 20,
+  preferredLabProfile: 'ops-core',
+  restaurant: {
+    type: 'pizzeria',
+    channels: ['salon'],
+  },
+  menu: [
+    {
+      key: 'pizza-muzzarella',
+      name: 'Pizza muzzarella',
+      price: 8000,
+      preparationMinutes: 12,
+    },
+    {
+      key: 'fugazzeta',
+      name: 'Fugazzeta',
+      price: 9500,
+      preparationMinutes: 15,
+    },
+  ],
+  participants: ['waiter', 'manager', 'kitchen'],
+  events: [
+    {
+      id: 'event.delivery.create.0001',
+      type: 'DELIVERY_CREATE_ORDER',
+      participantKey: 'waiter',
+      orderKey: 'order.delivery.0001',
+      deliveryAddress: 'Calle Lab 100',
+      customerName: 'Cliente domicilio Lab',
+      customerPhone: '+54 11 5555-0200',
+      atMinute: 1,
+      priority: 10,
+    },
+    {
+      id: 'event.delivery.items.0001',
+      type: 'DELIVERY_ADD_ITEMS',
+      participantKey: 'waiter',
+      orderKey: 'order.delivery.0001',
+      dishName: 'Pizza muzzarella',
+      quantity: 1,
+      atMinute: 3,
+      priority: 15,
+    },
+    {
+      id: 'event.reservation.create.0001',
+      type: 'RESERVATION_CREATE',
+      participantKey: 'system',
+      reservationKey: 'reservation.0001',
+      customerName: 'Reserva automatizada Lab',
+      customerPhone: '+54 11 5555-0300',
+      customerEmail: 'reserva-auto@lab.bentoo.invalid',
+      partySize: 4,
+      time: '20:30',
+      atMinute: 8,
+      priority: 20,
+    },
+    {
+      id: 'event.simulation.complete',
+      type: 'SIMULATION_COMPLETE',
+      participantKey: 'system',
+      atMinute: 15,
+      priority: 100,
+    },
+  ],
+  invariants: [
+    'TENANT_SCOPE',
+    'AUTHORIZED_ACTOR_ACTIONS',
+    'EXTERNAL_EFFECTS_BLOCKED',
+    'ORDER_STATE_VALIDITY',
+    'EXPECTED_INCIDENTS_ONCE',
+    'TIMELINE_CONTIGUOUS',
+    'INCIDENT_REPLAY_DETERMINISM',
+  ],
+} as const satisfies LabScenarioDefinition;

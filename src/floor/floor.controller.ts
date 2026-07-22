@@ -22,8 +22,10 @@ import { FiscalDocumentService } from './services/fiscal-document.service';
 import {
   AddSessionItemsDto,
   CloseTableSessionDto,
+  MergeTablesDto,
   OpenTableSessionDto,
   SendToKitchenDto,
+  UnmergeTableDto,
   VoidTableSessionDto,
 } from './dto/table-session.dto';
 import { TerminalService } from './services/terminal.service';
@@ -287,6 +289,59 @@ export class FloorController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.tableSessions.cancel(restaurantId, sessionId, user.userId);
+  }
+
+  @Post('sessions/:sessionId/merge-tables')
+  @ApiOperation({
+    summary:
+      'Unir mesas (libres o con otra cuenta abierta) a la cuenta (misma sesión)',
+  })
+  mergeTables(
+    @Param('restaurantId') restaurantId: string,
+    @Param('sessionId') sessionId: string,
+    @Body() dto: MergeTablesDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.runSyncedFloorMutation({
+      restaurantId,
+      entityType: 'MERGE_TABLES',
+      clientMutationId: dto.clientMutationId,
+      userId: user.userId,
+      sessionId,
+      body: { tableIds: dto.tableIds },
+      handler: () =>
+        this.tableSessions.mergeTables(
+          restaurantId,
+          sessionId,
+          user.userId,
+          dto,
+        ),
+    });
+  }
+
+  @Post('sessions/:sessionId/unmerge-table')
+  @ApiOperation({ summary: 'Desunir una mesa secundaria de la cuenta' })
+  unmergeTable(
+    @Param('restaurantId') restaurantId: string,
+    @Param('sessionId') sessionId: string,
+    @Body() dto: UnmergeTableDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.runSyncedFloorMutation({
+      restaurantId,
+      entityType: 'UNMERGE_TABLE',
+      clientMutationId: dto.clientMutationId,
+      userId: user.userId,
+      sessionId,
+      body: { tableId: dto.tableId },
+      handler: () =>
+        this.tableSessions.unmergeTable(
+          restaurantId,
+          sessionId,
+          user.userId,
+          dto,
+        ),
+    });
   }
 
   @Post('sessions/:sessionId/void')

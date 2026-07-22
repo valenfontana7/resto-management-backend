@@ -5,6 +5,7 @@ import {
   ForbiddenException,
   Inject,
   forwardRef,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -32,6 +33,7 @@ import { GeocodeService } from './services/geocode.service';
 import { DeliveryRunService } from './services/delivery-run.service';
 import { DeliveryBusinessEventsService } from '../business-events/publishers/delivery-business-events.service';
 import { computeLiveDeliveryEta } from './utils/delivery-eta.util';
+import { LabBusinessDateService } from '../bentoo-lab/config/lab-business-date.service';
 
 @Injectable()
 export class DeliveryService {
@@ -45,6 +47,7 @@ export class DeliveryService {
     private readonly geocodeService: GeocodeService,
     private readonly deliveryRunService: DeliveryRunService,
     private readonly deliveryEvents: DeliveryBusinessEventsService,
+    @Optional() private readonly labBusinessDate?: LabBusinessDateService,
   ) {}
 
   // ============================================
@@ -612,10 +615,22 @@ export class DeliveryService {
   }
 
   async getStats(restaurantId: string, filters: DeliveryStatsFiltersDto) {
+    let period = filters.period || 'today';
+    let customStart = filters.startDate;
+    let customEnd = filters.endDate;
+    if (period === 'today' && !customStart && !customEnd) {
+      const labDate =
+        await this.labBusinessDate?.resolveBusinessDateYmd(restaurantId);
+      if (labDate) {
+        period = 'custom';
+        customStart = `${labDate}T00:00:00.000Z`;
+        customEnd = `${labDate}T23:59:59.999Z`;
+      }
+    }
     const { startDate, endDate } = this.getDateRange(
-      filters.period || 'today',
-      filters.startDate,
-      filters.endDate,
+      period,
+      customStart,
+      customEnd,
     );
 
     const where: Prisma.DeliveryOrderWhereInput = {

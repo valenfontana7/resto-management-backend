@@ -168,6 +168,12 @@ describe('Bentoo Lab Fase 2 (e2e)', () => {
         ]),
       );
     }
+    // GAP-007: 30m permanece “sucio”; no lista NO_OPEN_ORDERS_AT_COMPLETE.
+    expect(first.invariantResults).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: 'no-open-orders-at-complete' }),
+      ]),
+    );
     expect(second.diagnostics.incidentFingerprint).toBe(
       first.diagnostics.incidentFingerprint,
     );
@@ -269,6 +275,367 @@ describe('Bentoo Lab Fase 2 (e2e)', () => {
     expect(
       await prisma.simulationTimelineEvent.count({ where: { runId: run.id } }),
     ).toBeGreaterThan(0);
+  });
+
+  it('ops-core siembra salón y open-as multi-rol', async () => {
+    const simulatedStartAt = new Date('2026-07-17T23:00:00.000Z');
+    const created = await runtime.createRun({
+      scenarioId: 'pizzeria-30m',
+      repetitionKey: 'e2e-ops-core-hitl',
+      simulatedStartAt,
+      labProfile: 'ops-core',
+      incidentCodes: [],
+    });
+    createdRunIds.push(created.id);
+
+    const restaurantId = created.restaurantId!;
+    expect(await prisma.table.count({ where: { restaurantId } })).toBe(8);
+    expect(
+      await prisma.tableSession.count({
+        where: { restaurantId, status: 'OPEN' },
+      }),
+    ).toBe(2);
+    expect(
+      await prisma.cashRegisterSession.count({
+        where: { restaurantId, status: 'OPEN' },
+      }),
+    ).toBe(1);
+    expect(
+      await prisma.user.count({
+        where: { restaurantId, role: { name: 'WAITER' } },
+      }),
+    ).toBe(1);
+
+    const manager = await runtime.openAsRole(created.id, 'manager');
+    const kitchen = await runtime.openAsRole(created.id, 'kitchen');
+    const waiter = await runtime.openAsRole(created.id, 'waiter');
+    const owner = await runtime.openAsRole(created.id, 'owner');
+    const chef = await runtime.openAsRole(created.id, 'chef');
+
+    expect(manager.businessDate).toBe('2026-07-17');
+    expect(manager.path).toContain('/admin/operacion?date=2026-07-17');
+    expect(owner.path).toContain('/admin/operacion?date=2026-07-17');
+    expect(kitchen.path).toMatch(/^\/kitchen\/lab-pizzeria-/);
+    expect(chef.path).toMatch(/^\/kitchen\/lab-pizzeria-/);
+    expect(waiter.path).toContain('/admin/salon?date=2026-07-17');
+    expect(decodeJwtPayload(manager.token).sub).toBeTruthy();
+    expect(decodeJwtPayload(kitchen.token).sub).toBeTruthy();
+    expect(decodeJwtPayload(waiter.token).sub).toBeTruthy();
+    expect(decodeJwtPayload(owner.token).sub).toBeTruthy();
+    expect(decodeJwtPayload(chef.token).sub).toBeTruthy();
+    expect(await prisma.user.count({
+      where: { restaurantId, role: { name: 'OWNER' } },
+    })).toBe(1);
+  });
+
+  it('pizzeria-closeout-10m COMPLETED sin pedidos abiertos', async () => {
+    const simulatedStartAt = new Date('2026-07-17T23:00:00.000Z');
+    const run = await runtime.runHeadless({
+      scenarioId: 'pizzeria-closeout-10m',
+      repetitionKey: 'e2e-closeout-10m',
+      simulatedStartAt,
+      incidentCodes: [],
+    });
+    createdRunIds.push(run.id);
+
+    expect(run.status).toBe('COMPLETED');
+    expect(run.scenarioId).toBe('pizzeria-closeout-10m');
+    expect(run.invariantResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'no-open-orders-at-complete',
+          status: 'PASS',
+        }),
+      ]),
+    );
+
+    const openOrders = await prisma.order.count({
+      where: {
+        restaurantId: run.restaurantId!,
+        OR: [
+          {
+            status: {
+              in: ['PENDING', 'PAID', 'CONFIRMED', 'PREPARING', 'READY'],
+            },
+          },
+          {
+            paymentStatus: 'PENDING',
+            status: { not: 'CANCELLED' },
+          },
+        ],
+      },
+    });
+    expect(openOrders).toBe(0);
+
+    const deliveredPaid = await prisma.order.count({
+      where: {
+        restaurantId: run.restaurantId!,
+        status: 'DELIVERED',
+        paymentStatus: 'PAID',
+      },
+    });
+    expect(deliveredPaid).toBe(2);
+  });
+
+  it('pizzeria-salon-split-15m cobro parcial + FACTURA_B', async () => {
+    const simulatedStartAt = new Date('2026-07-17T23:00:00.000Z');
+    const run = await runtime.runHeadless({
+      scenarioId: 'pizzeria-salon-split-15m',
+      repetitionKey: 'e2e-salon-split-15m',
+      simulatedStartAt,
+      incidentCodes: [],
+    });
+    createdRunIds.push(run.id);
+
+    expect(run.status).toBe('COMPLETED');
+    expect(run.scenarioId).toBe('pizzeria-salon-split-15m');
+
+    const timelineEvents = await timeline.list(run.id);
+    const actions = timelineEvents.map((event) => event.action);
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        'floor.session.open',
+        'floor.session.add-items',
+        'floor.session.send-kitchen',
+        'floor.session.close',
+        'fiscal.issue',
+        'simulation.complete',
+      ]),
+    );
+
+    const closeEvents = timelineEvents.filter(
+      (event) => event.action === 'floor.session.close',
+    );
+    expect(closeEvents.length).toBe(2);
+    expect(closeEvents.some((event) => event.summary?.includes('parcial'))).toBe(
+      true,
+    );
+
+    const floorOrders = await prisma.order.findMany({
+      where: {
+        restaurantId: run.restaurantId!,
+        orderSource: 'FLOOR_FINAL',
+      },
+      select: { id: true, paymentStatus: true, total: true },
+    });
+    expect(floorOrders).toHaveLength(2);
+    expect(floorOrders.every((order) => order.paymentStatus === 'PAID')).toBe(
+      true,
+    );
+
+    const closedSessions = await prisma.tableSession.count({
+      where: {
+        restaurantId: run.restaurantId!,
+        status: 'CLOSED',
+        sessionNumber: { startsWith: 'M-' },
+      },
+    });
+    expect(closedSessions).toBeGreaterThanOrEqual(1);
+
+    const factura = await prisma.fiscalDocument.findFirstOrThrow({
+      where: {
+        restaurantId: run.restaurantId!,
+        type: 'FACTURA_B',
+        status: 'AUTHORIZED',
+      },
+      select: { cae: true, orderId: true },
+    });
+    expect(factura.cae).toMatch(/^LAB-CAE/);
+    expect(floorOrders.some((order) => order.id === factura.orderId)).toBe(true);
+  });
+
+  it('pizzeria-salon-10m completa abrir mesa, comanda y cobro', async () => {
+    const simulatedStartAt = new Date('2026-07-17T23:00:00.000Z');
+    const run = await runtime.runHeadless({
+      scenarioId: 'pizzeria-salon-10m',
+      repetitionKey: 'e2e-salon-10m',
+      simulatedStartAt,
+      incidentCodes: [],
+    });
+    createdRunIds.push(run.id);
+
+    expect(run.status).toBe('COMPLETED');
+    expect(run.scenarioId).toBe('pizzeria-salon-10m');
+
+    const timelineEvents = await timeline.list(run.id);
+    const actions = timelineEvents.map((event) => event.action);
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        'floor.session.open',
+        'floor.session.add-items',
+        'floor.session.send-kitchen',
+        'floor.session.close',
+        'simulation.complete',
+      ]),
+    );
+
+    const closedSessions = await prisma.tableSession.count({
+      where: {
+        restaurantId: run.restaurantId!,
+        status: 'CLOSED',
+        sessionNumber: { startsWith: 'M-' },
+      },
+    });
+    // Al menos la sesión del escenario cerró (pueden quedar LAB-S* abiertas del seed)
+    expect(closedSessions).toBeGreaterThanOrEqual(1);
+  });
+
+  it('pizzeria-ops-15m completa domicilio salón y reserva', async () => {
+    const simulatedStartAt = new Date('2026-07-17T23:00:00.000Z');
+    const run = await runtime.runHeadless({
+      scenarioId: 'pizzeria-ops-15m',
+      repetitionKey: 'e2e-ops-15m',
+      simulatedStartAt,
+      incidentCodes: [],
+    });
+    createdRunIds.push(run.id);
+
+    expect(run.status).toBe('COMPLETED');
+    expect(run.scenarioId).toBe('pizzeria-ops-15m');
+
+    const timelineEvents = await timeline.list(run.id);
+    const actions = timelineEvents.map((event) => event.action);
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        'delivery.order.create',
+        'delivery.order.add-items',
+        'reservation.create',
+        'simulation.complete',
+      ]),
+    );
+
+    const deliveryOrders = await prisma.order.count({
+      where: {
+        restaurantId: run.restaurantId!,
+        type: 'DELIVERY',
+        orderSource: 'SALON_PHONE',
+      },
+    });
+    expect(deliveryOrders).toBeGreaterThanOrEqual(1);
+
+    const reservations = await prisma.reservation.count({
+      where: {
+        restaurantId: run.restaurantId!,
+        status: 'PENDING',
+      },
+    });
+    // 2 seed + 1 automatizada
+    expect(reservations).toBeGreaterThanOrEqual(3);
+  });
+
+  it('pizzeria-growth-10m completa cupón, loyalty, review y builder', async () => {
+    const simulatedStartAt = new Date('2026-07-17T23:00:00.000Z');
+    const run = await runtime.runHeadless({
+      scenarioId: 'pizzeria-growth-10m',
+      repetitionKey: 'e2e-growth-10m',
+      simulatedStartAt,
+      incidentCodes: [],
+    });
+    createdRunIds.push(run.id);
+
+    expect(run.status).toBe('COMPLETED');
+    expect(run.scenarioId).toBe('pizzeria-growth-10m');
+
+    const timelineEvents = await timeline.list(run.id);
+    const actions = timelineEvents.map((event) => event.action);
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        'coupon.validate',
+        'order.create',
+        'loyalty.enroll',
+        'review.create',
+        'builder.public.get',
+        'simulation.complete',
+      ]),
+    );
+
+    const couponUsages = await prisma.couponUsage.count({
+      where: {
+        coupon: {
+          restaurantId: run.restaurantId!,
+          code: 'LAB10',
+        },
+      },
+    });
+    expect(couponUsages).toBeGreaterThanOrEqual(1);
+
+    const loyaltyAccounts = await prisma.loyaltyAccount.count({
+      where: {
+        restaurantId: run.restaurantId!,
+        customerEmail: 'growth@lab.bentoo.invalid',
+      },
+    });
+    expect(loyaltyAccounts).toBe(1);
+
+    const reviews = await prisma.review.count({
+      where: {
+        restaurantId: run.restaurantId!,
+        customerEmail: 'growth@lab.bentoo.invalid',
+      },
+    });
+    expect(reviews).toBeGreaterThanOrEqual(1);
+
+    const publishedBuilder = await prisma.builderConfig.count({
+      where: {
+        restaurantId: run.restaurantId!,
+        isPublished: true,
+      },
+    });
+    expect(publishedBuilder).toBe(1);
+  });
+
+  it('pizzeria-payments-15m completa pago online y fiscal mock', async () => {
+    const simulatedStartAt = new Date('2026-07-17T23:00:00.000Z');
+    const run = await runtime.runHeadless({
+      scenarioId: 'pizzeria-payments-15m',
+      repetitionKey: 'e2e-payments-15m',
+      simulatedStartAt,
+      incidentCodes: [],
+    });
+    createdRunIds.push(run.id);
+
+    expect(run.status).toBe('COMPLETED');
+    expect(run.scenarioId).toBe('pizzeria-payments-15m');
+
+    const timelineEvents = await timeline.list(run.id);
+    const actions = timelineEvents.map((event) => event.action);
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        'order.create',
+        'payment.approve',
+        'fiscal.issue',
+        'simulation.complete',
+      ]),
+    );
+
+    const orderCreatedEvent = timelineEvents.find(
+      (event) => event.action === 'order.create',
+    );
+    expect(orderCreatedEvent?.entityId).toBeTruthy();
+
+    const paidOrder = await prisma.order.findUniqueOrThrow({
+      where: { id: orderCreatedEvent!.entityId! },
+      select: {
+        id: true,
+        restaurantId: true,
+        paymentStatus: true,
+      },
+    });
+    expect(paidOrder.restaurantId).toBe(run.restaurantId);
+    expect(paidOrder.paymentStatus).toBe('PAID');
+
+    const fiscalDocument = await prisma.fiscalDocument.findFirstOrThrow({
+      where: {
+        restaurantId: run.restaurantId!,
+        orderId: paidOrder.id,
+      },
+      select: {
+        status: true,
+        cae: true,
+      },
+    });
+    expect(fiscalDocument.status).toBe('AUTHORIZED');
+    expect(fiscalDocument.cae).toMatch(/^LAB-CAE/);
   });
 });
 

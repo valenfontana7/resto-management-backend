@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OwnershipService } from '../../common/services/ownership.service';
+import { LabBusinessDateService } from '../../bentoo-lab/config/lab-business-date.service';
 import { OrderStatus } from '../dto/order.dto';
 
 @Injectable()
@@ -8,13 +9,30 @@ export class OrderAnalyticsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
+    @Optional() private readonly labBusinessDate?: LabBusinessDateService,
   ) {}
 
   async getStats(restaurantId: string, userId: string) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const labDate =
+      await this.labBusinessDate?.resolveBusinessDateYmd(restaurantId);
+    const todayStart =
+      labDate && /^\d{4}-\d{2}-\d{2}$/.test(labDate)
+        ? new Date(`${labDate}T00:00:00.000Z`)
+        : (() => {
+            const d = new Date();
+            d.setHours(0, 0, 0, 0);
+            return d;
+          })();
+    const todayEndExclusive =
+      labDate && /^\d{4}-\d{2}-\d{2}$/.test(labDate)
+        ? (() => {
+            const d = new Date(`${labDate}T00:00:00.000Z`);
+            d.setUTCDate(d.getUTCDate() + 1);
+            return d;
+          })()
+        : undefined;
 
     const [totalOrders, todayOrders, pendingOrders, revenue] =
       await Promise.all([
@@ -24,7 +42,9 @@ export class OrderAnalyticsService {
         this.prisma.order.count({
           where: {
             restaurantId,
-            createdAt: { gte: today },
+            createdAt: todayEndExclusive
+              ? { gte: todayStart, lt: todayEndExclusive }
+              : { gte: todayStart },
           },
         }),
         this.prisma.order.count({
@@ -59,11 +79,22 @@ export class OrderAnalyticsService {
     };
   }
 
-  async getTodayStats(restaurantId: string, userId: string) {
+  async getTodayStats(restaurantId: string, userId: string, date?: string) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const explicitDate =
+      date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : undefined;
+    const labDate =
+      explicitDate ??
+      (await this.labBusinessDate?.resolveBusinessDateYmd(restaurantId));
+    const today =
+      labDate && /^\d{4}-\d{2}-\d{2}$/.test(labDate)
+        ? new Date(`${labDate}T00:00:00.000Z`)
+        : (() => {
+            const d = new Date();
+            d.setHours(0, 0, 0, 0);
+            return d;
+          })();
 
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -164,13 +195,25 @@ export class OrderAnalyticsService {
   async getTopDishes(restaurantId: string, userId: string, period: string) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
-    const startDate = new Date();
-    startDate.setHours(0, 0, 0, 0);
+    const labDate =
+      await this.labBusinessDate?.resolveBusinessDateYmd(restaurantId);
+    const useLabAnchor = Boolean(
+      labDate && /^\d{4}-\d{2}-\d{2}$/.test(labDate),
+    );
+    const startDate = useLabAnchor
+      ? new Date(`${labDate}T00:00:00.000Z`)
+      : (() => {
+          const d = new Date();
+          d.setHours(0, 0, 0, 0);
+          return d;
+        })();
 
     if (period === 'week') {
-      startDate.setDate(startDate.getDate() - 7);
+      if (useLabAnchor) startDate.setUTCDate(startDate.getUTCDate() - 7);
+      else startDate.setDate(startDate.getDate() - 7);
     } else if (period === 'month') {
-      startDate.setMonth(startDate.getMonth() - 1);
+      if (useLabAnchor) startDate.setUTCMonth(startDate.getUTCMonth() - 1);
+      else startDate.setMonth(startDate.getMonth() - 1);
     }
 
     const orderItems = await this.prisma.orderItem.findMany({

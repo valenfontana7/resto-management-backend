@@ -8,6 +8,8 @@ export interface PreparedOrderChoice {
   orderKey: string;
   dishName: string;
   quantity: number;
+  couponCode?: string;
+  paymentMethod?: 'cash' | 'mercadopago';
 }
 
 export type RuntimeQueueEvent = LabScenarioEvent & {
@@ -23,6 +25,10 @@ export interface PersistedSimulationRuntimeState {
   };
   orderChoices: Record<string, PreparedOrderChoice>;
   orderIds: Record<string, string>;
+  /** Clave lógica de sesión salón → TableSession.id */
+  sessionIds: Record<string, string>;
+  /** Clave lógica de reserva → Reservation.id */
+  reservationIds: Record<string, string>;
   processedEventIds: string[];
   incidentCodes: LabIncidentCode[];
   kitchenDelayMinutes: number;
@@ -32,11 +38,14 @@ export interface PersistedSimulationRuntimeState {
   incidentFingerprint?: string;
 }
 
+import type { LabProfile } from '../bootstrap/lab-profile.types';
+
 export interface CreateSimulationRunInput {
   scenarioId: string;
   repetitionKey: string;
   simulatedStartAt?: Date;
   incidentCodes?: readonly string[];
+  labProfile?: LabProfile;
 }
 
 export interface LabOrderStatusSummary {

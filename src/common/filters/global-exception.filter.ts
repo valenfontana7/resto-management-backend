@@ -109,12 +109,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     const isProduction = process.env.NODE_ENV === 'production';
+    const blockers = Array.isArray(payload.blockers)
+      ? payload.blockers
+      : undefined;
     const responseBody = {
       statusCode: status,
       message,
       error,
       ...(code ? { code } : {}),
       ...(typeof payload.email === 'string' ? { email: payload.email } : {}),
+      ...(blockers ? { blockers } : {}),
       timestamp: new Date().toISOString(),
       path: sanitizedPath,
       ...(isProduction

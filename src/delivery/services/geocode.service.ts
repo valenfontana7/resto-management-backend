@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { isLabRuntime } from '../../common/config/bentoo-mode.config';
 
 export interface GeoCoordinates {
   lat: number;
@@ -24,6 +25,9 @@ export class GeocodeService {
   private readonly cache = new Map<string, GeoCoordinates | null>();
 
   async geocode(query: string): Promise<GeoCoordinates | null> {
+    if (isLabRuntime()) {
+      return null;
+    }
     const normalized = this.normalizeQuery(query);
     if (!normalized) {
       return null;

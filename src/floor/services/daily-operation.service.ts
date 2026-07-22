@@ -2,17 +2,20 @@ import {
   Injectable,
   BadRequestException,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import {
   CashRegisterSessionStatus,
   CashRegisterLevel,
   OrderSource,
   OrderStatus,
+  PaymentStatus,
   Prisma,
   ReservationStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OwnershipService } from '../../common/services/ownership.service';
+import { LabBusinessDateService } from '../../bentoo-lab/config/lab-business-date.service';
 import {
   CLOSING_CHECKLIST_IDS,
   OPENING_CHECKLIST_IDS,
@@ -22,9 +25,15 @@ import { CloseDailyOperationDto } from '../dto/close-daily-operation.dto';
 import type {
   DailyCloseBlocker,
   DailyCloseReport,
+  DailyCloseActionableOrder,
 } from '../types/daily-close-report.types';
 import { resolveDailyCloseConfig } from '../utils/daily-close-config.util';
 import { buildDailyCloseReport } from '../utils/daily-close-report.builder';
+import {
+  openKitchenOrderWhere,
+  paidOrderWhere,
+  unpaidOpenOrderWhere,
+} from '../utils/daily-order-money.util';
 import { BusinessEventPublisherService } from '../../business-events/business-event-publisher.service';
 import { BentooBusinessEventType } from '../../business-events/types/event-type.enum';
 
@@ -121,12 +130,26 @@ export class DailyOperationService {
     private readonly prisma: PrismaService,
     private readonly ownership: OwnershipService,
     private readonly businessEvents: BusinessEventPublisherService,
+    @Optional() private readonly labBusinessDate?: LabBusinessDateService,
   ) {}
 
   private async scopeRestaurant(ref: string, userId: string): Promise<string> {
     const restaurantId = await this.ownership.resolveRestaurantId(ref);
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
     return restaurantId;
+  }
+
+  /** En Lab, sin `?date=` usa el día del run; `?date=` explícito gana. */
+  private async resolveReadBusinessDate(
+    restaurantId: string,
+    dateStr?: string,
+  ): Promise<Date> {
+    if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      return parseBusinessDate(dateStr);
+    }
+    const labDate =
+      await this.labBusinessDate?.resolveBusinessDateYmd(restaurantId);
+    return parseBusinessDate(labDate ?? undefined);
   }
 
   async getDailyOperation(
@@ -136,7 +159,10 @@ export class DailyOperationService {
     view: DailySummaryView = 'full',
   ) {
     const scopedRestaurantId = await this.scopeRestaurant(restaurantId, userId);
-    const businessDate = parseBusinessDate(dateStr);
+    const businessDate = await this.resolveReadBusinessDate(
+      scopedRestaurantId,
+      dateStr,
+    );
     const record = await this.ensureRecord(scopedRestaurantId, businessDate);
     const summary = await this.buildSummary(scopedRestaurantId, businessDate, {
       view,
@@ -280,6 +306,9 @@ export class DailyOperationService {
     const blockers = await this.collectCloseBlockers(
       scopedRestaurantId,
       record,
+      undefined,
+      undefined,
+      businessDate,
     );
 
     if (blockers.length > 0) {
@@ -502,6 +531,7 @@ export class DailyOperationService {
       restaurantMeta,
       todayOrders,
       todayRevenue,
+      todayPending,
       pendingReservations,
       openTableSessions,
       openCashRegister,
@@ -526,12 +556,13 @@ export class DailyOperationService {
         },
       }),
       this.prisma.order.aggregate({
-        where: {
-          restaurantId,
-          createdAt: { gte: start, lte: end },
-          status: { not: OrderStatus.CANCELLED },
-        },
+        where: paidOrderWhere(restaurantId, start, end),
         _sum: { total: true },
+      }),
+      this.prisma.order.aggregate({
+        where: unpaidOpenOrderWhere(restaurantId, start, end),
+        _sum: { total: true },
+        _count: { _all: true },
       }),
       this.prisma.reservation.count({
         where: {
@@ -574,11 +605,11 @@ export class DailyOperationService {
         },
       }),
       this.prisma.order.aggregate({
-        where: {
+        where: paidOrderWhere(
           restaurantId,
-          createdAt: { gte: yesterdayBounds.start, lte: yesterdayBounds.end },
-          status: { not: OrderStatus.CANCELLED },
-        },
+          yesterdayBounds.start,
+          yesterdayBounds.end,
+        ),
         _sum: { total: true },
       }),
       this.prisma.dailyOperation.findUnique({
@@ -663,6 +694,8 @@ export class DailyOperationService {
       businessDate: formatBusinessDate(businessDate),
       todayOrders,
       todayRevenue: todayRevenue._sum.total ?? 0,
+      todayRevenuePending: todayPending._sum.total ?? 0,
+      todayOrdersPending: todayPending._count._all,
       yesterdayOrders,
       yesterdayRevenue: yesterdayRevenue._sum.total ?? 0,
       openingComplete,
@@ -732,6 +765,7 @@ export class DailyOperationService {
           openTableSessions,
         },
         dailyCloseConfig,
+        businessDate,
       ),
     };
   }
@@ -756,15 +790,12 @@ export class DailyOperationService {
           AND "createdAt" >= ${start}
           AND "createdAt" <= ${end}
           AND status <> ${OrderStatus.CANCELLED}
+          AND "paymentStatus" = ${PaymentStatus.PAID}
         GROUP BY 1
       `,
       this.prisma.order.groupBy({
         by: ['paymentMethod'],
-        where: {
-          restaurantId,
-          createdAt: { gte: start, lte: end },
-          status: { not: OrderStatus.CANCELLED },
-        },
+        where: paidOrderWhere(restaurantId, start, end),
         _sum: { total: true },
         _count: { _all: true },
       }),
@@ -801,15 +832,19 @@ export class DailyOperationService {
   private async buildDailyCloseStatus(
     restaurantId: string,
     operationRecord: {
+      businessDate?: Date;
       dailyClosedAt: Date | null;
       dailyClosedByName: string | null;
       closingChecklist: Prisma.JsonValue | null;
+      openingChecklist?: Prisma.JsonValue | null;
+      openingCompletedAt?: Date | null;
     } | null,
     snapshot: {
       cashRegisterOpen: boolean;
       openTableSessions: number;
     },
     configOverride?: ReturnType<typeof resolveDailyCloseConfig>,
+    businessDate?: Date,
   ) {
     const config =
       configOverride ?? (await this.loadDailyCloseConfig(restaurantId));
@@ -818,7 +853,44 @@ export class DailyOperationService {
       operationRecord,
       snapshot,
       config,
+      businessDate ?? operationRecord?.businessDate,
     );
+
+    const resolvedBusinessDate =
+      businessDate ?? operationRecord?.businessDate ?? null;
+    let unpaidOrders: DailyCloseActionableOrder[] = [];
+    let openKitchenOrders: DailyCloseActionableOrder[] = [];
+
+    if (resolvedBusinessDate) {
+      const { start, end } = dayBoundsUtc(resolvedBusinessDate);
+      const orderSelect = {
+        id: true,
+        orderNumber: true,
+        status: true,
+        paymentStatus: true,
+        total: true,
+        createdAt: true,
+        customerName: true,
+      } as const;
+      const [unpaidRows, kitchenRows] = await Promise.all([
+        this.prisma.order.findMany({
+          where: unpaidOpenOrderWhere(restaurantId, start, end),
+          select: orderSelect,
+          orderBy: { createdAt: 'asc' },
+          take: 50,
+        }),
+        this.prisma.order.findMany({
+          where: openKitchenOrderWhere(restaurantId, start, end),
+          select: orderSelect,
+          orderBy: { createdAt: 'asc' },
+          take: 50,
+        }),
+      ]);
+      unpaidOrders = unpaidRows.map((row) => this.mapActionableOrder(row));
+      openKitchenOrders = kitchenRows.map((row) =>
+        this.mapActionableOrder(row),
+      );
+    }
 
     return {
       isClosed: Boolean(operationRecord?.dailyClosedAt),
@@ -827,6 +899,28 @@ export class DailyOperationService {
       canClose: blockers.length === 0,
       blockers,
       config,
+      unpaidOrders,
+      openKitchenOrders,
+    };
+  }
+
+  private mapActionableOrder(order: {
+    id: string;
+    orderNumber: string;
+    status: OrderStatus;
+    paymentStatus: PaymentStatus;
+    total: number;
+    createdAt: Date;
+    customerName: string | null;
+  }): DailyCloseActionableOrder {
+    return {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      paymentStatus: order.paymentStatus,
+      total: order.total,
+      createdAt: order.createdAt.toISOString(),
+      customerName: order.customerName,
     };
   }
 
@@ -845,12 +939,14 @@ export class DailyOperationService {
       closingChecklist: Prisma.JsonValue | null;
       openingChecklist?: Prisma.JsonValue | null;
       openingCompletedAt?: Date | null;
+      businessDate?: Date;
     } | null,
     snapshot?: {
       cashRegisterOpen: boolean;
       openTableSessions: number;
     },
     configOverride?: ReturnType<typeof resolveDailyCloseConfig>,
+    businessDate?: Date,
   ): Promise<DailyCloseBlocker[]> {
     const config =
       configOverride ?? (await this.loadDailyCloseConfig(restaurantId));
@@ -921,6 +1017,53 @@ export class DailyOperationService {
         blockers.push({
           code: 'INCOMPLETE_CLOSING_CHECKLIST',
           message: 'Completá el checklist de cierre antes de cerrar el día',
+        });
+      }
+    }
+
+    const resolvedBusinessDate =
+      businessDate ?? operationRecord?.businessDate ?? null;
+    if (
+      resolvedBusinessDate &&
+      (config.requireNoUnpaidOrders || config.requireNoOpenKitchenOrders)
+    ) {
+      const { start, end } = dayBoundsUtc(resolvedBusinessDate);
+      const [unpaidCount, openKitchenCount] = await Promise.all([
+        config.requireNoUnpaidOrders
+          ? this.prisma.order.count({
+              where: unpaidOpenOrderWhere(restaurantId, start, end),
+            })
+          : Promise.resolve(0),
+        config.requireNoOpenKitchenOrders
+          ? this.prisma.order.count({
+              where: openKitchenOrderWhere(restaurantId, start, end),
+            })
+          : Promise.resolve(0),
+      ]);
+
+      if (config.requireNoUnpaidOrders && unpaidCount > 0) {
+        const unpaidRows = await this.prisma.order.findMany({
+          where: unpaidOpenOrderWhere(restaurantId, start, end),
+          select: { id: true },
+          take: 50,
+        });
+        blockers.push({
+          code: 'OPEN_UNPAID_ORDERS',
+          message: `Hay ${unpaidCount} pedido(s) sin cobrar. Cobrálos o cancelalos antes del cierre diario.`,
+          orderIds: unpaidRows.map((row) => row.id),
+        });
+      }
+
+      if (config.requireNoOpenKitchenOrders && openKitchenCount > 0) {
+        const kitchenRows = await this.prisma.order.findMany({
+          where: openKitchenOrderWhere(restaurantId, start, end),
+          select: { id: true },
+          take: 50,
+        });
+        blockers.push({
+          code: 'OPEN_KITCHEN_ORDERS',
+          message: `Hay ${openKitchenCount} pedido(s) aún en cocina o listos sin entregar. Finalizalos antes del cierre diario.`,
+          orderIds: kitchenRows.map((row) => row.id),
         });
       }
     }

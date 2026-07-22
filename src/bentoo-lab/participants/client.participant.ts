@@ -25,6 +25,8 @@ export interface ClientCreateOrderInput {
   sequence: number;
   dishName: string;
   quantity: number;
+  couponCode?: string;
+  paymentMethod?: 'cash' | 'mercadopago';
 }
 
 @Injectable()
@@ -66,7 +68,8 @@ export class ClientParticipant {
         customerEmail: `cliente-${input.sequence}@lab.bentoo.invalid`,
         customerPhone: `000000${String(input.sequence).padStart(4, '0')}`,
         type: 'PICKUP',
-        paymentMethod: 'cash',
+        paymentMethod: input.paymentMethod ?? 'cash',
+        ...(input.couponCode ? { couponCode: input.couponCode } : {}),
         items: [
           {
             dishId: dish.id,

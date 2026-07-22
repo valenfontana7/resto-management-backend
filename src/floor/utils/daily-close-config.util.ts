@@ -26,5 +26,13 @@ export function resolveDailyCloseConfig(
       typeof dailyClose?.requireClosingChecklist === 'boolean'
         ? dailyClose.requireClosingChecklist
         : DEFAULT_DAILY_CLOSE_CONFIG.requireClosingChecklist,
+    requireNoUnpaidOrders:
+      typeof dailyClose?.requireNoUnpaidOrders === 'boolean'
+        ? dailyClose.requireNoUnpaidOrders
+        : DEFAULT_DAILY_CLOSE_CONFIG.requireNoUnpaidOrders,
+    requireNoOpenKitchenOrders:
+      typeof dailyClose?.requireNoOpenKitchenOrders === 'boolean'
+        ? dailyClose.requireNoOpenKitchenOrders
+        : DEFAULT_DAILY_CLOSE_CONFIG.requireNoOpenKitchenOrders,
   };
 }

@@ -3,11 +3,14 @@ import {
   HttpException,
   Injectable,
   Logger,
+  Optional,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { isLabRuntime } from '../common/config/bentoo-mode.config';
+import { LabEffectsPolicyService } from '../bentoo-lab/effects/lab-effects-policy.service';
 import { MercadoPagoCredentialsService } from './mercadopago-credentials.service';
 import * as crypto from 'crypto';
 
@@ -75,6 +78,7 @@ export class MercadoPagoService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly credentialsService: MercadoPagoCredentialsService,
+    @Optional() private readonly labEffects?: LabEffectsPolicyService,
   ) {}
 
   /**
@@ -420,6 +424,30 @@ export class MercadoPagoService {
     preference: { id: string; init_point: string; sandbox_init_point?: string };
     isSandbox: boolean;
   }> {
+    if (isLabRuntime()) {
+      this.labEffects?.authorize('PAYMENT_MERCADOPAGO', {
+        detail: 'lab-stub',
+      });
+
+      const orderId = (body.orderId ?? '').trim();
+      const configuredBackend = (
+        this.configService.get<string>('BACKEND_URL') ?? ''
+      ).trim();
+      const safeOrigin =
+        configuredBackend || (origin ?? '').trim() || 'http://localhost:4400';
+      const baseUrl = safeOrigin.replace(/\/$/, '');
+      const preferenceId = `lab-pref-${orderId}`;
+
+      return {
+        preference: {
+          id: preferenceId,
+          init_point: `${baseUrl}/api/lab/mercadopago/preferences/${preferenceId}`,
+          sandbox_init_point: `${baseUrl}/api/lab/mercadopago/sandbox/${preferenceId}`,
+        },
+        isSandbox: true,
+      };
+    }
+
     const source = await this.resolvePreferenceSource(body, options);
 
     const mappedItems = source.items.map((item) => {

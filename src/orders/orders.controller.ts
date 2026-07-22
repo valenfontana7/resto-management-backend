@@ -119,8 +119,9 @@ export class OrdersController {
   async getTodayStats(
     @Param('restaurantId') restaurantId: string,
     @CurrentUser() user: RequestUser,
+    @Query('date') date?: string,
   ) {
-    return this.ordersService.getTodayStats(restaurantId, user.userId);
+    return this.ordersService.getTodayStats(restaurantId, user.userId, date);
   }
 
   @Get('stats/top-dishes')

@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AnalyticsPeriod } from './dto/analytics.dto';
 import { OrderSource, OrderStatus } from '@prisma/client';
@@ -7,13 +7,17 @@ import {
   getSalonTableRankingKey,
   isOnlineCustomerOrder,
 } from '../orders/utils/order-channel.util';
+import { LabBusinessDateService } from '../bentoo-lab/config/lab-business-date.service';
 
 @Injectable()
 export class AnalyticsService {
   private readonly timezone =
     process.env.APP_TIMEZONE || 'America/Argentina/Buenos_Aires';
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Optional() private readonly labBusinessDate?: LabBusinessDateService,
+  ) {}
 
   async getVisitsCount(restaurantId: string, from?: Date, to?: Date) {
     const where: any = { restaurantId, metric: 'page_view' };
@@ -33,7 +37,12 @@ export class AnalyticsService {
     startDate?: string,
     endDate?: string,
   ) {
-    const { start, end } = this.getDateRange(period, startDate, endDate);
+    const { start, end } = await this.getDateRange(
+      restaurantId,
+      period,
+      startDate,
+      endDate,
+    );
 
     // Usar query raw para agrupar por fecha en la DB en vez de cargar todo en memoria
     const tz = this.timezone;
@@ -117,7 +126,12 @@ export class AnalyticsService {
     startDate?: string,
     endDate?: string,
   ) {
-    const { start, end } = this.getDateRange(period, startDate, endDate);
+    const { start, end } = await this.getDateRange(
+      restaurantId,
+      period,
+      startDate,
+      endDate,
+    );
 
     const rows = await this.prisma.$queryRaw<
       Array<{
@@ -169,7 +183,12 @@ export class AnalyticsService {
     startDate?: string,
     endDate?: string,
   ) {
-    const { start, end } = this.getDateRange(period, startDate, endDate);
+    const { start, end } = await this.getDateRange(
+      restaurantId,
+      period,
+      startDate,
+      endDate,
+    );
 
     const tz = this.timezone;
     const rows = await this.prisma.$queryRaw<
@@ -218,7 +237,12 @@ export class AnalyticsService {
     startDate?: string,
     endDate?: string,
   ) {
-    const { start, end } = this.getDateRange(period, startDate, endDate);
+    const { start, end } = await this.getDateRange(
+      restaurantId,
+      period,
+      startDate,
+      endDate,
+    );
 
     const orders = await this.prisma.order.findMany({
       where: {
@@ -305,7 +329,12 @@ export class AnalyticsService {
     startDate?: string,
     endDate?: string,
   ) {
-    const { start, end } = this.getDateRange(period, startDate, endDate);
+    const { start, end } = await this.getDateRange(
+      restaurantId,
+      period,
+      startDate,
+      endDate,
+    );
 
     const orders = await this.prisma.order.findMany({
       where: {
@@ -402,7 +431,12 @@ export class AnalyticsService {
     startDate?: string,
     endDate?: string,
   ) {
-    const { start, end } = this.getDateRange(period, startDate, endDate);
+    const { start, end } = await this.getDateRange(
+      restaurantId,
+      period,
+      startDate,
+      endDate,
+    );
 
     const orders = await this.prisma.order.findMany({
       where: {
@@ -509,7 +543,8 @@ export class AnalyticsService {
     startDate?: string,
     endDate?: string,
   ) {
-    const { start: currentStart, end: currentEnd } = this.getDateRange(
+    const { start: currentStart, end: currentEnd } = await this.getDateRange(
+      restaurantId,
       period,
       startDate,
       endDate,
@@ -591,7 +626,12 @@ export class AnalyticsService {
     startDate?: string,
     endDate?: string,
   ) {
-    const { start, end } = this.getDateRange(period, startDate, endDate);
+    const { start, end } = await this.getDateRange(
+      restaurantId,
+      period,
+      startDate,
+      endDate,
+    );
 
     const rows = await this.prisma.$queryRaw<
       Array<{
@@ -642,7 +682,12 @@ export class AnalyticsService {
     startDate?: string,
     endDate?: string,
   ) {
-    const { start, end } = this.getDateRange(period, startDate, endDate);
+    const { start, end } = await this.getDateRange(
+      restaurantId,
+      period,
+      startDate,
+      endDate,
+    );
 
     const typeLabels: Record<string, string> = {
       DINE_IN: 'Para comer aquí',
@@ -733,14 +778,16 @@ export class AnalyticsService {
   }
 
   /**
-   * Helper: Get date range based on period
+   * Helper: Get date range based on period.
+   * En Lab, "hoy"/ventana relativa usan simulatedNow del run.
    */
-  private getDateRange(
+  private async getDateRange(
+    restaurantId: string,
     period: AnalyticsPeriod,
     startDate?: string,
     endDate?: string,
-  ): { start: Date; end: Date } {
-    const now = this.getNowInTimeZone();
+  ): Promise<{ start: Date; end: Date }> {
+    const now = await this.resolveNowInTimeZone(restaurantId);
     let start: Date;
     let end: Date = new Date(
       now.getFullYear(),
@@ -803,6 +850,18 @@ export class AnalyticsService {
     }
 
     return { start, end };
+  }
+
+  private async resolveNowInTimeZone(restaurantId: string): Promise<Date> {
+    const labNow =
+      await this.labBusinessDate?.resolveSimulatedNow(restaurantId);
+    if (labNow) {
+      const local = labNow.toLocaleString('sv', {
+        timeZone: this.timezone,
+      });
+      return new Date(local);
+    }
+    return this.getNowInTimeZone();
   }
 
   private getNowInTimeZone(): Date {

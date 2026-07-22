@@ -165,3 +165,18 @@ export class VoidTableSessionDto extends ClientMutationIdDto {
   @IsBoolean()
   markTableCleaning?: boolean;
 }
+
+export class MergeTablesDto extends ClientMutationIdDto {
+  @ApiPropertyOptional({
+    description: 'Mesas secundarias a unir a la cuenta (por id)',
+  })
+  @IsArray()
+  @IsString({ each: true })
+  tableIds: string[];
+}
+
+export class UnmergeTableDto extends ClientMutationIdDto {
+  @IsString()
+  @IsNotEmpty()
+  tableId: string;
+}

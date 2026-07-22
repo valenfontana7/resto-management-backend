@@ -1,6 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { FiscalDocumentType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isLabRuntime } from '../../common/config/bentoo-mode.config';
+import { LabEffectsPolicyService } from '../../bentoo-lab/effects/lab-effects-policy.service';
 import { AFIP_CBTE_TYPE } from '../utils/afip.constants';
 import { mapFiscalDocumentType } from '../utils/afip-amount.util';
 import { withFiscalAdvisoryLock } from '../utils/afip-lock.util';
@@ -33,6 +35,7 @@ export class AfipAuthorizationService {
     private readonly wsaa: AfipWsaaService,
     private readonly wsfe: AfipWsfeService,
     private readonly prisma: PrismaService,
+    @Optional() private readonly labEffects?: LabEffectsPolicyService,
   ) {}
 
   async testConnection(restaurantId: string) {
@@ -121,6 +124,25 @@ export class AfipAuthorizationService {
         reason: 'missing_config',
         puntoVenta: 0,
         errors: ['Fiscal no configurado (CUIT / punto de venta)'],
+        observations: [],
+      };
+    }
+
+    if (isLabRuntime()) {
+      this.labEffects?.authorize('FISCAL_ARCA', { detail: 'lab-stub' });
+
+      const caeSeed = input.restaurantId
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .slice(0, 8)
+        .padEnd(8, '0');
+
+      return {
+        success: true,
+        numero: 1,
+        cae: `LAB-CAE-${caeSeed}`,
+        caeExpiresAt: new Date('2099-12-31T23:59:59.000Z'),
+        puntoVenta: config.puntoVenta,
+        errors: [],
         observations: [],
       };
     }

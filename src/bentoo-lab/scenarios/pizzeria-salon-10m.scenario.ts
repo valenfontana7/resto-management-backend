@@ -1,0 +1,86 @@
+import { LabScenarioDefinition } from './scenario.types';
+
+/** Escenario corto de salón: abrir mesa → comanda → cocina → cobro cash. */
+export const PIZZERIA_SALON_10M_SCENARIO = {
+  id: 'pizzeria-salon-10m',
+  version: '1.0.0',
+  label: 'Pizzería · salón · 10 minutos',
+  durationMinutes: 10,
+  simulatedStartAt: '2026-07-17T23:00:00.000Z',
+  defaultSpeed: 20,
+  preferredLabProfile: 'ops-core',
+  restaurant: {
+    type: 'pizzeria',
+    channels: ['salon'],
+  },
+  menu: [
+    {
+      key: 'pizza-muzzarella',
+      name: 'Pizza muzzarella',
+      price: 8000,
+      preparationMinutes: 12,
+    },
+    {
+      key: 'fugazzeta',
+      name: 'Fugazzeta',
+      price: 9500,
+      preparationMinutes: 15,
+    },
+  ],
+  participants: ['waiter', 'manager', 'kitchen'],
+  events: [
+    {
+      id: 'event.floor.open.0001',
+      type: 'FLOOR_OPEN_TABLE',
+      participantKey: 'waiter',
+      sessionKey: 'session.floor.0001',
+      tableNumber: '2',
+      guestCount: 2,
+      atMinute: 1,
+      priority: 10,
+    },
+    {
+      id: 'event.floor.items.0001',
+      type: 'FLOOR_ADD_ITEMS',
+      participantKey: 'waiter',
+      sessionKey: 'session.floor.0001',
+      dishName: 'Pizza muzzarella',
+      quantity: 1,
+      atMinute: 2,
+      priority: 15,
+    },
+    {
+      id: 'event.floor.kitchen.0001',
+      type: 'FLOOR_SEND_KITCHEN',
+      participantKey: 'waiter',
+      sessionKey: 'session.floor.0001',
+      atMinute: 3,
+      priority: 20,
+    },
+    {
+      id: 'event.floor.close.0001',
+      type: 'FLOOR_CLOSE_SESSION',
+      participantKey: 'manager',
+      sessionKey: 'session.floor.0001',
+      paymentMethod: 'cash',
+      atMinute: 8,
+      priority: 25,
+    },
+    {
+      id: 'event.simulation.complete',
+      type: 'SIMULATION_COMPLETE',
+      participantKey: 'system',
+      atMinute: 10,
+      priority: 100,
+    },
+  ],
+  invariants: [
+    'TENANT_SCOPE',
+    'AUTHORIZED_ACTOR_ACTIONS',
+    'EXTERNAL_EFFECTS_BLOCKED',
+    'ORDER_STATE_VALIDITY',
+    'EXPECTED_INCIDENTS_ONCE',
+    'TIMELINE_CONTIGUOUS',
+    'INCIDENT_REPLAY_DETERMINISM',
+  ],
+} as const satisfies LabScenarioDefinition;

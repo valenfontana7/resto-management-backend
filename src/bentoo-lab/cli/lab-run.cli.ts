@@ -8,16 +8,12 @@ import { canonicalizeLabIncidents } from '../incidents/lab-incident.types';
 import { LabHttpTransport } from '../http/lab-http.transport';
 import { SimulationRuntimeService } from '../runtime/simulation-runtime.service';
 import { SimulationTimelineService } from '../timeline/simulation-timeline.service';
+import { LabRunCliOptions, parseOptions } from './lab-run-options';
 
-interface CliOptions {
-  scenarioId: string;
-  repetitionKey: string;
-  simulatedStartAt?: Date;
-  incidentCodes?: string[];
-  cleanup: boolean;
-}
+export type { LabRunCliOptions };
+export { parseOptions };
 
-export async function runLabHeadless(options: CliOptions) {
+export async function runLabHeadless(options: LabRunCliOptions) {
   const realStartedAt = Date.now();
   const app = await NestFactory.create(AppModule, { logger: false });
   app.useGlobalPipes(
@@ -74,28 +70,6 @@ export async function runLabHeadless(options: CliOptions) {
   } finally {
     await app.close();
   }
-}
-
-export function parseOptions(argv: string[]): CliOptions {
-  const read = (name: string) => {
-    const index = argv.indexOf(name);
-    return index >= 0 ? argv[index + 1] : undefined;
-  };
-  const start = read('--start-at') ?? read('--start');
-  const incidentsRaw = read('--incidents');
-  return {
-    scenarioId: read('--scenario') ?? 'pizzeria-30m',
-    repetitionKey: read('--repetition') ?? 'viernes-42',
-    simulatedStartAt: start ? new Date(start) : undefined,
-    incidentCodes:
-      incidentsRaw === undefined
-        ? undefined
-        : incidentsRaw
-            .split(',')
-            .map((value) => value.trim())
-            .filter(Boolean),
-    cleanup: argv.includes('--cleanup'),
-  };
 }
 
 if (require.main === module) {

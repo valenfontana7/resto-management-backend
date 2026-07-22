@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { AnalyticsService } from '../analytics/analytics.service';
@@ -6,6 +6,7 @@ import { AnalyticsPeriod } from '../analytics/dto/analytics.dto';
 import { EmailService } from '../email/email.service';
 import { renderDigestEmail } from '../email/email-templates';
 import { ImageProcessingService } from '../common/services/image-processing.service';
+import { LabBusinessDateService } from '../bentoo-lab/config/lab-business-date.service';
 import { DigestPreferencesService } from './digest-preferences.service';
 import { BusinessHealthService } from '../business-health/business-health.service';
 import { BusinessEventDigestService } from '../business-events/business-event-digest.service';
@@ -24,6 +25,7 @@ export class DigestSchedulerService {
     private readonly businessHealthService: BusinessHealthService,
     private readonly businessEventDigest: BusinessEventDigestService,
     private readonly coordinationDigest: CoordinationDigestService,
+    @Optional() private readonly labBusinessDate?: LabBusinessDateService,
   ) {}
 
   /**
@@ -171,7 +173,10 @@ export class DigestSchedulerService {
         ? await this.businessHealthService.getDigestSnapshot(restaurantId)
         : null;
 
-    const { since, until } = this.resolveEventWindow(frequency);
+    const { since, until } = await this.resolveEventWindow(
+      restaurantId,
+      frequency,
+    );
     const [eventHighlights, coordinationStats] = await Promise.all([
       this.businessEventDigest.getHighlights(restaurantId, since, until),
       this.coordinationDigest.getWindowStats(restaurantId, since, until),
@@ -193,8 +198,13 @@ export class DigestSchedulerService {
     });
   }
 
-  private resolveEventWindow(frequency: string): { since: Date; until: Date } {
-    const until = new Date();
+  private async resolveEventWindow(
+    restaurantId: string,
+    frequency: string,
+  ): Promise<{ since: Date; until: Date }> {
+    const until =
+      (await this.labBusinessDate?.resolveSimulatedNow(restaurantId)) ??
+      new Date();
     const since = new Date(until);
 
     if (frequency === 'DAILY') {

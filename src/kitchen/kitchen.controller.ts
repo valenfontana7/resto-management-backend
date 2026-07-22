@@ -8,6 +8,7 @@ import {
   UseGuards,
   Query,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { SkipThrottle } from '@nestjs/throttler';
 import {
@@ -34,6 +35,9 @@ import {
   RestaurantOwnerGuard,
 } from '../common/guards/restaurant-owner.guard';
 import { normalizeRoleCode } from '../common/utils/role.utils';
+import { ExecutionContextService } from '../common/execution/execution-context.service';
+import { LabBusinessDateService } from '../bentoo-lab/config/lab-business-date.service';
+import { enrichOrderWithKitchenDelay } from './utils/kitchen-order-delay.util';
 
 const KITCHEN_SSE_ROLES = new Set([
   'SUPER_ADMIN',
@@ -57,6 +61,8 @@ export class KitchenController {
     private kitchenStations: KitchenStationsService,
     private ordersService: OrdersService,
     private readonly ownership: OwnershipService,
+    private readonly executionContext: ExecutionContextService,
+    @Optional() private readonly labBusinessDate?: LabBusinessDateService,
   ) {}
 
   @Get('notifications')
@@ -124,11 +130,31 @@ export class KitchenController {
       ...filters,
       status: 'CONFIRMED,PREPARING,READY',
     };
-    return this.ordersService.findAll(
+    const result = await this.ordersService.findAll(
       restaurantId,
       user.userId,
       kitchenFilters,
     );
+    const now = await this.resolveKitchenNow(restaurantId);
+    return {
+      ...result,
+      orders: (result.orders ?? []).map((order) =>
+        enrichOrderWithKitchenDelay(order, now),
+      ),
+    };
+  }
+
+  /**
+   * ALS Lab (participantes) → HITL Lab (run del tenant) → wall-clock.
+   */
+  private async resolveKitchenNow(restaurantId: string): Promise<Date> {
+    const alsNow = this.executionContext.get()?.simulatedNow;
+    if (alsNow) {
+      return new Date(alsNow);
+    }
+    const labNow =
+      await this.labBusinessDate?.resolveSimulatedNow(restaurantId);
+    return labNow ?? new Date();
   }
 
   @Get('stations')

@@ -3,6 +3,12 @@ import { SimulationRunStatus } from '@prisma/client';
 import { AuthService } from '../../auth/auth.service';
 import { RolesCatalogService } from '../../common/services/roles-catalog.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  DEFAULT_LAB_PROFILE,
+  type LabProfile,
+  resolveLabProfile,
+} from './lab-profile.types';
+import { seedOpsCoreFloor } from './ops-core-seed';
 
 export interface SimulationBootstrapInput {
   scenarioId: string;
@@ -10,6 +16,7 @@ export interface SimulationBootstrapInput {
   repetitionKey: string;
   seedState: string;
   simulatedStartAt: Date;
+  labProfile?: LabProfile;
 }
 
 export interface SimulationBootstrapResult {
@@ -22,11 +29,17 @@ export interface SimulationBootstrapResult {
     id: string;
     slug: string;
   };
+  labProfile: LabProfile;
   managerUserId: string;
   kitchenUserId: string;
+  waiterUserId: string | null;
+  ownerUserId: string;
   managerToken: string;
   kitchenToken: string;
+  waiterToken: string | null;
+  ownerToken: string;
   inventoryItemId: string;
+  deliveryZoneId: string | null;
 }
 
 @Injectable()
@@ -40,6 +53,9 @@ export class SimulationBootstrapService {
   async bootstrap(
     input: SimulationBootstrapInput,
   ): Promise<SimulationBootstrapResult> {
+    const labProfile = resolveLabProfile(
+      input.labProfile ?? DEFAULT_LAB_PROFILE,
+    );
     const run = await this.prisma.simulationRun.create({
       data: {
         scenarioId: input.scenarioId,
@@ -87,9 +103,26 @@ export class SimulationBootstrapService {
               menu: true,
               orders: true,
               kitchen: true,
+              salon: labProfile === 'ops-core',
+              tables: labProfile === 'ops-core',
+              onlineOrdering: true,
+              takeaway: true,
+              delivery: labProfile === 'ops-core',
+              reservations: labProfile === 'ops-core',
+              loyalty: labProfile === 'ops-core',
+              reviews: labProfile === 'ops-core',
             },
             businessRules: {
-              payment: { methods: ['cash'] },
+              payment: { methods: ['cash', 'digital-wallet'] },
+              fiscal: {
+                cuit: '20111111112',
+                razonSocial: 'Pizzeria Lab SA',
+                puntoVenta: 1,
+                defaultDocumentType: 'FACTURA_B',
+                issuerIvaCondition: 'RESPONSABLE_INSCRIPTO',
+                environment: 'testing',
+              },
+              delivery: { enabled: labProfile === 'ops-core' },
               inventory: { autoDeductOnSale: true },
               notifications: {
                 email: false,
@@ -118,7 +151,7 @@ export class SimulationBootstrapService {
             price: 8000,
             preparationTime: 12,
             isAvailable: true,
-            isAvailableInSalon: false,
+            isAvailableInSalon: labProfile === 'ops-core',
           },
         });
         const fugazzeta = await tx.dish.create({
@@ -130,7 +163,7 @@ export class SimulationBootstrapService {
             price: 9500,
             preparationTime: 15,
             isAvailable: true,
-            isAvailableInSalon: false,
+            isAvailableInSalon: labProfile === 'ops-core',
           },
         });
 
@@ -163,19 +196,40 @@ export class SimulationBootstrapService {
           ],
         });
 
+        const roleNames =
+          labProfile === 'ops-core'
+            ? (['OWNER', 'MANAGER', 'KITCHEN', 'WAITER'] as const)
+            : (['OWNER', 'MANAGER', 'KITCHEN'] as const);
         const roles = await tx.role.findMany({
           where: {
             restaurantId: restaurant.id,
-            name: { in: ['MANAGER', 'KITCHEN'] },
+            name: { in: [...roleNames] },
           },
           select: { id: true, name: true },
         });
+        const ownerRole = roles.find((role) => role.name === 'OWNER');
         const managerRole = roles.find((role) => role.name === 'MANAGER');
         const kitchenRole = roles.find((role) => role.name === 'KITCHEN');
-        if (!managerRole || !kitchenRole) {
-          throw new Error('Bentoo Lab no pudo crear roles MANAGER y KITCHEN');
+        const waiterRole = roles.find((role) => role.name === 'WAITER');
+        if (!ownerRole || !managerRole || !kitchenRole) {
+          throw new Error(
+            'Bentoo Lab no pudo crear roles OWNER, MANAGER y KITCHEN',
+          );
+        }
+        if (labProfile === 'ops-core' && !waiterRole) {
+          throw new Error('Bentoo Lab no pudo crear rol WAITER');
         }
 
+        const owner = await tx.user.create({
+          data: {
+            restaurantId: restaurant.id,
+            roleId: ownerRole.id,
+            email: `owner-${suffix}@lab.bentoo.invalid`,
+            name: 'Owner Bentoo Lab',
+            isActive: true,
+            emailVerifiedAt: input.simulatedStartAt,
+          },
+        });
         const manager = await tx.user.create({
           data: {
             restaurantId: restaurant.id,
@@ -196,22 +250,68 @@ export class SimulationBootstrapService {
             emailVerifiedAt: input.simulatedStartAt,
           },
         });
-        await tx.restaurantMembership.createMany({
-          data: [
-            {
-              userId: manager.id,
+
+        let waiter: { id: string; name: string } | null = null;
+        if (waiterRole) {
+          waiter = await tx.user.create({
+            data: {
               restaurantId: restaurant.id,
-              roleId: managerRole.id,
-              isDefault: true,
+              roleId: waiterRole.id,
+              email: `mozo-${suffix}@lab.bentoo.invalid`,
+              name: 'Mozo Bentoo Lab',
+              isActive: true,
+              emailVerifiedAt: input.simulatedStartAt,
             },
-            {
-              userId: kitchen.id,
-              restaurantId: restaurant.id,
-              roleId: kitchenRole.id,
-              isDefault: true,
-            },
-          ],
-        });
+          });
+        }
+
+        const memberships = [
+          {
+            userId: owner.id,
+            restaurantId: restaurant.id,
+            roleId: ownerRole.id,
+            isDefault: true,
+          },
+          {
+            userId: manager.id,
+            restaurantId: restaurant.id,
+            roleId: managerRole.id,
+            isDefault: true,
+          },
+          {
+            userId: kitchen.id,
+            restaurantId: restaurant.id,
+            roleId: kitchenRole.id,
+            isDefault: true,
+          },
+        ];
+        if (waiter && waiterRole) {
+          memberships.push({
+            userId: waiter.id,
+            restaurantId: restaurant.id,
+            roleId: waiterRole.id,
+            isDefault: true,
+          });
+        }
+        await tx.restaurantMembership.createMany({ data: memberships });
+
+        let deliveryZoneId: string | null = null;
+        if (labProfile === 'ops-core' && waiter) {
+          const seeded = await seedOpsCoreFloor(tx, {
+            restaurantId: restaurant.id,
+            managerUserId: manager.id,
+            managerName: manager.name,
+            waiterUserId: waiter.id,
+            waiterName: waiter.name,
+            mozzarellaDishId: mozzarella.id,
+            fugazzetaDishId: fugazzeta.id,
+            mozzarellaPrice: 8000,
+            fugazzetaPrice: 9500,
+            simulatedStartAt: input.simulatedStartAt,
+          });
+          deliveryZoneId = seeded.deliveryZoneId;
+        }
+
         await tx.simulationRun.update({
           where: { id: run.id },
           data: {
@@ -220,22 +320,47 @@ export class SimulationBootstrapService {
           },
         });
 
-        return { restaurant, manager, kitchen, inventoryItem };
+        return {
+          restaurant,
+          owner,
+          manager,
+          kitchen,
+          waiter,
+          inventoryItem,
+          deliveryZoneId,
+        };
       });
 
-      const [managerAuth, kitchenAuth] = await Promise.all([
+      const authJobs: Array<Promise<{ token: string }>> = [
+        this.auth.createAuthResponseForUserId(bootstrapped.owner.id),
         this.auth.createAuthResponseForUserId(bootstrapped.manager.id),
         this.auth.createAuthResponseForUserId(bootstrapped.kitchen.id),
-      ]);
+      ];
+      if (bootstrapped.waiter) {
+        authJobs.push(
+          this.auth.createAuthResponseForUserId(bootstrapped.waiter.id),
+        );
+      }
+      const authResults = await Promise.all(authJobs);
+      const ownerAuth = authResults[0];
+      const managerAuth = authResults[1];
+      const kitchenAuth = authResults[2];
+      const waiterAuth = bootstrapped.waiter ? authResults[3] : null;
 
       return {
         run,
         restaurant: bootstrapped.restaurant,
+        labProfile,
         managerUserId: bootstrapped.manager.id,
         kitchenUserId: bootstrapped.kitchen.id,
+        waiterUserId: bootstrapped.waiter?.id ?? null,
+        ownerUserId: bootstrapped.owner.id,
         managerToken: managerAuth.token,
         kitchenToken: kitchenAuth.token,
+        waiterToken: waiterAuth?.token ?? null,
+        ownerToken: ownerAuth.token,
         inventoryItemId: bootstrapped.inventoryItem.id,
+        deliveryZoneId: bootstrapped.deliveryZoneId,
       };
     } catch (error) {
       await this.prisma.simulationRun.update({

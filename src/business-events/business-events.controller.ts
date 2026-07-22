@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Optional,
   Param,
   Post,
   Query,
@@ -11,6 +12,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/strategies/jwt.strategy';
 import { OwnershipService } from '../common/services/ownership.service';
+import { LabBusinessDateService } from '../bentoo-lab/config/lab-business-date.service';
 import { BusinessEventReplayService } from './business-event-replay.service';
 import { BusinessEventStoreService } from './business-event-store.service';
 import {
@@ -26,6 +28,7 @@ export class BusinessEventsController {
     private readonly store: BusinessEventStoreService,
     private readonly replay: BusinessEventReplayService,
     private readonly ownership: OwnershipService,
+    @Optional() private readonly labBusinessDate?: LabBusinessDateService,
   ) {}
 
   @Get('registry')
@@ -78,12 +81,15 @@ export class BusinessEventsController {
       user.userId,
     );
 
-    const since = new Date();
-    since.setHours(since.getHours() - 24);
+    const until =
+      (await this.labBusinessDate?.resolveSimulatedNow(restaurantId)) ??
+      new Date();
+    const since = new Date(until.getTime() - 24 * 60 * 60 * 1000);
 
     const parsedLimit = limit ? Number.parseInt(limit, 10) : 100;
     const events = await this.store.query(restaurantId, {
       since,
+      until,
       limit: Number.isFinite(parsedLimit) ? parsedLimit : 100,
     });
 

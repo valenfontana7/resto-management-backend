@@ -690,7 +690,8 @@ model Table {
   area                 TableArea?        @relation(fields: [areaId], references: [id])
   currentOrder         Order?            @relation("CurrentTableOrder", fields: [currentOrderId], references: [id])
   currentReservation   Reservation?      @relation("CurrentTableReservation", fields: [currentReservationId], references: [id])
-  currentSessionId     String?           @unique
+  /// Puede repetirse entre mesas unidas a la misma cuenta (unión de mesas).
+  currentSessionId     String?
   currentSession       TableSession?     @relation("CurrentTableSession", fields: [currentSessionId], references: [id])
   tableSessions        TableSession[]    @relation("TableSessions")
   restaurant           Restaurant        @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
@@ -698,6 +699,7 @@ model Table {
   @@unique([restaurantId, number])
   @@index([restaurantId, status])
   @@index([areaId])
+  @@index([currentSessionId])
 }
 
 model DeliveryZone {
@@ -1748,7 +1750,8 @@ model TableSession {
   comandaRound          Int                  @default(0)
   restaurant            Restaurant           @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
   table                 Table                @relation("TableSessions", fields: [tableId], references: [id], onDelete: Cascade)
-  activeOnTable         Table?               @relation("CurrentTableSession")
+  /// Mesas con esta cuenta activa (primaria + unidas).
+  activeOnTables        Table[]              @relation("CurrentTableSession")
   finalOrder            Order?               @relation("SessionFinalOrder", fields: [orderId], references: [id])
   cashRegisterSession   CashRegisterSession? @relation(fields: [cashRegisterSessionId], references: [id])
   items                 TableSessionItem[]

@@ -50,6 +50,16 @@ export class KitchenParticipant {
     return this.updateStatus(input, order.id, 'READY');
   }
 
+  async markDelivered(
+    input: KitchenActionInput,
+  ): Promise<UpdateStatusResponse> {
+    const orderId = input.expectedOrderId;
+    if (!orderId) {
+      throw new Error('markDelivered requiere expectedOrderId');
+    }
+    return this.updateStatus(input, orderId, 'DELIVERED');
+  }
+
   private async findOldestByStatus(
     input: KitchenActionInput,
     status: 'CONFIRMED' | 'PREPARING',
@@ -78,14 +88,14 @@ export class KitchenParticipant {
   private updateStatus(
     input: KitchenActionInput,
     orderId: string,
-    status: 'PREPARING' | 'READY',
+    status: 'PREPARING' | 'READY' | 'DELIVERED',
   ): Promise<UpdateStatusResponse> {
     return this.http.request<UpdateStatusResponse>({
       path: `/api/restaurants/${input.restaurantId}/orders/${orderId}/status`,
       method: 'PATCH',
       jwt: input.jwt,
       runId: input.runId,
-      participantKey: 'kitchen',
+      participantKey: status === 'DELIVERED' ? 'manager' : 'kitchen',
       origin: 'SIMULATED',
       simulatedNow: input.simulatedNow,
       correlationId: input.correlationId,

@@ -44,6 +44,7 @@ export class BentooLabController {
         ? new Date(dto.simulatedStartAt)
         : undefined,
       incidentCodes: dto.incidentCodes,
+      labProfile: dto.labProfile,
     });
   }
 
@@ -91,6 +92,11 @@ export class BentooLabController {
 
   @Post('runs/:runId/open-as-manager')
   openAsManager(@Param('runId') runId: string) {
-    return this.runtime.openAsManager(runId);
+    return this.runtime.openAsRole(runId, 'manager');
+  }
+
+  @Post('runs/:runId/open-as/:role')
+  openAsRole(@Param('runId') runId: string, @Param('role') role: string) {
+    return this.runtime.openAsRole(runId, role);
   }
 }

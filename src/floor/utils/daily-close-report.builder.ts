@@ -1,7 +1,12 @@
-import { CashRegisterSessionStatus, OrderStatus, Prisma } from '@prisma/client';
+import {
+  CashRegisterSessionStatus,
+  PaymentStatus,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { isSalonFloorOrder } from '../../orders/utils/order-channel.util';
 import type { DailyCloseReport } from '../types/daily-close-report.types';
+import { paidOrderWhere, unpaidOpenOrderWhere } from './daily-order-money.util';
 
 function formatBusinessDate(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -39,32 +44,34 @@ export async function buildDailyCloseReport(
 ): Promise<DailyCloseReport> {
   const { start, end } = dayBoundsUtc(params.businessDate);
 
-  const [restaurant, partialSessions, orders] = await Promise.all([
-    prisma.restaurant.findUnique({
-      where: { id: params.restaurantId },
-      select: { name: true },
-    }),
-    prisma.cashRegisterSession.findMany({
-      where: {
-        restaurantId: params.restaurantId,
-        status: CashRegisterSessionStatus.CLOSED,
-        closedAt: { gte: start, lte: end },
-      },
-      orderBy: { closedAt: 'asc' },
-      include: { terminal: true },
-    }),
-    prisma.order.findMany({
-      where: {
-        restaurantId: params.restaurantId,
-        createdAt: { gte: start, lte: end },
-        status: { not: OrderStatus.CANCELLED },
-      },
-      orderBy: { createdAt: 'asc' },
-      include: {
-        table: { select: { number: true } },
-      },
-    }),
-  ]);
+  const [restaurant, partialSessions, paidOrders, unpaidAgg] =
+    await Promise.all([
+      prisma.restaurant.findUnique({
+        where: { id: params.restaurantId },
+        select: { name: true },
+      }),
+      prisma.cashRegisterSession.findMany({
+        where: {
+          restaurantId: params.restaurantId,
+          status: CashRegisterSessionStatus.CLOSED,
+          closedAt: { gte: start, lte: end },
+        },
+        orderBy: { closedAt: 'asc' },
+        include: { terminal: true },
+      }),
+      prisma.order.findMany({
+        where: paidOrderWhere(params.restaurantId, start, end),
+        orderBy: { createdAt: 'asc' },
+        include: {
+          table: { select: { number: true } },
+        },
+      }),
+      prisma.order.aggregate({
+        where: unpaidOpenOrderWhere(params.restaurantId, start, end),
+        _sum: { total: true },
+        _count: { _all: true },
+      }),
+    ]);
 
   if (!restaurant) {
     throw new Error('Restaurante no encontrado');
@@ -85,7 +92,7 @@ export async function buildDailyCloseReport(
   let salonRevenue = 0;
   let onlineRevenue = 0;
 
-  const orderLines = orders.map((order) => {
+  const orderLines = paidOrders.map((order) => {
     const salon = isSalonFloorOrder(order);
     const channel = salon ? ('salon' as const) : ('online' as const);
     const customerLabel = salon
@@ -110,6 +117,7 @@ export async function buildDailyCloseReport(
       customerLabel,
       amount: order.total,
       paymentMethod: method,
+      paymentStatus: order.paymentStatus ?? PaymentStatus.PAID,
       createdAt: order.createdAt.toISOString(),
     };
   });
@@ -122,7 +130,7 @@ export async function buildDailyCloseReport(
     }))
     .sort((a, b) => b.total - a.total);
 
-  const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
+  const totalRevenue = paidOrders.reduce((sum, order) => sum + order.total, 0);
   const totalCountedCash = partialSessions.reduce(
     (sum, session) => sum + (session.countedCash ?? 0),
     0,
@@ -149,7 +157,9 @@ export async function buildDailyCloseReport(
       online: onlineRevenue,
     },
     totalRevenue,
-    totalOrders: orders.length,
+    pendingRevenue: unpaidAgg._sum.total ?? 0,
+    totalOrders: paidOrders.length,
+    pendingOrders: unpaidAgg._count._all,
     orders: orderLines,
     partialCashSummary: {
       sessionCount: partialSessions.length,
