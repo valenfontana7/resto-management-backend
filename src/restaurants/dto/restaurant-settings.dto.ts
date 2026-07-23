@@ -6,6 +6,7 @@ import {
   IsIn,
   IsInt,
   IsArray,
+  IsObject,
   ValidateNested,
   IsEnum,
   Min,
@@ -315,6 +316,10 @@ export class HeroSectionDto {
   @IsOptional()
   @IsIn([400, 500, 600, 700])
   cuisineTypesFontWeight?: number;
+
+  @IsOptional()
+  @IsObject()
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
 }
 
 export class CartSectionDto {

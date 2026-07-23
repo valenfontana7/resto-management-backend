@@ -1,5 +1,11 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  Optional,
+} from '@nestjs/common';
 import { CouponType, OrderSource, OrderStatus } from '@prisma/client';
+import { LabBusinessDateService } from '../bentoo-lab/config/lab-business-date.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnershipService } from '../common/services/ownership.service';
 import { EmailService } from '../email/email.service';
@@ -66,13 +72,31 @@ export class BusinessHealthService {
     private readonly images: ImageProcessingService,
     private readonly alerts: BusinessHealthAlertsService,
     private readonly pdf: BusinessHealthPdfService,
+    @Optional() private readonly labBusinessDate?: LabBusinessDateService,
   ) {}
+
+  /** Wall-clock o simulatedNow Lab (si hay run activo del restaurant). */
+  private async resolveNow(restaurantId: string): Promise<Date> {
+    const labNow =
+      await this.labBusinessDate?.resolveSimulatedNow(restaurantId);
+    return labNow ?? new Date();
+  }
+
+  private daysBefore(from: Date, days: number): Date {
+    const date = new Date(from.getTime());
+    date.setDate(date.getDate() - days);
+    return date;
+  }
+
+  private daysAfter(from: Date, days: number): Date {
+    return this.daysBefore(from, -days);
+  }
 
   async getDashboard(restaurantId: string, userId: string) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
-    const periodStart = new Date();
-    periodStart.setDate(periodStart.getDate() - PERIOD_DAYS);
+    const now = await this.resolveNow(restaurantId);
+    const periodStart = this.daysBefore(now, PERIOD_DAYS);
 
     const [
       dishes,
@@ -140,7 +164,7 @@ export class BusinessHealthService {
         where: {
           restaurantId,
           status: { not: OrderStatus.CANCELLED },
-          createdAt: { gte: new Date(Date.now() - 120 * 86400000) },
+          createdAt: { gte: this.daysBefore(now, 120) },
         },
         select: {
           customerProfileId: true,
@@ -237,8 +261,7 @@ export class BusinessHealthService {
       })),
     );
 
-    const inactiveCutoff = new Date();
-    inactiveCutoff.setDate(inactiveCutoff.getDate() - INACTIVE_DAYS);
+    const inactiveCutoff = this.daysBefore(now, INACTIVE_DAYS);
 
     const profileIds = [
       ...new Set(
@@ -311,14 +334,14 @@ export class BusinessHealthService {
         email: entry.email,
         lastOrderAt: entry.lastOrderAt.toISOString(),
         daysInactive: Math.floor(
-          (Date.now() - entry.lastOrderAt.getTime()) / 86400000,
+          (now.getTime() - entry.lastOrderAt.getTime()) / 86400000,
         ),
         canEmail: entry.canEmail,
       }));
 
     const retention = await this.getCustomerRetentionCohorts(restaurantId);
 
-    const weekAgo = new Date(Date.now() - 7 * 86400000);
+    const weekAgo = this.daysBefore(now, 7);
     const [restaurantMeta, lastScheduledWinBack, scheduledLast7Days] =
       await Promise.all([
         this.prisma.restaurant.findUnique({
@@ -444,10 +467,10 @@ export class BusinessHealthService {
   async getInsightsSummary(restaurantId: string, userId: string) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
 
-    const periodStart = new Date();
-    periodStart.setDate(periodStart.getDate() - PERIOD_DAYS);
+    const now = await this.resolveNow(restaurantId);
+    const periodStart = this.daysBefore(now, PERIOD_DAYS);
     const stuckThreshold = new Date(
-      Date.now() - KITCHEN_STUCK_MINUTES * 60_000,
+      now.getTime() - KITCHEN_STUCK_MINUTES * 60_000,
     );
 
     const [
@@ -625,7 +648,8 @@ export class BusinessHealthService {
 
   async getSnapshotHistory(restaurantId: string, userId: string, days = 30) {
     await this.ownership.verifyUserBelongsToRestaurant(restaurantId, userId);
-    const since = startOfUtcDay();
+    const now = await this.resolveNow(restaurantId);
+    const since = startOfUtcDay(now);
     since.setUTCDate(since.getUTCDate() - days);
 
     const snapshots = await this.prisma.businessHealthSnapshot.findMany({
@@ -668,7 +692,7 @@ export class BusinessHealthService {
       restaurantId,
       ownerMembership.userId,
     );
-    const snapshotDate = startOfUtcDay();
+    const snapshotDate = startOfUtcDay(await this.resolveNow(restaurantId));
 
     await this.prisma.businessHealthSnapshot.upsert({
       where: {
@@ -928,6 +952,7 @@ export class BusinessHealthService {
       : `${frontendUrl}/${restaurant.slug}`;
     const logoUrl = await this.images.toEmailAssetUrl(restaurant.logo);
 
+    const now = await this.resolveNow(restaurantId);
     const recipients = await this.listInactiveEmailRecipients(restaurantId);
     const keyFilter = options.sendToAll
       ? null
@@ -939,8 +964,7 @@ export class BusinessHealthService {
     );
 
     if (options.cooldownDays && options.cooldownDays > 0) {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - options.cooldownDays);
+      const cutoff = this.daysBefore(now, options.cooldownDays);
       const recentLogs = await this.prisma.winBackEmailLog.findMany({
         where: {
           restaurantId,
@@ -1007,14 +1031,14 @@ export class BusinessHealthService {
   }
 
   private async listInactiveEmailRecipients(restaurantId: string) {
-    const inactiveCutoff = new Date();
-    inactiveCutoff.setDate(inactiveCutoff.getDate() - INACTIVE_DAYS);
+    const now = await this.resolveNow(restaurantId);
+    const inactiveCutoff = this.daysBefore(now, INACTIVE_DAYS);
 
     const orders = await this.prisma.order.findMany({
       where: {
         restaurantId,
         status: { not: OrderStatus.CANCELLED },
-        createdAt: { gte: new Date(Date.now() - 120 * 86400000) },
+        createdAt: { gte: this.daysBefore(now, 120) },
       },
       select: {
         customerProfileId: true,
@@ -1094,6 +1118,8 @@ export class BusinessHealthService {
   }
 
   private async getCustomerRetentionCohorts(restaurantId: string) {
+    const now = await this.resolveNow(restaurantId);
+    const since = this.daysBefore(now, RETENTION_COHORT_DAYS);
     const rows = await this.prisma.$queryRaw<
       Array<{
         cohort_day: Date;
@@ -1119,7 +1145,7 @@ export class BusinessHealthService {
         FROM "Order"
         WHERE "restaurantId" = ${restaurantId}
           AND status != 'CANCELLED'
-          AND "createdAt" >= CURRENT_DATE - (${RETENTION_COHORT_DAYS}::int || ' day')::interval
+          AND "createdAt" >= ${since}
       ),
       cohort AS (
         SELECT customer_key, MIN(order_day) AS cohort_day
@@ -1161,11 +1187,11 @@ export class BusinessHealthService {
 
     const matureForD7 = cohorts.filter(
       (cohort) =>
-        new Date(cohort.cohortDay).getTime() <= Date.now() - 8 * 86400000,
+        new Date(cohort.cohortDay).getTime() <= now.getTime() - 8 * 86400000,
     );
     const matureForD30 = cohorts.filter(
       (cohort) =>
-        new Date(cohort.cohortDay).getTime() <= Date.now() - 31 * 86400000,
+        new Date(cohort.cohortDay).getTime() <= now.getTime() - 31 * 86400000,
     );
 
     const sumCustomersD7 = matureForD7.reduce(
@@ -1202,8 +1228,8 @@ export class BusinessHealthService {
     restaurantId: string,
     percent: number,
   ): Promise<{ code: string; percent: number }> {
-    const validUntil = new Date();
-    validUntil.setDate(validUntil.getDate() + 45);
+    const now = await this.resolveNow(restaurantId);
+    const validUntil = this.daysAfter(now, 45);
 
     const existing = await this.prisma.coupon.findFirst({
       where: { restaurantId, code: WIN_BACK_COUPON_CODE },
@@ -1229,7 +1255,7 @@ export class BusinessHealthService {
           description: 'Cupón automático para recuperación de clientes',
           type: CouponType.PERCENTAGE,
           value: percent,
-          validFrom: new Date(),
+          validFrom: now,
           validUntil,
           isActive: true,
         },

@@ -5,6 +5,7 @@ import {
   IsIn,
   IsInt,
   IsArray,
+  IsObject,
   ValidateNested,
   IsEnum,
   Min,
@@ -329,6 +330,14 @@ export class HeroSectionDto {
   @IsOptional()
   @IsIn([400, 500, 600, 700])
   cuisineTypesFontWeight?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Free-position frames for hero wire elements (hero-title, hero-subtitle, hero-cta, hero-secondary-cta)',
+  })
+  @IsOptional()
+  @IsObject()
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
 }
 
 // Menu Section

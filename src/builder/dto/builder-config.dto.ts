@@ -1399,6 +1399,23 @@ export class HeroConfigDto {
   @IsOptional()
   @IsBoolean()
   textShadow?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Free-position frames for hero wire elements (hero-title, hero-subtitle, hero-cta, hero-secondary-cta)',
+    type: 'object',
+    additionalProperties: {
+      type: 'object',
+      properties: {
+        x: { type: 'number' },
+        y: { type: 'number' },
+        w: { type: 'number' },
+      },
+    },
+  })
+  @IsOptional()
+  @IsObject()
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
 }
 
 // ==================== MENU SECTION DTO ====================
@@ -1698,6 +1715,14 @@ export class MenuConfigDto {
   @IsOptional()
   @IsIn(['top', 'sidebar'])
   filterPosition?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Free-position frames for menu wire elements (menu-title, menu-subtitle, menu-dish-*)',
+  })
+  @IsOptional()
+  @IsObject()
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
 }
 
 // ==================== INFO SECTION DTO ====================
@@ -1854,6 +1879,13 @@ export class InfoSectionConfigDto {
   @ValidateNested()
   @Type(() => CuisineTypesStyleDto)
   cuisineTypesStyle?: CuisineTypesStyleDto;
+
+  @ApiPropertyOptional({
+    description: 'Free-position frames for info wire elements',
+  })
+  @IsOptional()
+  @IsObject()
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
 }
 
 // ==================== FOOTER SECTION DTO ====================
@@ -1997,6 +2029,13 @@ export class FooterConfigDto {
   @IsOptional()
   @IsBoolean()
   showDecorations?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Free-position frames for footer wire elements',
+  })
+  @IsOptional()
+  @IsObject()
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
 }
 
 // ==================== CART SECTION DTO ====================
@@ -2876,6 +2915,13 @@ export class FeaturedSectionConfigDto {
   @IsOptional()
   @IsString()
   ctaText?: string;
+
+  @ApiPropertyOptional({
+    description: 'Free-position frames for featured wire elements',
+  })
+  @IsOptional()
+  @IsObject()
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
 }
 
 export class AboutSectionConfigDto {
@@ -2935,6 +2981,13 @@ export class AboutSectionConfigDto {
   @IsArray()
   @IsString({ each: true })
   highlights?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Free-position frames for about wire elements',
+  })
+  @IsOptional()
+  @IsObject()
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
 }
 
 export class TestimonialItemConfigDto {
@@ -3009,6 +3062,14 @@ export class TestimonialsSectionConfigDto {
   @ValidateNested({ each: true })
   @Type(() => TestimonialItemConfigDto)
   items?: TestimonialItemConfigDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'Free-position frames for testimonial wire elements (testimonials-title, testimonial-N)',
+  })
+  @IsOptional()
+  @IsObject()
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
 }
 
 export class FaqItemConfigDto {
@@ -3066,6 +3127,14 @@ export class FaqSectionConfigDto {
   @ValidateNested({ each: true })
   @Type(() => FaqItemConfigDto)
   items?: FaqItemConfigDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'Free-position frames for FAQ wire elements (faq-title, faq-item-N)',
+  })
+  @IsOptional()
+  @IsObject()
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
 }
 
 // ==================== SECTIONS DTO ====================
@@ -3148,6 +3217,107 @@ export class SectionsConfigDto {
   @ValidateNested()
   @Type(() => ReservationsConfigDto)
   reservations?: ReservationsConfigDto;
+
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  @IsOptional()
+  @IsObject()
+  cta?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  @IsOptional()
+  @IsObject()
+  gallery?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  @IsOptional()
+  @IsObject()
+  richText?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  @IsOptional()
+  @IsObject()
+  hours?: Record<string, unknown>;
+
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  @IsOptional()
+  @IsObject()
+  map?: Record<string, unknown>;
+}
+
+// ==================== PAGE BUILDER v2 DTOs ====================
+
+export class BlockInstanceDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @ApiPropertyOptional({
+    enum: [
+      'hero',
+      'featured',
+      'menu',
+      'about',
+      'testimonials',
+      'faq',
+      'info',
+      'cta',
+      'gallery',
+      'richText',
+      'hours',
+      'map',
+      'stack',
+      'columns',
+      'canvas',
+    ],
+  })
+  @IsOptional()
+  @IsString()
+  type?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  visible?: boolean;
+
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  @IsOptional()
+  @IsObject()
+  props?: Record<string, unknown>;
+}
+
+export class PageDocDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  id?: string;
+
+  @ApiPropertyOptional({ enum: ['system', 'custom'] })
+  @IsOptional()
+  @IsIn(['system', 'custom'])
+  kind?: 'system' | 'custom';
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  slug?: string;
+
+  @ApiPropertyOptional({ type: [BlockInstanceDto] })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BlockInstanceDto)
+  blocks?: BlockInstanceDto[];
+
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  @IsOptional()
+  @IsObject()
+  seo?: Record<string, unknown>;
 }
 
 // ==================== METADATA DTO ====================
@@ -3191,6 +3361,20 @@ export class MetadataConfigDto {
   @IsOptional()
   @IsObject()
   restaurantDraftBase?: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description: 'Publish snapshots for rollback',
+    type: 'array',
+    items: { type: 'object', additionalProperties: true },
+  })
+  @IsOptional()
+  @IsArray()
+  publishSnapshots?: Array<Record<string, unknown>>;
+
+  @ApiPropertyOptional({ type: 'object', additionalProperties: true })
+  @IsOptional()
+  @IsObject()
+  clipboardBlockProps?: Record<string, unknown>;
 }
 
 // ==================== RESTAURANT DRAFT DTO ====================
@@ -3311,6 +3495,16 @@ export class UpdateBuilderConfigDto {
   @ValidateNested()
   @Type(() => SectionsConfigDto)
   sections?: SectionsConfigDto;
+
+  @ApiPropertyOptional({
+    description:
+      'Page-builder document v2. Map of pageId → PageDoc (home + custom pages).',
+    type: 'object',
+    additionalProperties: { type: 'object' },
+  })
+  @IsOptional()
+  @IsObject()
+  pages?: Record<string, PageDocDto>;
 
   @ApiPropertyOptional({
     type: RestaurantDraftDto,
@@ -3438,6 +3632,13 @@ export class BuilderConfigurationResponseDto extends UpdateBuilderConfigDto {
 
   @ApiProperty({ type: SectionsConfigDto })
   declare sections: SectionsConfigDto;
+
+  @ApiPropertyOptional({
+    description: 'Page-builder document v2',
+    type: 'object',
+    additionalProperties: true,
+  })
+  declare pages?: Record<string, PageDocDto>;
 }
 
 export class BuilderConfigResponseDto {

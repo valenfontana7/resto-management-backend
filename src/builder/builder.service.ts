@@ -17,6 +17,11 @@ import {
   validateBuilderConfig,
   isValidSectionName,
 } from './types/builder-config.types';
+import {
+  BUILDER_DOC_VERSION_V2,
+  ensureBuilderDocumentV2,
+  extractPublishBranding,
+} from './types/page-doc';
 import { UpdateBuilderConfigDto } from './dto/builder-config.dto';
 import { normalizeRestaurantDraftPayload } from './utils/restaurant-draft.util';
 import { normalizeAssetReference } from './utils/asset-reference.util';
@@ -85,12 +90,16 @@ export class BuilderService {
       where: { restaurantId },
     });
 
-    const config = builderConfig
+    const rawConfig = builderConfig
       ? this.removeRedundantRestaurantDraft(
           builderConfig.config as unknown as BuilderConfiguration,
           publishedRestaurant,
         )
       : { ...DEFAULT_BUILDER_CONFIG, lastModified: new Date().toISOString() };
+
+    const config = ensureBuilderDocumentV2(
+      rawConfig as unknown as Record<string, any>,
+    ) as BuilderConfiguration;
 
     const extras = await this.getPreviewExtras(restaurantId);
 
@@ -205,13 +214,19 @@ export class BuilderService {
       : { ...DEFAULT_BUILDER_CONFIG };
 
     // Deep merge updates into current config
-    const newConfig = this.deepMerge(currentConfig, normalizedUpdates as any);
+    const newConfig = this.deepMerge(
+      ensureBuilderDocumentV2(currentConfig as unknown as Record<string, any>),
+      normalizedUpdates as any,
+    );
 
-    // Update lastModified
+    // Update lastModified + keep pages/sections in sync (v2)
     newConfig.lastModified = new Date().toISOString();
+    const ensuredConfig = ensureBuilderDocumentV2(
+      newConfig as unknown as Record<string, any>,
+    ) as BuilderConfiguration;
 
     const sanitizedConfig = this.syncRestaurantDraftMetadata(
-      this.removeRedundantRestaurantDraft(newConfig, restaurant),
+      this.removeRedundantRestaurantDraft(ensuredConfig, restaurant),
       restaurant,
       currentConfig,
     );
@@ -282,10 +297,12 @@ export class BuilderService {
       select: { version: true, config: true },
     });
 
-    const configToSave = this.withRequiredConfigMetadata(
-      normalizedConfig,
-      existingBuilderConfig?.version,
-    );
+    const configToSave = ensureBuilderDocumentV2(
+      this.withRequiredConfigMetadata(
+        normalizedConfig,
+        existingBuilderConfig?.version,
+      ) as unknown as Record<string, any>,
+    ) as BuilderConfiguration;
 
     const sanitizedConfig = this.syncRestaurantDraftMetadata(
       this.removeRedundantRestaurantDraft(configToSave, restaurant),
@@ -461,10 +478,15 @@ export class BuilderService {
       });
     }
 
-    const config = builderConfig.config as unknown as BuilderConfiguration;
+    const config = ensureBuilderDocumentV2(
+      builderConfig.config as unknown as Record<string, any>,
+    ) as BuilderConfiguration;
 
     // 1. Extract branding data (design config, without builder-only fields)
-    const { restaurant: rawDraftData, ...brandingData } = config;
+    const rawDraftData = config.restaurant;
+    const brandingData = extractPublishBranding(
+      config as unknown as Record<string, any>,
+    ) as BuilderConfiguration & Record<string, any>;
     const draftData = normalizeRestaurantDraftPayload(rawDraftData) as
       | RestaurantDraft
       | undefined;
@@ -540,7 +562,7 @@ export class BuilderService {
       data: restaurantUpdate,
     });
 
-    // 3. Clear draft restaurant data (already applied) and mark as published
+    // 3. Clear draft restaurant data (already applied), snapshot, mark published
     const cleanedConfig = { ...config };
     delete cleanedConfig.restaurant;
 
@@ -556,6 +578,22 @@ export class BuilderService {
     if (!publishMetadata.firstPublishedAt) {
       publishMetadata.firstPublishedAt = new Date().toISOString();
     }
+    const previousSnapshots = Array.isArray(publishMetadata.publishSnapshots)
+      ? publishMetadata.publishSnapshots
+      : [];
+    const snapshotId =
+      typeof crypto !== 'undefined' && 'randomUUID' in crypto
+        ? crypto.randomUUID()
+        : `snap_${Date.now()}`;
+    publishMetadata.publishSnapshots = [
+      {
+        id: snapshotId,
+        createdAt: new Date().toISOString(),
+        label: 'Publicación',
+        branding: brandingData as Record<string, unknown>,
+      },
+      ...previousSnapshots,
+    ].slice(0, 10);
     cleanedConfig.metadata = publishMetadata;
 
     await this.prisma.builderConfig.update({
@@ -563,6 +601,7 @@ export class BuilderService {
       data: {
         config: cleanedConfig as any,
         isPublished: true,
+        version: cleanedConfig.version || '2.0.0',
         updatedAt: new Date(),
       },
     });
@@ -574,6 +613,66 @@ export class BuilderService {
       title: draftData?.name || restaurant.name,
       channel: 'website',
     });
+  }
+
+  /**
+   * Restore a previous publish snapshot into the draft (and optionally re-publish branding).
+   */
+  async restorePublishSnapshot(
+    restaurantId: string,
+    snapshotId: string,
+  ): Promise<BuilderConfiguration> {
+    const builderConfig = await this.prisma.builderConfig.findUnique({
+      where: { restaurantId },
+    });
+    if (!builderConfig) {
+      throw new NotFoundException('Builder config not found');
+    }
+
+    const config = ensureBuilderDocumentV2(
+      builderConfig.config as unknown as Record<string, any>,
+    ) as BuilderConfiguration;
+    const snapshots = config.metadata?.publishSnapshots ?? [];
+    const snapshot = snapshots.find((s) => s.id === snapshotId);
+    if (!snapshot) {
+      throw new NotFoundException('Snapshot not found');
+    }
+
+    const branding = snapshot.branding as Record<string, any>;
+    const restored = ensureBuilderDocumentV2({
+      ...config,
+      ...branding,
+      version: BUILDER_DOC_VERSION_V2,
+      lastModified: new Date().toISOString(),
+      metadata: {
+        ...(config.metadata ?? {}),
+        notes: `Restaurado desde snapshot ${snapshotId}`,
+      },
+    }) as BuilderConfiguration;
+
+    // Keep restaurant draft out of restored branding payload
+    delete (restored as any).restaurant;
+
+    await this.prisma.builderConfig.update({
+      where: { restaurantId },
+      data: {
+        config: restored as any,
+        version: restored.version,
+        updatedAt: new Date(),
+      },
+    });
+
+    // Also restore live branding so public site matches immediately
+    await this.prisma.restaurant.update({
+      where: { id: restaurantId },
+      data: {
+        branding: extractPublishBranding(
+          restored as unknown as Record<string, any>,
+        ) as any,
+      },
+    });
+
+    return restored;
   }
 
   /**

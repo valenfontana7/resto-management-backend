@@ -50,6 +50,7 @@ import { OnboardingAiModule } from './onboarding-ai/onboarding-ai.module';
 import { OnboardingAnalyticsModule } from './onboarding-analytics/onboarding-analytics.module';
 import { DemoExamplesModule } from './demo-examples/demo-examples.module';
 import { LeadsModule } from './leads/leads.module';
+import { ImpulsaModule } from './impulsa/impulsa.module';
 import { RevenueModule } from './revenue/revenue.module';
 import { AiPlatformModule } from './ai-platform/ai-platform.module';
 import { CommercialIntelligenceModule } from './commercial-intelligence/commercial-intelligence.module';
@@ -186,6 +187,7 @@ import { LabExecutionContextMiddleware } from './bentoo-lab/http/lab-execution-c
     AiPlatformModule,
     CommercialIntelligenceModule,
     LeadsModule,
+    ImpulsaModule,
     RevenueModule,
     FloorModule,
     BusinessHealthModule,

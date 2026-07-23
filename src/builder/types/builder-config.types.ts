@@ -13,6 +13,12 @@
  * 6. Advanced (animaciones, efectos, SEO)
  */
 
+import {
+  ensureBuilderDocumentV2,
+  migrateV1ToV2,
+  validatePageDocument,
+} from './page-doc';
+
 // ==================== BASE TYPES ====================
 
 export type ColorValue = string; // Hex, RGB, RGBA
@@ -428,6 +434,9 @@ export interface HeroConfig {
 
   // Text effects
   textShadow?: boolean;
+
+  /** Free-position frames for hero wire elements (title, subtitle, CTAs). */
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
 }
 
 // ==================== MENU SECTION ====================
@@ -506,6 +515,9 @@ export interface MenuConfig {
   showSearch?: boolean;
   showFilters?: boolean;
   filterPosition?: 'top' | 'sidebar';
+
+  /** Free-position frames for menu wire elements (title, subtitle, dish cards). */
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
 }
 
 // ==================== INFO SECTION ====================
@@ -556,6 +568,8 @@ export interface InfoSectionConfig {
 
   // Cuisine type badges style
   cuisineTypesStyle?: CuisineTypesStyleConfig;
+
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
 }
 
 // ==================== FOOTER SECTION ====================
@@ -600,6 +614,8 @@ export interface FooterConfig {
   // Decorative elements
   showTopBorder?: boolean;
   showDecorations?: boolean;
+
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
 }
 
 // ==================== CART SECTION ====================
@@ -890,25 +906,154 @@ export interface RestaurantDraft {
   socialMedia?: Record<string, string>;
 }
 
+// ==================== AUTO-COMPOSED / CONTENT SECTIONS ====================
+
+export interface FeaturedSectionConfig {
+  showSection?: boolean;
+  backgroundColor?: ColorValue;
+  textColor?: ColorValue;
+  title?: ContentTextConfig;
+  subtitle?: ContentTextConfig;
+  dishIds?: string[];
+  displayStyle?: 'auto' | 'carousel' | 'grid';
+  maxItems?: number;
+  ctaText?: string;
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
+}
+
+export interface AboutSectionConfig {
+  showSection?: boolean;
+  backgroundColor?: ColorValue;
+  textColor?: ColorValue;
+  eyebrow?: ContentTextConfig;
+  title?: ContentTextConfig;
+  body?: string;
+  image?: ImageUrl;
+  imageAlt?: string;
+  imagePosition?: 'left' | 'right';
+  highlights?: string[];
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
+}
+
+export interface TestimonialItemConfig {
+  sourceId?: string;
+  author?: string;
+  rating?: number;
+  text?: string;
+  source?: string;
+  date?: string;
+}
+
+export interface TestimonialsSectionConfig {
+  showSection?: boolean;
+  backgroundColor?: ColorValue;
+  textColor?: ColorValue;
+  title?: ContentTextConfig;
+  subtitle?: ContentTextConfig;
+  items?: TestimonialItemConfig[];
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
+}
+
+export interface FaqItemConfig {
+  sourceId?: string;
+  question?: string;
+  answer?: string;
+}
+
+export interface FaqSectionConfig {
+  showSection?: boolean;
+  backgroundColor?: ColorValue;
+  textColor?: ColorValue;
+  title?: ContentTextConfig;
+  subtitle?: ContentTextConfig;
+  items?: FaqItemConfig[];
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
+}
+
+/** Phase-2 catalog blocks (also mirrored under sections for runtime). */
+export interface CtaBlockConfig {
+  showSection?: boolean;
+  backgroundColor?: ColorValue;
+  textColor?: ColorValue;
+  title?: ContentTextConfig;
+  subtitle?: ContentTextConfig;
+  buttonText?: string;
+  buttonHref?: string;
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
+}
+
+export interface GalleryBlockConfig {
+  showSection?: boolean;
+  backgroundColor?: ColorValue;
+  textColor?: ColorValue;
+  title?: ContentTextConfig;
+  images?: Array<{ url: string; alt?: string }>;
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
+}
+
+export interface RichTextBlockConfig {
+  showSection?: boolean;
+  backgroundColor?: ColorValue;
+  textColor?: ColorValue;
+  title?: ContentTextConfig;
+  body?: string;
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
+}
+
+export interface HoursBlockConfig {
+  showSection?: boolean;
+  backgroundColor?: ColorValue;
+  textColor?: ColorValue;
+  title?: ContentTextConfig;
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
+}
+
+export interface MapBlockConfig {
+  showSection?: boolean;
+  backgroundColor?: ColorValue;
+  textColor?: ColorValue;
+  title?: ContentTextConfig;
+  zoom?: number;
+  elementFrames?: Record<string, { x: number; y: number; w?: number }>;
+}
+
 // ==================== SECTIONS CONFIGURATION ====================
 
 export interface SectionsConfig {
   nav: NavigationConfig;
   hero: HeroConfig;
+  featured?: FeaturedSectionConfig;
   menu: MenuConfig;
+  about?: AboutSectionConfig;
+  testimonials?: TestimonialsSectionConfig;
+  faq?: FaqSectionConfig;
   info: InfoSectionConfig;
   footer: FooterConfig;
   cart: CartConfig;
   checkout?: CheckoutConfig;
   orderConfirmation?: OrderConfirmationConfig;
   reservations?: ReservationsConfig;
+  cta?: CtaBlockConfig;
+  gallery?: GalleryBlockConfig;
+  richText?: RichTextBlockConfig;
+  hours?: HoursBlockConfig;
+  map?: MapBlockConfig;
 }
+
+// ==================== PAGES (v2) ====================
+
+export type {
+  BlockInstance,
+  PageDoc,
+  PagesMap,
+  HomeContentBlockType,
+} from './page-doc';
 
 // ==================== MAIN BUILDER CONFIGURATION ====================
 
 export interface BuilderConfiguration {
   // Version for migrations
-  version: string; // e.g., "1.0.0"
+  version: string; // e.g., "1.0.0" | "2.0.0"
   lastModified: string; // ISO date
 
   // Core configurations (same shape as branding V2)
@@ -916,8 +1061,14 @@ export interface BuilderConfiguration {
   layout: LayoutConfig;
   assets: AssetsConfig;
 
-  // Section configurations (same shape as branding V2)
+  // Section configurations (synced mirror of page blocks for customer components)
   sections: SectionsConfig;
+
+  /**
+   * Page-builder document (v2). `pages.home.blocks` is the ordered composition.
+   * Present after ensureBuilderDocumentV2 / migrate v1→v2.
+   */
+  pages?: import('./page-doc').PagesMap;
 
   // Draft de datos del restaurante (se aplica a Prisma al publicar)
   restaurant?: RestaurantDraft;
@@ -938,6 +1089,14 @@ export interface BuilderConfiguration {
     tags?: string[];
     notes?: string;
     restaurantDraftBase?: RestaurantDraft;
+    /** Publish snapshots for rollback (editor power). */
+    publishSnapshots?: Array<{
+      id: string;
+      createdAt: string;
+      label?: string;
+      branding: Record<string, unknown>;
+    }>;
+    clipboardBlockProps?: Record<string, unknown>;
   };
 }
 
@@ -970,7 +1129,7 @@ export interface BuilderPreviewRestaurant extends RestaurantInfo {
  * Al publicar, estos valores se copian directamente a restaurant.branding.
  */
 export const DEFAULT_BUILDER_CONFIG: BuilderConfiguration = {
-  version: '1.0.0',
+  version: '2.0.0',
   lastModified: new Date().toISOString(),
 
   theme: {
@@ -1066,6 +1225,14 @@ export const DEFAULT_BUILDER_CONFIG: BuilderConfiguration = {
     },
   },
 };
+
+// Ensure default ships as v2 (pages.home.blocks)
+Object.assign(
+  DEFAULT_BUILDER_CONFIG,
+  ensureBuilderDocumentV2(
+    DEFAULT_BUILDER_CONFIG as unknown as Record<string, any>,
+  ),
+);
 
 // ==================== HELPER TYPES ====================
 
@@ -1172,6 +1339,14 @@ export function validateBuilderConfig(
     }
   }
 
+  // Page-builder document validation (v2)
+  if (config.pages || String(config.version ?? '').startsWith('2.')) {
+    const pageIssues = validatePageDocument(config as Record<string, any>);
+    for (const issue of pageIssues) {
+      errors.push(issue);
+    }
+  }
+
   return {
     isValid: errors.filter((e) => e.severity === 'error').length === 0,
     errors,
@@ -1205,8 +1380,16 @@ export const MIGRATIONS: MigrationScript[] = [
             accent: oldConfig?.theme?.colors?.accent,
           },
         },
+        version: '1.0.0',
         lastModified: new Date().toISOString(),
       };
+    },
+  },
+  {
+    fromVersion: '1.0.0',
+    toVersion: '2.0.0',
+    migrate: (config: any): BuilderConfiguration => {
+      return migrateV1ToV2(config) as BuilderConfiguration;
     },
   },
 ];
@@ -1217,19 +1400,24 @@ export function migrateConfig(
   toVersion: string,
 ): BuilderConfiguration {
   let current = config;
+  let version = fromVersion;
 
   for (const migration of MIGRATIONS) {
-    if (migration.fromVersion === fromVersion) {
+    if (migration.fromVersion === version) {
       current = migration.migrate(current);
-      fromVersion = migration.toVersion;
+      version = migration.toVersion;
     }
 
-    if (fromVersion === toVersion) {
+    if (version === toVersion) {
       break;
     }
   }
 
-  return current;
+  if (toVersion.startsWith('2.') || toVersion === '2.0.0') {
+    current = ensureBuilderDocumentV2(current);
+  }
+
+  return current as BuilderConfiguration;
 }
 
 // ==================== SECTION NAMES ====================
@@ -1237,13 +1425,22 @@ export function migrateConfig(
 export const VALID_SECTION_NAMES = [
   'nav',
   'hero',
+  'featured',
   'menu',
+  'about',
+  'testimonials',
+  'faq',
   'info',
   'footer',
   'cart',
   'checkout',
   'orderConfirmation',
   'reservations',
+  'cta',
+  'gallery',
+  'richText',
+  'hours',
+  'map',
 ] as const;
 export type SectionName = (typeof VALID_SECTION_NAMES)[number];
 

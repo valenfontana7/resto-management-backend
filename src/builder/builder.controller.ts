@@ -25,7 +25,10 @@ import { VerifyRestaurantAccess } from '../common/decorators/verify-restaurant-a
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { RequestUser } from '../auth/strategies/jwt.strategy';
 import { OwnerEmailVerificationService } from '../auth/services/owner-email-verification.service';
+import { Throttle } from '@nestjs/throttler';
 import { BuilderService } from './builder.service';
+import { BuilderAiService } from './builder-ai.service';
+import { OnboardingAiQuotaService } from '../common/services/onboarding-ai-quota.service';
 import {
   UpdateBuilderConfigDto,
   ThemeConfigDto,
@@ -42,6 +45,7 @@ import {
   AdvancedConfigDto,
   BuilderConfigEnvelopeDto,
 } from './dto/builder-config.dto';
+import { ComposeHomeDto, ImproveBuilderCopyDto } from './dto/builder-ai.dto';
 
 @ApiTags('Builder')
 @Controller('api/restaurants/:restaurantId/builder')
@@ -50,6 +54,8 @@ import {
 export class BuilderController {
   constructor(
     private readonly builderService: BuilderService,
+    private readonly builderAiService: BuilderAiService,
+    private readonly aiQuota: OnboardingAiQuotaService,
     private readonly ownerEmailVerification: OwnerEmailVerificationService,
   ) {}
 
@@ -158,6 +164,30 @@ export class BuilderController {
     return {
       success: true,
       message: 'Configuration published successfully',
+    };
+  }
+
+  @Post('restore-snapshot/:snapshotId')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Restore a previous publish snapshot into draft + live branding',
+  })
+  @ApiParam({ name: 'restaurantId', description: 'Restaurant ID' })
+  @ApiParam({ name: 'snapshotId', description: 'Snapshot ID' })
+  async restorePublishSnapshot(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @Param('snapshotId') snapshotId: string,
+  ) {
+    const config = await this.builderService.restorePublishSnapshot(
+      restaurantId,
+      snapshotId,
+    );
+    return {
+      success: true,
+      data: config,
+      message: 'Snapshot restored successfully',
     };
   }
 
@@ -535,5 +565,54 @@ export class BuilderController {
       message: 'Migration from branding to builder config completed',
       data: config,
     };
+  }
+
+  // ==================== BUILDER AI ====================
+
+  @Post('ai/improve-copy')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Throttle({ default: { ttl: 60_000, limit: 20 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Improve a builder copy field with AI (contextual)',
+  })
+  @ApiParam({ name: 'restaurantId', description: 'Restaurant ID' })
+  @ApiResponse({ status: 200, description: 'Improved copy' })
+  @ApiResponse({ status: 429, description: 'Daily AI quota exceeded' })
+  async improveCopy(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: ImproveBuilderCopyDto,
+  ) {
+    await this.aiQuota.assertUserQuota(user.userId, 'builder');
+    const data = await this.builderAiService.improveCopy(restaurantId, dto);
+    return { success: true, data };
+  }
+
+  @Post('ai/compose-home')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Compose home page blocks + copy from an intent preset',
+  })
+  @ApiParam({ name: 'restaurantId', description: 'Restaurant ID' })
+  @ApiResponse({ status: 200, description: 'Home composition suggestion' })
+  @ApiResponse({
+    status: 403,
+    description: 'Requires ACTIVE paid subscription or SUPER_ADMIN',
+  })
+  @ApiResponse({ status: 429, description: 'Daily AI quota exceeded' })
+  async composeHome(
+    @VerifyRestaurantAccess('restaurantId') restaurantId: string,
+    @CurrentUser() user: RequestUser,
+    @Body() dto: ComposeHomeDto,
+  ) {
+    await this.builderAiService.assertComposeHomeAccess(restaurantId, user);
+    await this.aiQuota.assertUserQuota(user.userId, 'builder');
+    const data = await this.builderAiService.composeHome(restaurantId, dto);
+    return { success: true, data };
   }
 }
