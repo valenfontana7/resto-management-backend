@@ -71,9 +71,7 @@ export class ImpulsaCheckoutService {
       pending: `${frontendBase}/impulsa?pago=pending`,
     };
 
-    const preferenceData: {
-      body: Record<string, unknown>;
-    } = {
+    const preferenceData: any = {
       body: {
         items: [
           {
