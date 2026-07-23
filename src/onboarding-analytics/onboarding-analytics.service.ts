@@ -33,6 +33,16 @@ export const FUNNEL_STEPS = [
   'go_live_completed',
 ] as const;
 
+/** Embudo discovery self-serve (anuncio → demo → registro → primer resultado). */
+export const DISCOVERY_FUNNEL_STEPS = [
+  'landing_viewed',
+  'demo_opened',
+  'demo_test_order_placed',
+  'register_completed',
+  'first_objective_selected',
+  'first_objective_completed',
+] as const;
+
 export type FunnelStep = (typeof FUNNEL_STEPS)[number];
 
 @Injectable()
@@ -155,6 +165,22 @@ export class OnboardingAnalyticsService {
         .sort((a, b) => b.sessions - a.sessions)
         .slice(0, limit);
 
+    const discoverySteps = DISCOVERY_FUNNEL_STEPS.map((event, idx) => {
+      const sessionsCount = sessions.get(event) ?? 0;
+      const previousSessions =
+        idx === 0 ? null : (sessions.get(DISCOVERY_FUNNEL_STEPS[idx - 1]) ?? 0);
+      const conversionFromPrev =
+        previousSessions && previousSessions > 0
+          ? Math.round((sessionsCount / previousSessions) * 1000) / 10
+          : null;
+      return {
+        event,
+        totalEvents: totals.get(event) ?? 0,
+        uniqueSessions: sessionsCount,
+        conversionFromPrev,
+      };
+    });
+
     const highlights = {
       landingToRegisterConversion: conversion(
         'landing_viewed',
@@ -167,6 +193,15 @@ export class OnboardingAnalyticsService {
       publishToDashboardConversion: conversion(
         'preview_published',
         'first_dashboard_visit',
+      ),
+      /** KPI clave: registros que alcanzan un primer resultado verificable. */
+      registerToFirstResultConversion: conversion(
+        'register_completed',
+        'first_objective_completed',
+      ),
+      demoOpenedToTestOrderConversion: conversion(
+        'demo_opened',
+        'demo_test_order_placed',
       ),
       trialBannerToPaymentIntentConversion: conversion(
         'trial_banner_viewed',
@@ -189,6 +224,10 @@ export class OnboardingAnalyticsService {
         sessions.get('customer_whatsapp_notified') ?? 0,
       customerWhatsappNotificationsTotal:
         totals.get('customer_whatsapp_notified') ?? 0,
+      firstObjectiveCompletedSessions:
+        sessions.get('first_objective_completed') ?? 0,
+      demoOpenedSessions: sessions.get('demo_opened') ?? 0,
+      demoTestOrderSessions: sessions.get('demo_test_order_placed') ?? 0,
     };
 
     const topSourcesPayload = {
@@ -212,6 +251,7 @@ export class OnboardingAnalyticsService {
       sinceDays: days,
       since: since.toISOString(),
       steps,
+      discoverySteps,
       overallConversion,
       highlights,
       biggestDrop,

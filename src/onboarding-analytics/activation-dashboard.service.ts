@@ -168,11 +168,16 @@ export class ActivationDashboardService {
           funnel.highlights?.landingToRegisterConversion ?? null,
         registerToPublish:
           funnel.highlights?.registerToPublishConversion ?? null,
+        registerToFirstResult:
+          funnel.highlights?.registerToFirstResultConversion ?? null,
+        demoOpenedToTestOrder:
+          funnel.highlights?.demoOpenedToTestOrderConversion ?? null,
         trialToPaymentSaved:
           funnel.highlights?.trialIntentToPaymentSavedConversion ?? null,
         goLiveToPaymentSaved:
           funnel.highlights?.goLiveToPaymentSavedConversion ?? null,
       },
+      discoveryFunnel: funnel.discoverySteps ?? [],
       topFrictions,
       stuckRestaurants,
       gen2,

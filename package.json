@@ -32,6 +32,8 @@
     "build:seed": "tsc prisma/seed.ts --outDir dist/prisma --module commonjs --target es2020 --esModuleInterop --skipLibCheck",
     "seed:parrilla": "npx ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/scripts/seed-parrilla-demo.ts",
     "seed:parrilla:fresh": "npx ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/scripts/seed-parrilla-demo.ts -- --fresh",
+    "seed:demo-flagships": "npx ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/scripts/seed-demo-flagships.ts",
+    "seed:demo-flagships:fresh": "npx ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/scripts/seed-demo-flagships.ts -- --fresh",
     "seed:e2e-smoke-ci": "npx ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" prisma/scripts/seed-e2e-smoke-ci.ts",
     "prisma:seed": "node dist/prisma/seed.js",
     "migrate:roles": "npx ts-node scripts/migrate-system-roles.ts",

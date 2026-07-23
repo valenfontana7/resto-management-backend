@@ -2,7 +2,7 @@ import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 
-export type AiQuotaAction = 'draft' | 'menu' | 'discover';
+export type AiQuotaAction = 'draft' | 'menu' | 'discover' | 'builder';
 
 export interface AiQuotaStatus {
   used: number;
@@ -65,6 +65,16 @@ export class OnboardingAiQuotaService {
       );
     }
 
+    if (action === 'builder') {
+      return new HttpException(
+        {
+          message: `Alcanzaste el límite diario de IA del builder (${limit}/día). Probá mañana.`,
+          code: 'BUILDER_AI_QUOTA_EXCEEDED',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     return new HttpException(
       {
         message: `Alcanzaste el límite diario de generación con IA (${limit}/día). Probá mañana o completá el onboarding manualmente.`,
@@ -78,6 +88,7 @@ export class OnboardingAiQuotaService {
     const limits = this.getLimits();
     if (action === 'menu') return limits.menuPerDay;
     if (action === 'discover') return limits.discoverPerDay;
+    if (action === 'builder') return limits.builderPerDay;
     return limits.draftPerDay;
   }
 
@@ -96,6 +107,7 @@ export class OnboardingAiQuotaService {
     draftPerDay: number;
     menuPerDay: number;
     discoverPerDay: number;
+    builderPerDay: number;
   } {
     return {
       draftPerDay: this.readIntEnv('ONBOARDING_AI_MAX_DRAFTS_PER_USER_DAY', 10),
@@ -107,6 +119,7 @@ export class OnboardingAiQuotaService {
         'LEADS_AI_MAX_DISCOVERIES_PER_USER_DAY',
         5,
       ),
+      builderPerDay: this.readIntEnv('BUILDER_AI_MAX_PER_USER_DAY', 30),
     };
   }
 
