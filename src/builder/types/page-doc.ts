@@ -1017,7 +1017,7 @@ export function createCustomPage(
   if (ensured.pages[pageId]) {
     throw new Error('Ya existe una página con ese slug');
   }
-  for (const existing of Object.values(ensured.pages)) {
+  for (const existing of Object.values(ensured.pages) as PageDoc[]) {
     if (existing.slug === slug)
       throw new Error('Ya existe una página con ese slug');
   }
